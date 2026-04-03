@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNOC v0.5.5 - Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    body {
+      background: #050c13;
+      font-family: 'Rajdhani', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 229, 255, 0.015) 2px, rgba(0, 229, 255, 0.015) 4px);
+      pointer-events: none;
+      z-index: 0
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0
+    }
+
+    .bg-glow {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 229, 255, 0.06) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0
+    }
+
+    .card {
+      position: relative;
+      z-index: 10;
+      background: rgba(10, 21, 32, 0.95);
+      border: 1px solid #0f2a3f;
+      border-radius: 12px;
+      padding: 44px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 0 60px rgba(0, 229, 255, 0.08), 0 0 120px rgba(0, 0, 0, 0.8)
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 20%;
+      right: 20%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #00e5ff, transparent)
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 32px
+    }
+
+    .logo-icon {
+      width: 52px;
+      height: 52px;
+      border: 2px solid #00e5ff;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin: 0 auto 14px;
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+      animation: pulse 2.5s ease-in-out infinite
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.3)
+      }
+
+      50% {
+        box-shadow: 0 0 40px rgba(0, 229, 255, 0.7)
+      }
+    }
+
+    .logo h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #00e5ff;
+      text-shadow: 0 0 20px rgba(0, 229, 255, 0.5)
+    }
+
+    .logo p {
+      font-size: 11px;
+      color: #3a6070;
+      letter-spacing: 2px;
+      font-family: 'Share Tech Mono', monospace;
+      margin-top: 4px
+    }
+
+    .form-group {
+      margin-bottom: 20px
+    }
+
+    label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #3a6070;
+      font-family: 'Share Tech Mono', monospace;
+      margin-bottom: 7px
+    }
+
+    input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid #0f2a3f;
+      color: #cde8f5;
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s
+    }
+
+    input:focus {
+      border-color: #00e5ff;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.15)
+    }
+
+    input::placeholder {
+      color: #1a3a50
+    }
+
+    .login-btn {
+      width: 100%;
+      background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(0, 229, 255, 0.05));
+      border: 1px solid #00e5ff;
+      color: #00e5ff;
+      padding: 13px;
+      border-radius: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px
+    }
+
+    .login-btn:hover {
+      background: rgba(0, 229, 255, 0.2);
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.3)
+    }
+
+    .login-btn:active {
+      transform: scale(0.99)
+    }
+
+    .login-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed
+    }
+
+    .err {
+      display: none;
+      background: rgba(255, 45, 85, 0.1);
+      border: 1px solid rgba(255, 45, 85, 0.4);
+      color: #ff2d55;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      margin-bottom: 16px;
+      text-align: center
+    }
+
+    .err.show {
+      display: block
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: #1a3a50;
+      letter-spacing: 1px
+    }
+
+    .scanning {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px
+    }
+
+    .scan-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #00e5ff;
+      animation: scanpulse 1.4s ease-in-out infinite
+    }
+
+    .scan-dot:nth-child(2) {
+      animation-delay: 0.2s
+    }
+
+    .scan-dot:nth-child(3) {
+      animation-delay: 0.4s
+    }
+
+    @keyframes scanpulse {
+
+      0%,
+      100% {
+        opacity: 0.2;
+        transform: scale(0.8)
+      }
+
+      50% {
+        opacity: 1;
+        transform: scale(1.2)
+      }
+    }
+
+    /* ── THEME TOGGLE ── */
+    .theme-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid #0f2a3f;
+      color: #3a6070;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.2s;
+    }
+
+    .theme-btn:hover {
+      background: rgba(0, 229, 255, 0.1);
+      color: #00e5ff;
+      border-color: #00e5ff;
+    }
+
+    /* ── LIGHT MODE ── */
+    body.light-mode {
+      background: #f0f4f8;
+    }
+
+    body.light-mode::before,
+    body.light-mode::after {
+      display: none;
+    }
+
+    body.light-mode .bg-glow {
+      display: none;
+    }
+
+    body.light-mode .card {
+      background: #ffffff;
+      border-color: #c8d8e8;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    body.light-mode .logo-icon {
+      border-color: #0077aa;
+      color: #0077aa;
+      box-shadow: none;
+      animation: none;
+    }
+
+    body.light-mode .logo h1 {
+      color: #0077aa;
+      text-shadow: none;
+    }
+
+    body.light-mode .logo p {
+      color: #5a7a9a;
+    }
+
+    body.light-mode label {
+      color: #5a7a9a;
+    }
+
+    body.light-mode input {
+      background: #f8fafc;
+      border-color: #b0c8e0;
+      color: #1a2a3a;
+    }
+
+    body.light-mode input:focus {
+      border-color: #0077aa;
+      box-shadow: 0 0 0 3px rgba(0, 119, 170, 0.1);
+    }
+
+    body.light-mode input::placeholder {
+      color: #a0b4c8;
+    }
+
+    body.light-mode .login-btn {
+      background: #0077aa;
+      color: #ffffff;
+      border-color: #006699;
+    }
+
+    body.light-mode .login-btn:hover {
+      background: #006699;
+      box-shadow: 0 4px 12px rgba(0, 119, 170, 0.3);
+    }
+
+    body.light-mode .err {
+      background: rgba(204, 0, 51, 0.1);
+      border-color: rgba(204, 0, 51, 0.3);
+      color: #cc0033;
+    }
+
+    body.light-mode .footer {
+      color: #5a7a9a;
+    }
+
+    body.light-mode .scan-dot {
+      background: #0077aa;
+    }
+
+    body.light-mode .theme-btn {
+      background: #ffffff;
+      border-color: #c8d8e8;
+      color: #5a7a9a;
+    }
+
+    body.light-mode .theme-btn:hover {
+      background: #f0f4f8;
+      color: #0077aa;
+      border-color: #0077aa;
+    }
+  </style>
+</head>
+
+<body>
+  <button class="theme-btn" id="themeToggleBtn" onclick="toggleTheme()">&#9788; Light</button>
+  <div class="bg-glow"></div>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">&#128225;</div>
+      <h1>SNOC</h1>
+      <p>v0.5.5 &mdash; Network Operations Center</p>
+    </div>
+    <div class="err" id="errMsg"></div>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Enter username" autocomplete="username" autofocus />
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" autocomplete="current-password" />
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Login</button>
+    <div class="footer">
+      <div>Secure access &mdash; SNOC v0.5.5</div>
+      <div id="loadingDots" style="display:none" class="scanning">
+        <div class="scan-dot"></div>
+        <div class="scan-dot"></div>
+        <div class="scan-dot"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    function doLogin() {
+      var username = document.getElementById('username').value.trim();
+      var password = document.getElementById('password').value;
+      var errMsg = document.getElementById('errMsg');
+      var btn = document.getElementById('loginBtn');
+      var dots = document.getElementById('loadingDots');
+
+      errMsg.classList.remove('show');
+
+      if (!username || !password) {
+        errMsg.textContent = 'Please enter username and password';
+        errMsg.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+      dots.style.display = 'flex';
+
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username: username, password: password })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.success) {
+            btn.textContent = 'Access Granted';
+            btn.style.borderColor = '#39ff14';
+            btn.style.color = '#39ff14';
+            setTimeout(function () { window.location.href = '/'; }, 600);
+          } else {
+            errMsg.textContent = d.error || 'Login failed';
+            errMsg.classList.add('show');
+            btn.disabled = false;
+            btn.textContent = 'Login';
+            dots.style.display = 'none';
+            document.getElementById('password').value = '';
+            document.getElementById('password').focus();
+          }
+        })
+        .catch(function (e) {
+          errMsg.textContent = 'Connection error. Is the server running?';
+          errMsg.classList.add('show');
+          btn.disabled = false;
+          btn.textContent = 'Login';
+          dots.style.display = 'none';
+        });
+    }
+
+    function loadTheme() {
+      var th = localStorage.getItem('noc_theme');
+      var btn = document.getElementById('themeToggleBtn');
+      if (th === 'light') {
+        document.body.classList.add('light-mode');
+        if (btn) btn.innerHTML = '&#9790; Dark';
+      } else {
+        document.body.classList.remove('light-mode');
+        if (btn) btn.innerHTML = '&#9788; Light';
+      }
+    }
+
+    function toggleTheme() {
+      var th = localStorage.getItem('noc_theme');
+      if (th === 'light') {
+        localStorage.setItem('noc_theme', 'dark');
+      } else {
+        localStorage.setItem('noc_theme', 'light');
+      }
+      loadTheme();
+    }
+
+    // Apply theme on load
+    loadTheme();
+  </script>
+</body>
+
+</html>
