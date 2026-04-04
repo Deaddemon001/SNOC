@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5 - OLT Connector
+SimpleNOC v0.5.5.1 - OLT Connector
 SSH (primary) or Telnet (raw socket, Python 3.13 compatible) fallback.
 Collects ONU state and uplink traffic from Vsol GPON OLT.
 """

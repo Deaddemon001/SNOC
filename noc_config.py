@@ -1,5 +1,5 @@
 """
-SNOC v0.5.5 - Central Configuration
+SNOC v0.5.5.1 - Central Configuration
 Edit this file to change ports and paths.
 All scripts read from this file - restart SNOC after any change.
 """
@@ -109,7 +109,8 @@ POSTGRES_CONFIG = {
 OFFLINE_AFTER_SECS = 120
 PING_INTERVAL_SECS = 10
 
-# Retention limits in days for each PostgreSQL-backed module.
+# Retention limits in days for each PostgreSQL-backed module (defaults).
+# Admins can override these from the dashboard Settings menu (stored in noc_settings).
 TRAP_RETENTION_DAYS = 30
 SYSLOG_RETENTION_DAYS = 7
 PING_RETENTION_DAYS = 15

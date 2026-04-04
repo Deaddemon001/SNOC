@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SNOC v0.5.5</title>
+  <title>SNOC v0.5.5.1</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -17,9 +17,11 @@
       --accent2: #ff6b35;
       --accent3: #39ff14;
       --text: #cde8f5;
-      --muted: #3a6070;
+      --muted: #5c7d92;
       --danger: #ff2d55;
-      --warn: #ffd60a
+      --warn: #ffd60a;
+      --header-bg: rgba(10, 21, 32, 0.96);
+      --tabs-bg: rgba(10, 21, 32, 0.82)
     }
 
     * {
@@ -41,7 +43,7 @@
       justify-content: space-between;
       padding: 14px 24px;
       border-bottom: 1px solid var(--border);
-      background: rgba(10, 21, 32, .95)
+      background: var(--header-bg)
     }
 
     .logo h1 {
@@ -134,6 +136,153 @@
       font-weight: 600
     }
 
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 12, 19, 0.88);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px
+    }
+
+    .modal-overlay.show {
+      display: flex
+    }
+
+    .modal-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 520px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 20px 22px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45)
+    }
+
+    .modal-panel h3 {
+      font-size: 18px;
+      color: var(--accent);
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+      font-weight: 700
+    }
+
+    .set-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 600
+    }
+
+    .set-row label {
+      flex: 1;
+      line-height: 1.4;
+      color: var(--text);
+      font-weight: 600
+    }
+
+    .set-row input[type="number"] {
+      width: 96px;
+      flex-shrink: 0;
+      padding: 8px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px
+    }
+
+    .set-row input[type="number"]:read-only {
+      opacity: 0.75
+    }
+
+    .set-note {
+      font-size: 13px;
+      color: var(--text);
+      opacity: 0.88;
+      margin-bottom: 16px;
+      line-height: 1.5
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 16px;
+      flex-wrap: wrap
+    }
+
+    #settingsModalMsg {
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 1.2em;
+      font-family: 'Share Tech Mono', monospace
+    }
+
+    /* UPLINK traffic cards — readable secondary text */
+    .uplink-card .uplink-meta {
+      color: var(--text);
+      opacity: 0.86;
+      font-size: 12px;
+      font-family: 'Share Tech Mono', monospace;
+      line-height: 1.35
+    }
+
+    .uplink-card .uplink-meta--title {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+      margin-bottom: 3px
+    }
+
+    .uplink-card .uplink-meta--detail {
+      margin-top: 3px
+    }
+
+    .uplink-card .uplink-traffic-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text);
+      opacity: 0.9;
+      margin-bottom: 8px;
+      font-family: 'Share Tech Mono', monospace
+    }
+
+    .uplink-card .uplink-traffic-sub {
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0.86;
+      margin-top: 5px;
+      font-family: 'Share Tech Mono', monospace;
+      line-height: 1.3
+    }
+
+    .uplink-card .uplink-traffic-sub.tight {
+      margin-top: 3px
+    }
+
+    .uplink-card .uplink-foot {
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0.9;
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Share Tech Mono', monospace;
+      line-height: 1.35
+    }
+
     .userinfo {
       display: flex;
       align-items: center;
@@ -161,7 +310,7 @@
     .tabs {
       display: flex;
       border-bottom: 1px solid var(--border);
-      background: rgba(10, 21, 32, .8)
+      background: var(--tabs-bg)
     }
 
     .tab {
@@ -726,19 +875,26 @@
     body.light-mode {
       --bg: #f0f4f8;
       --panel: #ffffff;
-      --border: #c8d8e8;
-      --accent: #0077aa;
-      --accent2: #e05a00;
-      --accent3: #007700;
-      --text: #1a2a3a;
-      --muted: #5a7a9a;
-      --danger: #cc0033;
-      --warn: #aa7700;
+      --border: #a8bdd4;
+      --accent: #006090;
+      --accent2: #c44a00;
+      --accent3: #0d5c0d;
+      --text: #0f1b28;
+      --muted: #2a3d4f;
+      --danger: #b3002d;
+      --warn: #8a5a00;
+      --header-bg: #e8f1f9;
+      --tabs-bg: #dceaf5;
     }
 
     body.light-mode .tabs {
-      background: #e0ecf8;
-      border-bottom: 1px solid #b0c8e0;
+      background: var(--tabs-bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    body.light-mode header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
     }
 
     body.light-mode .tab.active {
@@ -753,8 +909,58 @@
       background: rgba(0, 100, 160, 0.08);
     }
 
+    body.light-mode thead th {
+      color: var(--muted);
+    }
+
+    body.light-mode tbody tr {
+      border-bottom-color: rgba(15, 40, 60, 0.12);
+    }
+
     body.light-mode tr:hover td {
-      background: rgba(0, 100, 160, 0.04);
+      background: rgba(0, 100, 160, 0.06);
+    }
+
+    body.light-mode .pb2 {
+      background: rgba(0, 55, 95, 0.07);
+      color: var(--muted);
+    }
+
+    body.light-mode .oc {
+      background: rgba(0, 45, 85, 0.05);
+    }
+
+    body.light-mode .ri,
+    body.light-mode .finp {
+      background: #eef3f8;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    body.light-mode .pbox {
+      background: rgba(0, 55, 95, 0.08);
+    }
+
+    body.light-mode .pill.unknown {
+      background: rgba(0, 40, 70, 0.08);
+      color: var(--muted);
+    }
+
+    body.light-mode .bx {
+      color: var(--muted);
+    }
+
+    body.light-mode .mu {
+      opacity: 1;
+      color: var(--text);
+    }
+
+    body.light-mode .modal-overlay {
+      background: rgba(26, 42, 58, 0.65)
+    }
+
+    body.light-mode .modal-panel {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12)
     }
 
     body.light-mode input,
@@ -762,7 +968,24 @@
     body.light-mode textarea {
       background: #f8fafc;
       border-color: #b0c8e0;
-      color: #1a2a3a;
+      color: var(--text);
+    }
+
+    body.light-mode .set-row input[type="number"] {
+      background: #f8fafc;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    body.light-mode .set-note {
+      color: var(--text);
+      opacity: 0.95
+    }
+
+    body.light-mode .uplink-card .uplink-meta,
+    body.light-mode .uplink-card .uplink-traffic-sub,
+    body.light-mode .uplink-card .uplink-foot {
+      opacity: 0.92
     }
   </style>
 </head>
@@ -770,14 +993,15 @@
 <body>
   <header>
     <div class="logo">
-      <h1>SNOC</h1><span>v0.5.5 &mdash; Network Operations Center</span>
+      <h1>SNOC</h1><span>v0.5.5.1 &mdash; Network Operations Center</span>
     </div>
     <div class="hright">
       <div class="live">
         <div class="dot"></div>LIVE
       </div>
       <div class="upd" id="upd">Connecting...</div>
-      <button class="rbtn" onclick="fetchAll()">&#8634; Refresh</button>
+      <button class="rbtn" onclick="refreshDashboard()">&#8634; Refresh</button>
+      <button class="ubtn" id="settingsBtn" onclick="openSettingsModal()" title="Settings">&#9881; Settings</button>
       <div class="userinfo">
         <span class="uname" id="currentUser">—</span>
         <span class="urole" id="currentRole"></span>
@@ -1966,12 +2190,49 @@
     </main>
   </div>
 
+  <div id="settingsModal" class="modal-overlay" onclick="onSettingsOverlayClick(event)">
+    <div class="modal-panel" role="dialog" aria-labelledby="settingsModalTitle">
+      <h3 id="settingsModalTitle">Settings — Database retention</h3>
+      <p class="set-note">Days to keep data before automatic cleanup (hourly). Use 0 to disable pruning for a category.
+        Defaults from <span class="mu">noc_config.py</span> apply until you save overrides here. Max 3650 days.</p>
+      <div class="set-row"><label for="trap_retention_days">SNMP traps &amp; trap events</label><input type="number"
+          id="trap_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="syslog_retention_days">Syslog messages</label><input type="number"
+          id="syslog_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="ping_retention_days">Ping results</label><input type="number"
+          id="ping_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="tftp_retention_days">TFTP backup file records</label><input type="number"
+          id="tftp_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="alert_log_retention_days">Alert log</label><input type="number"
+          id="alert_log_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="olt_data_retention_days">OLT data (ONU, history, uplink stats)</label><input
+          type="number" id="olt_data_retention_days" min="0" max="3650" step="1" /></div>
+      <div class="set-row"><label for="olt_session_retention_days">OLT poll sessions</label><input type="number"
+          id="olt_session_retention_days" min="0" max="3650" step="1" /></div>
+      <div id="settingsModalMsg"></div>
+      <div class="modal-actions">
+        <button class="ubtn" type="button" onclick="closeSettingsModal()">Close</button>
+        <button class="rbtn" type="button" id="settingsSaveBtn" onclick="saveRetentionSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     var API = window.location.protocol + '//' + window.location.host;
     var barChart, lineChart, sysEventChart, sysSevChart, pingHistChart;
     var currentSysOlt = '';
     var currentUsername = '';
     var currentRole = '';
+
+    var RETENTION_KEY_IDS = [
+      'trap_retention_days',
+      'syslog_retention_days',
+      'ping_retention_days',
+      'tftp_retention_days',
+      'alert_log_retention_days',
+      'olt_data_retention_days',
+      'olt_session_retention_days'
+    ];
 
     // ── HELPERS ───────────────────────────────────────────────────────────────────
     function apiFetch(url, opts) {
@@ -2022,6 +2283,75 @@
       if (t === 'alerts') loadAlerts();
       if (t === 'tftp') { loadTftp(); loadMacMapping(); }
       if (t === 'olt' || t === 'uplink') loadOlt();
+    }
+
+    function refreshDashboard() {
+      fetchAll();
+      fetchPing();
+      var active = document.querySelector('.tab.active');
+      var t = active && active.dataset ? active.dataset.tab : null;
+      if (t === 'alerts') loadAlerts();
+      else if (t === 'tftp') { loadTftp(); loadMacMapping(); }
+      else if (t === 'olt' || t === 'uplink') loadOlt();
+      else if (t === 'users') loadUsers();
+    }
+
+    function onSettingsOverlayClick(ev) {
+      if (ev.target.id === 'settingsModal') closeSettingsModal();
+    }
+
+    function openSettingsModal() {
+      var modal = document.getElementById('settingsModal');
+      var msg = document.getElementById('settingsModalMsg');
+      if (msg) { msg.textContent = ''; msg.style.color = ''; }
+      modal.classList.add('show');
+      var saveBtn = document.getElementById('settingsSaveBtn');
+      var admin = currentRole === 'admin';
+      if (saveBtn) saveBtn.style.display = admin ? 'inline-block' : 'none';
+      RETENTION_KEY_IDS.forEach(function (k) {
+        var inp = document.getElementById(k);
+        if (inp) inp.readOnly = !admin;
+      });
+      apiFetch('/api/settings/retention').then(function (m) {
+        RETENTION_KEY_IDS.forEach(function (k) {
+          var inp = document.getElementById(k);
+          if (inp && m[k] !== undefined) inp.value = m[k];
+        });
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        if (msg) { msg.textContent = 'Failed to load settings: ' + e.message; msg.style.color = 'var(--danger)'; }
+      });
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.remove('show');
+    }
+
+    function saveRetentionSettings() {
+      if (currentRole !== 'admin') return;
+      var msg = document.getElementById('settingsModalMsg');
+      var body = {};
+      for (var i = 0; i < RETENTION_KEY_IDS.length; i++) {
+        var k = RETENTION_KEY_IDS[i];
+        var inp = document.getElementById(k);
+        if (!inp) continue;
+        var v = parseInt(inp.value, 10);
+        if (isNaN(v)) {
+          if (msg) { msg.textContent = 'Invalid number: ' + k; msg.style.color = 'var(--danger)'; }
+          return;
+        }
+        body[k] = v;
+      }
+      apiPost('/api/settings/retention', body).then(function (d) {
+        if (d.success) {
+          if (msg) { msg.textContent = 'Saved.'; msg.style.color = 'var(--accent3)'; }
+        } else {
+          if (msg) { msg.textContent = d.error || 'Save failed'; msg.style.color = 'var(--danger)'; }
+        }
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        if (msg) { msg.textContent = e.message || 'Save failed'; msg.style.color = 'var(--danger)'; }
+      });
     }
 
     // ── CHARTS ────────────────────────────────────────────────────────────────────
@@ -2196,7 +2526,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.5'
+      '  This is an automated alert from SimpleNOC v0.5.5.1'
     ].join('\n');
 
     function toggleEmailTemplate() {
@@ -2520,7 +2850,7 @@
         apiFetch('/api/auth/users').catch(function () { return []; })
       ]).then(function (results) {
         var backup = {
-          version: '0.5.5',
+          version: '0.5.5.1',
           created_at: new Date().toISOString(),
           email_config: results[0],
           alert_rules: results[1],
@@ -4044,11 +4374,11 @@
         hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
         hdr.innerHTML =
           '<div>' +
-          '<div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:2px">' + (s.olt_name || s.olt_ip) + '</div>' +
-          '<div style="font-size:13px;font-weight:700;color:var(--accent);font-family:monospace">' + (s.description || s.interface) + '</div>' +
-          '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + (s.description ? s.interface + (s.link_speed ? ' | ' + s.link_speed : '') : (s.link_speed || '')) + '</div>' +
+          '<div class="uplink-meta uplink-meta--title">' + (s.olt_name || s.olt_ip) + '</div>' +
+          '<div style="font-size:14px;font-weight:700;color:var(--accent);font-family:monospace">' + (s.description || s.interface) + '</div>' +
+          '<div class="uplink-meta uplink-meta--detail">' + (s.description ? s.interface + (s.link_speed ? ' | ' + s.link_speed : '') : (s.link_speed || '')) + '</div>' +
           '</div>' +
-          '<span style="font-size:11px;font-weight:700;color:' + stClr + ';padding:3px 10px;border:1px solid ' + stClr + ';border-radius:10px;height:fit-content">' +
+          '<span style="font-size:12px;font-weight:700;color:' + stClr + ';padding:4px 11px;border:1px solid ' + stClr + ';border-radius:10px;height:fit-content">' +
           (s.link_status || 'unknown').toUpperCase() + '</span>';
         
         card.innerHTML = ''; // Fresh rebuild of internal card DOM
@@ -4061,16 +4391,16 @@
           var box = document.createElement('div');
           box.style.cssText = 'background:rgba(0,0,0,0.25);border-radius:6px;padding:12px 10px;text-align:center';
           var lbl = document.createElement('div');
-          lbl.style.cssText = 'font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px;font-weight:700';
+          lbl.className = 'uplink-traffic-label';
           lbl.textContent = label;
           var val = document.createElement('div');
           val.style.cssText = 'font-size:20px;font-weight:700;color:' + color + ';font-family:monospace;line-height:1';
           val.textContent = mbps >= 1000 ? (mbps / 1000).toFixed(2) + ' Gbps' : (mbps || 0).toFixed(2) + ' Mbps';
           var b2 = document.createElement('div');
-          b2.style.cssText = 'font-size:10px;color:var(--muted);margin-top:5px';
+          b2.className = 'uplink-traffic-sub';
           b2.textContent = (bps || 0).toLocaleString() + ' bps';
           var p2 = document.createElement('div');
-          p2.style.cssText = 'font-size:10px;color:var(--muted);margin-top:2px';
+          p2.className = 'uplink-traffic-sub tight';
           p2.textContent = (pkts || 0).toLocaleString() + ' pkts';
           box.appendChild(lbl); box.appendChild(val); box.appendChild(b2); box.appendChild(p2);
           return box;
@@ -4082,15 +4412,17 @@
 
         if (s.in_errors || s.out_errors) {
           var errRow = document.createElement('div');
-          errRow.style.cssText = 'font-size:10px;color:var(--danger);padding:4px 0';
+          errRow.style.cssText = 'font-size:12px;color:var(--danger);padding:5px 0;font-family:\'Share Tech Mono\',monospace';
           errRow.textContent = 'Errors — In: ' + (s.in_errors || 0) + '  Out: ' + (s.out_errors || 0);
           card.appendChild(errRow);
         }
 
+        var sampledAt = new Date(s.poll_time || pollTime);
+        var sampledStr = isNaN(sampledAt.getTime()) ? '—' : sampledAt.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
         var ts = document.createElement('div');
-        ts.style.cssText = 'font-size:9px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between';
-        ts.innerHTML = '<span>Sampled: ' + new Date(s.poll_time || pollTime).toLocaleTimeString() + '</span>' +
-                       '<span style="cursor:pointer;color:var(--danger)" onclick="this.closest(\'.uplink-card\').remove()">[Remove]</span>';
+        ts.className = 'uplink-foot';
+        ts.innerHTML = '<span>Sampled: ' + sampledStr + '</span>' +
+                       '<span style="cursor:pointer;color:var(--danger);font-weight:600" onclick="this.closest(\'.uplink-card\').remove()">[Remove]</span>';
         card.appendChild(ts);
 
         if (isNew) cards.appendChild(card);
@@ -4162,15 +4494,16 @@
           animation: { duration: 400 },
           interaction: { intersect: false, mode: 'index' },
           scales: {
-            x: { ticks: { color: '#3a6070', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { beginAtZero: true, ticks: { color: '#3a6070', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: { ticks: { color: getChartTheme().tick, font: { size: 10 } }, grid: { color: document.body.classList.contains('light-mode') ? 'rgba(20,50,75,0.12)' : 'rgba(255,255,255,0.06)' } },
+            y: { beginAtZero: true, ticks: { color: getChartTheme().tick, font: { size: 10 } }, grid: { color: document.body.classList.contains('light-mode') ? 'rgba(20,50,75,0.12)' : 'rgba(255,255,255,0.06)' } }
           },
           plugins: {
-            legend: { position: 'bottom', labels: { color: '#cde8f5', boxWidth: 10, font: { size: 10 } } },
+            legend: { position: 'bottom', labels: { color: getChartTheme().legend, boxWidth: 10, font: { size: 10 } } },
             tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', titleFont: { size: 11 }, bodyFont: { size: 11 } }
           }
         }
       });
+      applyChartsTheme();
     }
 
 
@@ -4253,6 +4586,7 @@
         if (btn) btn.textContent = '🌙 Dark';
         try { localStorage.setItem('noc_theme', 'light'); } catch (e) { }
       }
+      applyChartsTheme();
     }
 
     function loadTheme() {
@@ -4266,13 +4600,50 @@
       } catch (e) { }
     }
 
+    function getChartTheme() {
+      if (document.body.classList.contains('light-mode')) {
+        return { tick: '#2a3d4f', grid: 'rgba(20, 50, 75, 0.14)', legend: '#0f1b28' };
+      }
+      return { tick: '#7a9aad', grid: '#0f2a3f', legend: '#cde8f5' };
+    }
+
+    function applyChartsTheme() {
+      var th = getChartTheme();
+      function applyXY(chart) {
+        if (!chart || !chart.options || !chart.options.scales) return;
+        ['x', 'y'].forEach(function (ax) {
+          var sc = chart.options.scales[ax];
+          if (!sc) return;
+          if (sc.ticks) sc.ticks.color = th.tick;
+          if (sc.grid) sc.grid.color = th.grid;
+        });
+        chart.update('none');
+      }
+      if (barChart) applyXY(barChart);
+      if (lineChart) applyXY(lineChart);
+      if (sysEventChart) applyXY(sysEventChart);
+      if (pingHistChart) applyXY(pingHistChart);
+      if (sysSevChart && sysSevChart.options.plugins && sysSevChart.options.plugins.legend) {
+        sysSevChart.options.plugins.legend.labels.color = th.tick;
+        sysSevChart.update('none');
+      }
+      if (_uplinkChart && _uplinkChart.options && _uplinkChart.options.scales) {
+        applyXY(_uplinkChart);
+        if (_uplinkChart.options.plugins && _uplinkChart.options.plugins.legend) {
+          _uplinkChart.options.plugins.legend.labels.color = th.legend;
+          _uplinkChart.update('none');
+        }
+      }
+    }
+
     function initCharts() {
+      var ct = getChartTheme();
       var bo = {
         responsive: true, animation: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { color: '#0f2a3f' }, ticks: { color: '#3a6070', maxTicksLimit: 8 } },
-          y: { grid: { color: '#0f2a3f' }, ticks: { color: '#3a6070', maxTicksLimit: 6 }, beginAtZero: true }
+          x: { grid: { color: ct.grid }, ticks: { color: ct.tick, maxTicksLimit: 8 } },
+          y: { grid: { color: ct.grid }, ticks: { color: ct.tick, maxTicksLimit: 6 }, beginAtZero: true }
         }
       };
       barChart = new Chart(document.getElementById('barChart'), {
@@ -4292,8 +4663,8 @@
       });
       sysSevChart = new Chart(document.getElementById('sysSevChart'), {
         type: 'doughnut',
-        data: { labels: [], datasets: [{ data: [], backgroundColor: ['#ff2d55', '#ff6b35', '#ffd60a', '#00e5ff', '#39ff14', '#3a6070'], borderWidth: 0 }] },
-        options: { responsive: true, animation: false, plugins: { legend: { position: 'right', labels: { color: '#3a6070', font: { size: 10 } } } } }
+        data: { labels: [], datasets: [{ data: [], backgroundColor: ['#ff2d55', '#ff6b35', '#ffd60a', '#00e5ff', '#39ff14', '#5c7d92'], borderWidth: 0 }] },
+        options: { responsive: true, animation: false, plugins: { legend: { position: 'right', labels: { color: ct.tick, font: { size: 10 } } } } }
       });
       pingHistChart = new Chart(document.getElementById('pingHistChart'), {
         type: 'line',
@@ -4302,8 +4673,8 @@
           responsive: true, animation: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { grid: { color: '#0f2a3f' }, ticks: { color: '#3a6070', maxTicksLimit: 10 } },
-            y: { grid: { color: '#0f2a3f' }, ticks: { color: '#3a6070' }, beginAtZero: true }
+            x: { grid: { color: ct.grid }, ticks: { color: ct.tick, maxTicksLimit: 10 } },
+            y: { grid: { color: ct.grid }, ticks: { color: ct.tick }, beginAtZero: true }
           }
         }
       });
@@ -4909,6 +5280,7 @@
 
     loadTheme();
     initCharts();
+    applyChartsTheme();
     loadTabOrder();
     loadUserInfo();
     fetchAll();
