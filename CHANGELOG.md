@@ -5,19 +5,21 @@
 ## v0.5.5.1 — UI / appearance (pre-release)
 **Pre-release:** 2026-04-04
 
-Dashboard and configuration UX improvements. No breaking database changes; retention overrides are stored in PostgreSQL `noc_settings`.
+Dashboard and configuration UX improvements.
 
 ### Added
-- **Settings (database retention)** — Header **Settings** opens a modal to view or edit retention days per category (admin save). Values persist in `noc_settings` and apply to hourly cleanup and syslog pruning; [`noc_config.py`](noc_config.py) constants remain defaults until overridden.
-- **API** — `GET /api/settings/retention`, `POST /api/settings/retention` (admin). Full backup/restore includes `noc_settings`.
+- **Settings (database retention)** — Header **Settings** opens a modal to view retention days per category. Values are now strictly hardcoded in the API via `noc_config.py` constants, eliminating database persistence to simplify deployment and configuration management.
+- **API** — `GET /api/settings/retention` and `POST /api/settings/retention` logic now reads directly from config constants.
 
 ### Fixed / improved
 - **Refresh** — Header **Refresh** runs `fetchAll()` and `fetchPing()`, and reloads the **active tab** (Alerts, TFTP, OLT, Uplink, Users) the same way as switching tabs, so the visible panel updates instead of only SNMP/syslog.
 - **Light / dark theme** — Header and tab bar use theme variables (`--header-bg`, `--tabs-bg`) so they follow light mode; secondary text and chart tick/legend colors adjusted for contrast.
 - **Readability** — Settings modal: larger type and stronger label/note contrast (especially light mode). Uplink traffic cards: larger secondary metrics, higher-contrast meta text, **Sampled** shows short date + time (`toLocaleString` options).
+- **TFTP Start Crash Fix** — Fixed an indentation issue in `tftp_server.py` that caused the TFTP service to immediately crash on launcher start.
+- **API Endpoint Fix** — Ensured robustness of API settings retrieval under Windows environment proxy handling by removing the `retention_settings.py` external dependency natively resolving HTTP 404s.
 
 ### Files touched (summary)
-- [`dashboard.html`](dashboard.html), [`api.py`](api.py), [`retention_settings.py`](retention_settings.py), [`syslog_server.py`](syslog_server.py), [`noc_config.py`](noc_config.py) (defaults comment).
+- [`dashboard.html`](dashboard.html), [`api.py`](api.py), [`syslog_server.py`](syslog_server.py), [`tftp_server.py`](tftp_server.py), [`noc_config.py`](noc_config.py). `retention_settings.py` removed.
 
 ---
 

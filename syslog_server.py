@@ -6,7 +6,6 @@ Change SYSLOG_PORT in noc_config.py to use a custom port
 import socket, datetime, threading, re, queue, time
 import noc_config as cfg
 from noc_config import execute_db, query_db, get_db_connection
-import retention_settings
 from alert_engine import process_alert
 
 DB_PATH     = cfg.SYSLOG_DB
@@ -209,8 +208,7 @@ def db_writer():
 
             # PostgreSQL Pruning (every 1 hour)
             if db_type == 'postgres' and now_ts - last_prune_check > 3600:
-                retention_settings.ensure_noc_settings_table(cfg.AUTH_DB)
-                retention_days = retention_settings.get_retention_days_map(cfg.AUTH_DB)["syslog_retention_days"]
+                retention_days = getattr(cfg, "SYSLOG_RETENTION_DAYS", 7)
                 if retention_days > 0:
                     cutoff = (datetime.datetime.now() - datetime.timedelta(days=retention_days)).isoformat()
                     execute_db(DB_PATH, "DELETE FROM syslog WHERE timestamp < ?", (cutoff,))

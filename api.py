@@ -4,7 +4,6 @@ import os, json, datetime, threading, time, subprocess, re, platform, hashlib, s
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
-import retention_settings
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -300,8 +299,6 @@ def ensure_dbs():
     if not cfg_rows or cfg_rows[0]['count'] == 0:
         execute_db(TFTP_DB, "INSERT INTO tftp_config (id, backup_dir, enabled) VALUES (1, ?, 1)", (BACKUP_DIR,))
 
-    retention_settings.ensure_noc_settings_table(AUTH_DB)
-
 ensure_dbs()
 
 FULL_BACKUP_TABLES = [
@@ -419,8 +416,22 @@ def restore_full_backup(backup_payload):
         conn.close()
 
 
+def get_retention_policies():
+    return [
+        ("traps", "timestamp", getattr(_cfg, "TRAP_RETENTION_DAYS", 30)),
+        ("events", "timestamp", getattr(_cfg, "TRAP_RETENTION_DAYS", 30)),
+        ("syslog", "timestamp", getattr(_cfg, "SYSLOG_RETENTION_DAYS", 7)),
+        ("ping_results", "timestamp", getattr(_cfg, "PING_RETENTION_DAYS", 15)),
+        ("tftp_files", "timestamp", getattr(_cfg, "TFTP_RETENTION_DAYS", 90)),
+        ("alert_log", "timestamp", getattr(_cfg, "ALERT_LOG_RETENTION_DAYS", 30)),
+        ("onu_data", "poll_time", getattr(_cfg, "OLT_DATA_RETENTION_DAYS", 30)),
+        ("onu_history", "poll_time", getattr(_cfg, "OLT_DATA_RETENTION_DAYS", 30)),
+        ("uplink_stats", "poll_time", getattr(_cfg, "OLT_DATA_RETENTION_DAYS", 30)),
+        ("olt_poll_sessions", "poll_time", getattr(_cfg, "OLT_SESSION_RETENTION_DAYS", 30)),
+    ]
+
 def run_retention_cleanup():
-    for table_name, column_name, retention_days in retention_settings.get_retention_policies(AUTH_DB):
+    for table_name, column_name, retention_days in get_retention_policies():
         try:
             days = int(retention_days or 0)
         except Exception:
@@ -572,17 +583,23 @@ def delete_user():
     return jsonify({'success': True})
 
 
-@app.route('/api/settings/retention', methods=['GET', 'POST'])
+@app.route('/api/settings/retention', methods=['GET', 'POST'], strict_slashes=False)
 @login_required
 def api_retention_settings():
+    hardcoded_map = {
+        "trap_retention_days": getattr(_cfg, "TRAP_RETENTION_DAYS", 30),
+        "syslog_retention_days": getattr(_cfg, "SYSLOG_RETENTION_DAYS", 7),
+        "ping_retention_days": getattr(_cfg, "PING_RETENTION_DAYS", 15),
+        "tftp_retention_days": getattr(_cfg, "TFTP_RETENTION_DAYS", 90),
+        "alert_log_retention_days": getattr(_cfg, "ALERT_LOG_RETENTION_DAYS", 30),
+        "olt_data_retention_days": getattr(_cfg, "OLT_DATA_RETENTION_DAYS", 30),
+        "olt_session_retention_days": getattr(_cfg, "OLT_SESSION_RETENTION_DAYS", 30),
+    }
     if request.method == 'GET':
-        return jsonify(retention_settings.get_retention_days_map(AUTH_DB))
+        return jsonify(hardcoded_map)
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
-    ok, err = retention_settings.save_retention_settings(AUTH_DB, request.json or {})
-    if not ok:
-        return jsonify({'error': err or 'Save failed'}), 400
-    return jsonify({'success': True, **retention_settings.get_retention_days_map(AUTH_DB)})
+    return jsonify({'success': True, **hardcoded_map})
 
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
