@@ -2,6 +2,25 @@
 
 ---
 
+## v0.5.5.1 — UI / appearance (pre-release)
+**Pre-release:** 2026-04-04
+
+Dashboard and configuration UX improvements. No breaking database changes; retention overrides are stored in PostgreSQL `noc_settings`.
+
+### Added
+- **Settings (database retention)** — Header **Settings** opens a modal to view or edit retention days per category (admin save). Values persist in `noc_settings` and apply to hourly cleanup and syslog pruning; [`noc_config.py`](noc_config.py) constants remain defaults until overridden.
+- **API** — `GET /api/settings/retention`, `POST /api/settings/retention` (admin). Full backup/restore includes `noc_settings`.
+
+### Fixed / improved
+- **Refresh** — Header **Refresh** runs `fetchAll()` and `fetchPing()`, and reloads the **active tab** (Alerts, TFTP, OLT, Uplink, Users) the same way as switching tabs, so the visible panel updates instead of only SNMP/syslog.
+- **Light / dark theme** — Header and tab bar use theme variables (`--header-bg`, `--tabs-bg`) so they follow light mode; secondary text and chart tick/legend colors adjusted for contrast.
+- **Readability** — Settings modal: larger type and stronger label/note contrast (especially light mode). Uplink traffic cards: larger secondary metrics, higher-contrast meta text, **Sampled** shows short date + time (`toLocaleString` options).
+
+### Files touched (summary)
+- [`dashboard.html`](dashboard.html), [`api.py`](api.py), [`retention_settings.py`](retention_settings.py), [`syslog_server.py`](syslog_server.py), [`noc_config.py`](noc_config.py) (defaults comment).
+
+---
+
 ## v0.5.5 — Interface Descriptions & Syslog States
 **Released:** 2026-03-28
 

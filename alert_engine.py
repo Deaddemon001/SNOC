@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5 - Alert Engine
+SimpleNOC v0.5.5.1 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.

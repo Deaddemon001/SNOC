@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5 - SNMP Trap Receiver
+SimpleNOC v0.5.5.1 - SNMP Trap Receiver
 Listens on UDP port defined in noc_config.py (default 162)
 Identifies OLTs by MAC address from Vsol trap varbinds
 """

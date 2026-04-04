@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5 - Launcher
+SimpleNOC v0.5.5.1 - Launcher
 Double-click to start all services. Close window to quit.
 """
 import subprocess, sys, os, threading, time, webbrowser
@@ -9,7 +9,7 @@ from tkinter import messagebox
 
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 PYTHON      = sys.executable
-APP_VERSION = "0.5.5"
+APP_VERSION = "0.5.5.1"
 DASHBOARD_URL = (
     f"https://localhost:{cfg.HTTPS_PORT}"
     if getattr(cfg, "HTTPS_PORT", 0)

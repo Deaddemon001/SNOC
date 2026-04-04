@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title SimpleNOC v0.5.5 - Setup and Maintenance
+title SimpleNOC v0.5.5.1 - Setup and Maintenance
 color 0B
 
 call :ensure_admin
@@ -13,7 +13,7 @@ if not defined PYTHON goto :end
 cls
 echo.
 echo  ===============================================
-echo   SimpleNOC v0.5.5 - Setup and Maintenance Tool
+echo   SimpleNOC v0.5.5.1 - Setup and Maintenance Tool
 echo  ===============================================
 echo.
 echo   1. Install or Update SimpleNOC

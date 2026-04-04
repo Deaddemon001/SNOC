@@ -4,6 +4,7 @@ import os, json, datetime, threading, time, subprocess, re, platform, hashlib, s
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
+import retention_settings
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -299,10 +300,13 @@ def ensure_dbs():
     if not cfg_rows or cfg_rows[0]['count'] == 0:
         execute_db(TFTP_DB, "INSERT INTO tftp_config (id, backup_dir, enabled) VALUES (1, ?, 1)", (BACKUP_DIR,))
 
+    retention_settings.ensure_noc_settings_table(AUTH_DB)
+
 ensure_dbs()
 
 FULL_BACKUP_TABLES = [
     'users',
+    'noc_settings',
     'email_config',
     'email_template',
     'alert_rules',
@@ -325,20 +329,6 @@ FULL_BACKUP_TABLES = [
     'olt_poll_sessions',
     'olt_poll_jobs',
 ]
-
-RETENTION_POLICIES = [
-    ('traps', 'timestamp', getattr(_cfg, 'TRAP_RETENTION_DAYS', 30)),
-    ('events', 'timestamp', getattr(_cfg, 'TRAP_RETENTION_DAYS', 30)),
-    ('syslog', 'timestamp', getattr(_cfg, 'SYSLOG_RETENTION_DAYS', 7)),
-    ('ping_results', 'timestamp', getattr(_cfg, 'PING_RETENTION_DAYS', 30)),
-    ('tftp_files', 'timestamp', getattr(_cfg, 'TFTP_RETENTION_DAYS', 90)),
-    ('alert_log', 'timestamp', getattr(_cfg, 'ALERT_LOG_RETENTION_DAYS', 30)),
-    ('onu_data', 'poll_time', getattr(_cfg, 'OLT_DATA_RETENTION_DAYS', 30)),
-    ('onu_history', 'poll_time', getattr(_cfg, 'OLT_DATA_RETENTION_DAYS', 30)),
-    ('uplink_stats', 'poll_time', getattr(_cfg, 'OLT_DATA_RETENTION_DAYS', 30)),
-    ('olt_poll_sessions', 'poll_time', getattr(_cfg, 'OLT_SESSION_RETENTION_DAYS', 30)),
-]
-
 
 def _fetch_one(sql, params=()):
     rows = query_db(AUTH_DB, sql, params)
@@ -375,7 +365,7 @@ def build_full_backup():
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
         return {
-            'version': '0.5.5',
+            'version': '0.5.5.1',
             'database': 'postgres',
             'created_at': datetime.datetime.now().isoformat(),
             'tables': tables,
@@ -430,7 +420,7 @@ def restore_full_backup(backup_payload):
 
 
 def run_retention_cleanup():
-    for table_name, column_name, retention_days in RETENTION_POLICIES:
+    for table_name, column_name, retention_days in retention_settings.get_retention_policies(AUTH_DB):
         try:
             days = int(retention_days or 0)
         except Exception:
@@ -580,6 +570,20 @@ def delete_user():
         return jsonify({'error': 'Cannot delete yourself'}), 400
     execute_db(AUTH_DB, "DELETE FROM users WHERE username=?", (username,))
     return jsonify({'success': True})
+
+
+@app.route('/api/settings/retention', methods=['GET', 'POST'])
+@login_required
+def api_retention_settings():
+    if request.method == 'GET':
+        return jsonify(retention_settings.get_retention_days_map(AUTH_DB))
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    ok, err = retention_settings.save_retention_settings(AUTH_DB, request.json or {})
+    if not ok:
+        return jsonify({'error': err or 'Save failed'}), 400
+    return jsonify({'success': True, **retention_settings.get_retention_days_map(AUTH_DB)})
+
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 @app.route('/')
@@ -913,7 +917,7 @@ def test_email():
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
     sent, err = send_email(to,
         '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.5\nEmail alerts are working correctly.')
+        'This is a test alert from SNOC v0.5.5.1\nEmail alerts are working correctly.')
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -1672,7 +1676,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print("  SimpleNOC v0.5.5  –  Starting servers")
+    print("  SimpleNOC v0.5.5.1  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

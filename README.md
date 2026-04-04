@@ -1,4 +1,6 @@
-# SimpleNOC v0.5.5
+# SimpleNOC v0.5.5.1 (pre-release)
+
+**v0.5.5.1** is a **pre-release** focused on **dashboard UI and appearance** (theme contrast, Settings for database retention, Refresh behavior, uplink card readability). Core behavior matches **v0.5.5** unless noted in [CHANGELOG.md](CHANGELOG.md).
 
 SimpleNOC is a Windows-focused Network Operations Center application for small ISP and OLT operations. It provides a web dashboard, SNMP trap collection, syslog collection, TFTP backup intake, OLT polling, ping monitoring, and alerting on top of a PostgreSQL backend.
 
@@ -101,7 +103,7 @@ Notes:
 
 ## Database Model
 
-SimpleNOC v0.5.5 is configured for PostgreSQL only.
+SimpleNOC v0.5.5.1 is configured for PostgreSQL only.
 
 Default application database settings from [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py):
 
