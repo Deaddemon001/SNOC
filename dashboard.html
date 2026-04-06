@@ -355,6 +355,54 @@
       gap: 16px
     }
 
+    /* ── Mobile responsiveness ─────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      header {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+
+      .hright {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        width: 100%;
+        gap: 8px;
+      }
+
+      main {
+        padding: 14px 12px;
+        gap: 12px;
+      }
+
+      .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+      }
+
+      .tab {
+        flex: 0 0 auto;
+        padding: 10px 14px;
+        font-size: 12px;
+      }
+
+      .srow,
+      .crow,
+      .ogrid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .tw {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      canvas {
+        max-height: 260px;
+      }
+    }
+
     .srow {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -993,7 +1041,7 @@
 <body>
   <header>
     <div class="logo">
-      <h1>SNOC</h1><span>v0.5.5.1 &mdash; Network Operations Center</span>
+      <h1>SNOC</h1><span>v0.5.5.2 &mdash; Network Operations Center</span>
     </div>
     <div class="hright">
       <div class="live">
@@ -1035,6 +1083,10 @@
     <div class="tab" id="tab-btn-uplink" draggable="true" onclick="switchTab('uplink')" ondragstart="onTabDragStart(event)"
       ondragover="onTabDragOver(event)" ondrop="onTabDrop(event)" ondragend="onTabDragEnd(event)" data-tab="uplink">UPLINK
       Traffic</div>
+    <div class="tab" id="tab-btn-logs" draggable="true" onclick="switchTab('logs')" ondragstart="onTabDragStart(event)"
+      ondragover="onTabDragOver(event)" ondrop="onTabDrop(event)" ondragend="onTabDragEnd(event)" data-tab="logs">Logs</div>
+    <div class="tab" id="tab-btn-ont" draggable="true" onclick="switchTab('ont')" ondragstart="onTabDragStart(event)"
+      ondragover="onTabDragOver(event)" ondrop="onTabDrop(event)" ondragend="onTabDragEnd(event)" data-tab="ont">ONT</div>
     <div class="tab" id="tab-btn-users" style="display:none" draggable="true" onclick="switchTab('users')"
       ondragstart="onTabDragStart(event)" ondragover="onTabDragOver(event)" ondrop="onTabDrop(event)"
       ondragend="onTabDragEnd(event)" data-tab="users">Users</div>
@@ -1128,7 +1180,7 @@
       <!-- Uplink Traffic History (Consolidated) -->
       <div class="panel" id="dashUplinkHistoryPanel" style="margin-top:12px">
         <div class="ph">
-          <div class="pt">Uplink Traffic History (Last 5 polls)</div>
+          <div class="pt">Uplink Traffic History</div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:6px">
               <label class="flabel" style="margin:0;white-space:nowrap">OLT</label>
@@ -1140,6 +1192,15 @@
               <label class="flabel" style="margin:0;white-space:nowrap">Port</label>
               <select id="dashUplinkPortSel" class="fsel" style="min-width:180px" onchange="onDashUplinkPortChange()">
                 <option value="">— select port —</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <label class="flabel" style="margin:0;white-space:nowrap">Range</label>
+              <select id="dashUplinkRangeSel" class="fsel" style="min-width:140px" onchange="onDashUplinkRangeChange()">
+                <option value="last5" selected>Last 5</option>
+                <option value="day">Daily</option>
+                <option value="week">Weekly</option>
+                <option value="month">Monthly</option>
               </select>
             </div>
             <div id="dashUplinkHistoryTitle" class="pb2">Select OLT and Port to view trends</div><div id="dashUplinkHistoryInsight" class="pb2">Peak/low insights will appear here.</div>
@@ -1209,7 +1270,12 @@
       <div class="panel">
         <div class="ph">
           <div class="pt">OLT Uplink &amp; Login Events</div>
-          <div class="pb2" id="sysEvtCount">0</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="pb2" id="sysEvtCount">0</div>
+            <div class="pb2" id="sysEvtPage" style="opacity:0.85">Page 1</div>
+            <button class="ubtn" id="sysEvtPrevBtn" style="padding:6px 10px;font-size:11px" onclick="sysEvtPrev()">Prev</button>
+            <button class="rb" id="sysEvtNextBtn" style="padding:6px 10px;font-size:11px" onclick="sysEvtNext()">Next</button>
+          </div>
         </div>
         <div class="tw">
           <table>
@@ -1261,6 +1327,104 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- LOGS TAB -->
+  <div id="tab-logs" class="tc">
+    <main>
+      <div class="panel" style="margin-top:12px">
+        <div class="ph">
+          <div class="pt">Application Logs</div>
+          <div class="pb2" id="logsMeta">—</div>
+        </div>
+        <div class="pb" style="display:grid;gap:10px">
+          <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+            <div style="display:grid;gap:4px">
+              <label class="flabel" style="margin:0">Log file</label>
+              <select id="logsFileSel" class="fsel" style="min-width:220px" onchange="loadSelectedLog()">
+                <option value="">— select log —</option>
+              </select>
+            </div>
+            <div style="display:grid;gap:4px">
+              <label class="flabel" style="margin:0">Tail lines</label>
+              <select id="logsTailSel" class="fsel" style="min-width:140px" onchange="loadSelectedLog()">
+                <option value="200">200</option>
+                <option value="500" selected>500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+              </select>
+            </div>
+            <div style="display:grid;gap:4px;flex:1;min-width:180px">
+              <label class="flabel" style="margin:0">Search</label>
+              <input id="logsSearch" class="finp" placeholder="filter lines..." oninput="filterLogsView()" />
+            </div>
+            <button class="rb" style="padding:7px 14px;font-size:11px" onclick="refreshLogs()">&#8635; Refresh</button>
+          </div>
+          <div id="logsMsg" class="smsg"></div>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <pre id="logsPre" style="margin:0;max-height:520px;overflow:auto;padding:12px;background:rgba(0,0,0,0.18);font-size:11px;line-height:1.45;color:var(--text)">(select a log file)</pre>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ONT TAB -->
+  <div id="tab-ont" class="tc">
+    <main>
+      <div class="panel" style="margin-top:12px">
+        <div class="ph">
+          <div class="pt">ONT Lookup</div>
+          <div class="pb2" id="ontMeta">Search by ONT serial number (uses stored polled history)</div>
+        </div>
+        <div class="pb" style="display:grid;gap:12px">
+          <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+            <div style="display:grid;gap:4px;min-width:260px;flex:1">
+              <label class="flabel" style="margin:0">ONT Serial Number</label>
+              <input id="ontSerialInp" class="finp" placeholder="e.g. VSOL12345678" />
+            </div>
+            <button class="rb" style="padding:8px 16px;font-size:11px" onclick="ontSearch()">Search</button>
+            <button class="ubtn" style="padding:8px 16px;font-size:11px" onclick="ontClear()">Clear</button>
+          </div>
+          <div id="ontMsg" class="smsg"></div>
+          <div class="panel" style="margin:0">
+            <div class="ph">
+              <div class="pt">Optical Level (Rx Power)</div>
+              <div class="pb2" id="ontChartMeta">—</div>
+            </div>
+            <div class="pb" style="height:260px;padding:16px"><canvas id="ontRxChart"></canvas></div>
+          </div>
+          <div class="panel" style="margin:0">
+            <div class="ph">
+              <div class="pt">History</div>
+              <div class="pb2" id="ontCount">0 records</div>
+            </div>
+            <div class="tw">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Optical (dBm)</th>
+                    <th>Distance (m)</th>
+                    <th>OLT IP</th>
+                    <th>PON</th>
+                    <th>ONU ID</th>
+                  </tr>
+                </thead>
+                <tbody id="ontTable">
+                  <tr>
+                    <td colspan="7">
+                      <div class="empty">Enter a serial number and click Search.</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -1767,58 +1931,6 @@
         </div>
       </div>
 
-      <!-- Diagnostics panel -->
-      <div class="panel" id="oltDiagPanel">
-        <div class="ph" onclick="toggleDiagPanel()"
-          style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div class="pt">Raw Output Diagnostics</div>
-            <div class="pb2">Run any command and see the exact OLT response</div>
-          </div>
-          <span id="diagArrow" style="color:var(--accent);font-size:14px;transition:transform 0.2s">&#9660;</span>
-        </div>
-        <div id="diagBody" style="display:none;padding:14px 16px;display:none">
-          <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:flex-end;margin-bottom:10px">
-            <div>
-              <label class="flabel">OLT PROFILE</label>
-              <select id="diagOltSel" class="finp" style="cursor:pointer">
-                <option value="">— select OLT —</option>
-              </select>
-            </div>
-            <div>
-              <label class="flabel">COMMAND</label>
-              <input id="diagCmd" class="finp" style="min-width:320px" value="show interface gigabitethernet 0/1"
-                placeholder="e.g. show interface gigabitethernet 0/1" />
-            </div>
-            <button class="rb" id="diagRunBtn" style="padding:9px 18px;font-size:12px;white-space:nowrap"
-              onclick="runDiagCommand()">&#9654; Run</button>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-            <button class="ubtn" style="font-size:10px;padding:3px 10px"
-              onclick="setDiagCmd('show interface gigabitethernet 0/1')">ge 0/1</button>
-            <button class="ubtn" style="font-size:10px;padding:3px 10px"
-              onclick="setDiagCmd('show interface gigabitethernet 0/2')">ge 0/2</button>
-            <button class="ubtn" style="font-size:10px;padding:3px 10px"
-              onclick="setDiagCmd('show interface gigabitethernet 0/10')">ge 0/10</button>
-            <button class="ubtn" style="font-size:10px;padding:3px 10px" onclick="setDiagCmd('show onu info')">show onu
-              info</button>
-            <button class="ubtn" style="font-size:10px;padding:3px 10px" onclick="setDiagCmd('show onu state')">show onu
-              state</button>
-            <button class="ubtn" style="font-size:10px;padding:3px 10px" onclick="setDiagCmd('show version')">show
-              version</button>
-          </div>
-          <div id="diagStatus" class="smsg" style="margin-bottom:8px"></div>
-          <div style="position:relative">
-            <pre id="diagOutput"
-              style="background:#020d14;border:1px solid var(--border);border-radius:6px;padding:14px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent3);min-height:120px;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6">Raw output will appear here after running a command...</pre>
-            <button onclick="copyDiagOutput()"
-              style="position:absolute;top:8px;right:8px;background:rgba(0,229,255,0.1);border:1px solid var(--accent);color:var(--accent);padding:3px 10px;border-radius:4px;font-size:10px;cursor:pointer">Copy</button>
-          </div>
-          <div id="diagMeta"
-            style="font-size:10px;color:var(--muted);margin-top:6px;font-family:'Share Tech Mono',monospace"></div>
-        </div>
-      </div>
-
     </main>
   </div>
 
@@ -1964,6 +2076,29 @@
               </div>
             </div>
             <div id="alEmailMsg" class="smsg"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">
+            <div class="pt">Telegram Config</div>
+            <div class="pb2" id="alTelegramStatus">Not configured</div>
+          </div>
+          <div class="pb" style="display:grid;gap:10px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><label class="flabel">BOT TOKEN</label><input id="alTgToken" class="finp"
+                  placeholder="123456:AA..." /></div>
+              <div><label class="flabel">CHAT ID</label><input id="alTgChatId" class="finp"
+                  placeholder="-1001234567890" /></div>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+              <label
+                style="display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="alTgEnabled" /> ENABLED
+              </label>
+              <button class="rb" style="padding:8px 18px" onclick="saveTelegramConfig()">Save Config</button>
+              <button class="ubtn" style="padding:8px 14px" onclick="sendTestTelegram()">Send Test</button>
+            </div>
+            <div id="alTelegramMsg" class="smsg"></div>
           </div>
         </div>
         <div class="panel" style="padding:0">
@@ -2209,9 +2344,47 @@
           type="number" id="olt_data_retention_days" min="0" max="3650" step="1" /></div>
       <div class="set-row"><label for="olt_session_retention_days">OLT poll sessions</label><input type="number"
           id="olt_session_retention_days" min="0" max="3650" step="1" /></div>
+
+      <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,0.12)">
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:6px">CURRENT STORAGE</div>
+        <div id="retentionStats" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);line-height:1.8">Loading…</div>
+      </div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
+      <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">UI — Visible tabs</h3>
+      <p class="set-note" style="margin-top:0">Choose which main dashboard tabs are visible for all users.</p>
+      <div id="tabVisibilityBox" style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px;margin-bottom:6px">
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_syslog" /> Syslog</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_snmp" /> SNMP Trap</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_tftp" /> TFTP Backups</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_ping" /> Ping Monitor</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_alerts" /> Alerts</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_olt" /> OLT Connect</label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_uplink" /> Uplink Traffic</label>
+        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_users" /> Users</label>
+        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_logs" /> Logs</label>
+        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_ont" /> ONT</label>
+      </div>
+      <div id="tabVisibilityMsg" class="smsg"></div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
+      <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Security — Session timeout</h3>
+      <p class="set-note" style="margin-top:0">Automatically log out inactive sessions after the selected time.</p>
+      <div class="set-row">
+        <label for="session_timeout_minutes">Session timeout</label>
+        <select id="session_timeout_minutes" class="fsel" style="max-width:220px">
+          <option value="10">10 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </div>
+      <div id="sessionTimeoutMsg" class="smsg"></div>
+
       <div id="settingsModalMsg"></div>
       <div class="modal-actions">
         <button class="ubtn" type="button" onclick="closeSettingsModal()">Close</button>
+        <button class="ubtn" type="button" id="tabsSaveBtn" style="display:none" onclick="saveUiSettings()">Save Tabs</button>
+        <button class="ubtn" type="button" id="timeoutSaveBtn" style="display:none" onclick="saveSessionTimeout()">Save Timeout</button>
         <button class="rbtn" type="button" id="settingsSaveBtn" onclick="saveRetentionSettings()">Save</button>
       </div>
     </div>
@@ -2283,6 +2456,8 @@
       if (t === 'alerts') loadAlerts();
       if (t === 'tftp') { loadTftp(); loadMacMapping(); }
       if (t === 'olt' || t === 'uplink') loadOlt();
+      if (t === 'logs') loadLogsTab();
+      if (t === 'ont') { /* no auto fetch */ }
     }
 
     function refreshDashboard() {
@@ -2294,6 +2469,209 @@
       else if (t === 'tftp') { loadTftp(); loadMacMapping(); }
       else if (t === 'olt' || t === 'uplink') loadOlt();
       else if (t === 'users') loadUsers();
+      else if (t === 'logs') loadLogsTab();
+      else if (t === 'ont') { /* keep last results */ }
+    }
+
+    // ── SYSLOG EVENTS PAGINATION ───────────────────────────────────────────────
+    var _sysEvtOffset = 0;
+    var _sysEvtLimit = 50;
+    function loadSysEventsPage(offset) {
+      _sysEvtOffset = Math.max(0, offset || 0);
+      var sysQ = currentSysOlt ? ('&olt_hostname=' + encodeURIComponent(currentSysOlt)) : '';
+      var url = '/api/syslog/events?limit=' + encodeURIComponent(_sysEvtLimit) + '&offset=' + encodeURIComponent(_sysEvtOffset) + sysQ;
+      apiFetch(url).then(function (events) {
+        events = events || [];
+        var setTb = document.getElementById('sysEvtTable');
+        if (!events.length) {
+          setTb.innerHTML = '<tr><td colspan="7"><div class="empty">No events on this page.</div></td></tr>';
+        } else {
+          buildEventsTable(setTb, events);
+        }
+        var page = Math.floor(_sysEvtOffset / _sysEvtLimit) + 1;
+        var pEl = document.getElementById('sysEvtPage');
+        if (pEl) pEl.textContent = 'Page ' + page;
+        var prevBtn = document.getElementById('sysEvtPrevBtn');
+        var nextBtn = document.getElementById('sysEvtNextBtn');
+        if (prevBtn) prevBtn.disabled = _sysEvtOffset === 0;
+        if (nextBtn) nextBtn.disabled = events.length < _sysEvtLimit;
+      }).catch(function () { /* ignore */ });
+    }
+
+    function sysEvtNext() {
+      loadSysEventsPage(_sysEvtOffset + _sysEvtLimit);
+    }
+
+    function sysEvtPrev() {
+      loadSysEventsPage(Math.max(0, _sysEvtOffset - _sysEvtLimit));
+    }
+
+    // ── LOGS TAB ───────────────────────────────────────────────────────────────
+    var _logsCache = { name: '', lines: [] };
+    function loadLogsTab() {
+      apiFetch('/api/logs/list').then(function (items) {
+        var sel = document.getElementById('logsFileSel');
+        if (!sel) return;
+        var prev = sel.value;
+        sel.innerHTML = '<option value="">— select log —</option>';
+        (items || []).forEach(function (it) {
+          var opt = document.createElement('option');
+          opt.value = it.name;
+          opt.textContent = it.name;
+          if (it.name === prev) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        if (prev) loadSelectedLog();
+      }).catch(function (e) {
+        showMsg('logsMsg', e.message || 'Failed to load logs list', false, true);
+      });
+    }
+
+    function refreshLogs() {
+      loadLogsTab();
+      loadSelectedLog();
+    }
+
+    function loadSelectedLog() {
+      var sel = document.getElementById('logsFileSel');
+      var tailSel = document.getElementById('logsTailSel');
+      var name = sel ? sel.value : '';
+      var tail = tailSel ? parseInt(tailSel.value, 10) : 500;
+      if (!name) return;
+      apiFetch('/api/logs/read?name=' + encodeURIComponent(name) + '&tail=' + encodeURIComponent(tail)).then(function (r) {
+        _logsCache.name = name;
+        _logsCache.lines = (r && r.lines) ? r.lines : [];
+        var meta = r && r.meta ? r.meta : {};
+        var m = document.getElementById('logsMeta');
+        if (m) {
+          var dt = meta.mtime ? new Date(meta.mtime).toLocaleString() : '—';
+          var sz = (meta.size !== undefined) ? (Math.round(meta.size / 1024) + ' KB') : '—';
+          m.textContent = (meta.name || name) + ' • ' + dt + ' • ' + sz;
+        }
+        filterLogsView();
+      }).catch(function (e) {
+        showMsg('logsMsg', e.message || 'Failed to read log', false, true);
+      });
+    }
+
+    function filterLogsView() {
+      var pre = document.getElementById('logsPre');
+      if (!pre) return;
+      var q = (document.getElementById('logsSearch').value || '').toLowerCase();
+      var lines = _logsCache.lines || [];
+      if (!lines.length) {
+        pre.textContent = '(no log lines loaded)';
+        return;
+      }
+      if (!q) {
+        pre.textContent = lines.join('\n');
+        return;
+      }
+      var filtered = lines.filter(function (ln) { return (ln || '').toLowerCase().indexOf(q) !== -1; });
+      pre.textContent = filtered.join('\n') || '(no matches)';
+    }
+
+    // ── ONT TAB ────────────────────────────────────────────────────────────────
+    var _ontChart = null;
+    function ontClear() {
+      document.getElementById('ontSerialInp').value = '';
+      document.getElementById('ontMeta').textContent = 'Search by ONT serial number (uses stored polled history)';
+      document.getElementById('ontChartMeta').textContent = '—';
+      document.getElementById('ontCount').textContent = '0 records';
+      document.getElementById('ontTable').innerHTML =
+        '<tr><td colspan="7"><div class="empty">Enter a serial number and click Search.</div></td></tr>';
+      if (_ontChart) { _ontChart.destroy(); _ontChart = null; }
+      showMsg('ontMsg', '', true, true);
+      var el = document.getElementById('ontMsg');
+      if (el) el.style.display = 'none';
+    }
+
+    function ontSearch() {
+      var sn = (document.getElementById('ontSerialInp').value || '').trim();
+      if (!sn) return showMsg('ontMsg', 'Serial number is required.', false, true);
+      document.getElementById('ontMeta').textContent = 'Serial: ' + sn;
+      showMsg('ontMsg', 'Searching history...', true, true);
+      apiFetch('/api/onu/history?serial_no=' + encodeURIComponent(sn)).then(function (rows) {
+        rows = rows || [];
+        document.getElementById('ontCount').textContent = rows.length + ' records';
+        if (!rows.length) {
+          document.getElementById('ontTable').innerHTML =
+            '<tr><td colspan="7"><div class="empty">No history found. Poll the OLT first so SNOC can store snapshots.</div></td></tr>';
+          document.getElementById('ontChartMeta').textContent = 'No samples';
+          if (_ontChart) { _ontChart.destroy(); _ontChart = null; }
+          showMsg('ontMsg', 'No history found.', false, true);
+          return;
+        }
+        showMsg('ontMsg', 'Loaded ' + rows.length + ' snapshots.', true, true);
+        buildOntTable(rows);
+        renderOntRxChart(rows);
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        showMsg('ontMsg', e.message || 'Search failed', false, true);
+      });
+    }
+
+    function buildOntTable(rows) {
+      var tb = document.getElementById('ontTable');
+      tb.innerHTML = '';
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        var dt = r.poll_time ? new Date(r.poll_time) : null;
+        var status = (r.online ? 'Online' : 'Offline');
+        var stClr = r.online ? 'var(--accent3)' : 'var(--danger)';
+        var rx = (r.rx_power === null || r.rx_power === undefined) ? '—' : (Number(r.rx_power).toFixed(2));
+        var dist = (r.distance_m === null || r.distance_m === undefined) ? '—' : String(r.distance_m);
+
+        tr.innerHTML =
+          '<td class="mu">' + (dt ? dt.toLocaleString() : (r.poll_time || '—')) + '</td>' +
+          '<td><span style="color:' + stClr + ';font-weight:700">' + status + '</span></td>' +
+          '<td class="mu">' + rx + '</td>' +
+          '<td class="mu">' + dist + '</td>' +
+          '<td class="mu">' + (r.olt_ip || '—') + '</td>' +
+          '<td class="mu">' + (r.pon_port || '—') + '</td>' +
+          '<td class="mu">' + (r.onu_id || '—') + '</td>';
+        tb.appendChild(tr);
+      });
+    }
+
+    function renderOntRxChart(rows) {
+      var pts = (rows || []).slice().reverse().filter(function (r) {
+        return r.rx_power !== null && r.rx_power !== undefined && r.poll_time;
+      });
+      var labels = pts.map(function (r) { return new Date(r.poll_time).toLocaleString(); });
+      var data = pts.map(function (r) { return Number(r.rx_power); });
+      var meta = document.getElementById('ontChartMeta');
+      meta.textContent = data.length ? (data.length + ' samples') : 'No Rx power samples';
+
+      var ctx = document.getElementById('ontRxChart');
+      if (!ctx) return;
+      if (_ontChart) { _ontChart.destroy(); _ontChart = null; }
+      _ontChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Rx Power (dBm)',
+            data: data,
+            borderColor: getComputedStyle(document.body).getPropertyValue('--accent3').trim() || '#39ff14',
+            backgroundColor: 'rgba(57,255,20,0.08)',
+            tension: 0.25,
+            pointRadius: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: { display: true, labels: { color: getComputedStyle(document.body).getPropertyValue('--text').trim() } }
+          },
+          scales: {
+            x: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--muted').trim(), maxTicksLimit: 6 } },
+            y: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--muted').trim() } }
+          }
+        }
+      });
     }
 
     function onSettingsOverlayClick(ev) {
@@ -2304,14 +2682,23 @@
       var modal = document.getElementById('settingsModal');
       var msg = document.getElementById('settingsModalMsg');
       if (msg) { msg.textContent = ''; msg.style.color = ''; }
+      var tmsg = document.getElementById('tabVisibilityMsg');
+      if (tmsg) { tmsg.textContent = ''; tmsg.style.display = 'none'; }
       modal.classList.add('show');
       var saveBtn = document.getElementById('settingsSaveBtn');
+      var tabsBtn = document.getElementById('tabsSaveBtn');
+      var timeoutBtn = document.getElementById('timeoutSaveBtn');
       var admin = currentRole === 'admin';
       if (saveBtn) saveBtn.style.display = admin ? 'inline-block' : 'none';
+      if (tabsBtn) tabsBtn.style.display = admin ? 'inline-block' : 'none';
+      if (timeoutBtn) timeoutBtn.style.display = admin ? 'inline-block' : 'none';
       RETENTION_KEY_IDS.forEach(function (k) {
         var inp = document.getElementById(k);
         if (inp) inp.readOnly = !admin;
       });
+      setTabVisibilityReadOnly(!admin);
+      var toSel = document.getElementById('session_timeout_minutes');
+      if (toSel) toSel.disabled = !admin;
       apiFetch('/api/settings/retention').then(function (m) {
         RETENTION_KEY_IDS.forEach(function (k) {
           var inp = document.getElementById(k);
@@ -2321,6 +2708,34 @@
         if (e.message === '401') return;
         if (msg) { msg.textContent = 'Failed to load settings: ' + e.message; msg.style.color = 'var(--danger)'; }
       });
+
+      apiFetch('/api/settings/ui').then(function (u) {
+        applyUiSettingsToModal(u);
+      }).catch(function () { /* ignore */ });
+
+      apiFetch('/api/settings/storage_stats').then(function (d) {
+        var box = document.getElementById('retentionStats');
+        if (!box) return;
+        var items = (d && d.items) ? d.items : [];
+        if (!items.length) { box.textContent = 'No stats available.'; return; }
+        var lines = [];
+        items.forEach(function (it) {
+          var oldest = it.oldest ? new Date(it.oldest).toLocaleString() : '—';
+          var newest = it.newest ? new Date(it.newest).toLocaleString() : '—';
+          lines.push((it.table || '—') + ': ' + (it.count || 0) + ' rows | oldest ' + oldest + ' | newest ' + newest);
+        });
+        box.textContent = lines.join('\n');
+      }).catch(function () {
+        var box = document.getElementById('retentionStats');
+        if (box) box.textContent = 'Failed to load storage stats.';
+      });
+
+      apiFetch('/api/settings/security').then(function (d) {
+        var sel = document.getElementById('session_timeout_minutes');
+        if (!sel) return;
+        var v = String(d.session_timeout_minutes || 30);
+        sel.value = v;
+      }).catch(function () { /* ignore */ });
     }
 
     function closeSettingsModal() {
@@ -2352,6 +2767,89 @@
         if (e.message === '401') return;
         if (msg) { msg.textContent = e.message || 'Save failed'; msg.style.color = 'var(--danger)'; }
       });
+    }
+
+    // ── UI SETTINGS (Visible Tabs) ───────────────────────────────────────────────
+    var UI_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'users', 'logs', 'ont'];
+    function setTabVisibilityReadOnly(ro) {
+      UI_TABS.forEach(function (t) {
+        var cb = document.getElementById('tabvis_' + t);
+        if (cb) cb.disabled = !!ro;
+      });
+    }
+
+    function applyUiSettingsToModal(u) {
+      var tabs = (u && u.visible_tabs) ? u.visible_tabs : [];
+      if (!Array.isArray(tabs)) tabs = [];
+      UI_TABS.forEach(function (t) {
+        var cb = document.getElementById('tabvis_' + t);
+        if (cb) cb.checked = tabs.indexOf(t) !== -1;
+      });
+    }
+
+    function getTabsFromModal() {
+      var tabs = [];
+      UI_TABS.forEach(function (t) {
+        var cb = document.getElementById('tabvis_' + t);
+        if (cb && cb.checked) tabs.push(t);
+      });
+      return tabs;
+    }
+
+    function saveUiSettings() {
+      if (currentRole !== 'admin') return;
+      var msg = document.getElementById('tabVisibilityMsg');
+      var tabs = getTabsFromModal();
+      apiPost('/api/settings/ui', { visible_tabs: tabs }).then(function (r) {
+        if (r && r.visible_tabs) applyVisibleTabs(r.visible_tabs);
+        if (msg) showMsg('tabVisibilityMsg', 'Saved.', true, true);
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        if (msg) showMsg('tabVisibilityMsg', e.message || 'Save failed', false, true);
+      });
+    }
+
+    function saveSessionTimeout() {
+      if (currentRole !== 'admin') return;
+      var sel = document.getElementById('session_timeout_minutes');
+      var msg = document.getElementById('sessionTimeoutMsg');
+      var v = sel ? parseInt(sel.value, 10) : 30;
+      apiPost('/api/settings/security', { session_timeout_minutes: v }).then(function (r) {
+        if (r && r.success) {
+          if (msg) showMsg('sessionTimeoutMsg', 'Saved. New sessions will use this timeout.', true, true);
+        } else {
+          if (msg) showMsg('sessionTimeoutMsg', (r && r.error) ? r.error : 'Save failed', false, true);
+        }
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        if (msg) showMsg('sessionTimeoutMsg', e.message || 'Save failed', false, true);
+      });
+    }
+
+    function applyVisibleTabs(tabs) {
+      if (!Array.isArray(tabs)) tabs = [];
+      // If server sends nothing, keep defaults (don’t hide all UI)
+      if (!tabs.length) tabs = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink'];
+
+      // Hide/show tab buttons + panels
+      document.querySelectorAll('.tab[data-tab]').forEach(function (btn) {
+        var t = btn.dataset.tab;
+        var show = tabs.indexOf(t) !== -1;
+        btn.style.display = show ? '' : 'none';
+      });
+      document.querySelectorAll('.tc[id^="tab-"]').forEach(function (panel) {
+        var t = panel.id.replace('tab-', '');
+        var show = tabs.indexOf(t) !== -1;
+        panel.style.display = show ? '' : 'none';
+      });
+
+      // Ensure we have an active visible tab
+      var activeBtn = document.querySelector('.tab.active');
+      var activeTab = activeBtn && activeBtn.dataset ? activeBtn.dataset.tab : '';
+      if (!activeTab || tabs.indexOf(activeTab) === -1) {
+        var next = tabs[0] || 'syslog';
+        switchTab(next);
+      }
     }
 
     // ── CHARTS ────────────────────────────────────────────────────────────────────
@@ -2526,7 +3024,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.5.1'
+      '  This is an automated alert from SimpleNOC v0.5.5.2'
     ].join('\n');
 
     function toggleEmailTemplate() {
@@ -2597,6 +3095,21 @@
         } else {
           st.textContent = d.smtp_host ? 'Disabled' : 'Not configured';
           st.style.color = d.smtp_host ? 'var(--warn)' : 'var(--danger)';
+        }
+      }).catch(function () { });
+
+      // Load Telegram config
+      apiFetch('/api/alerts/telegram_config').then(function (d) {
+        document.getElementById('alTgToken').value = d.bot_token || '';
+        document.getElementById('alTgChatId').value = d.chat_id || '';
+        document.getElementById('alTgEnabled').checked = !!d.enabled;
+        var st = document.getElementById('alTelegramStatus');
+        if (d.enabled && (d.token_set || d.bot_token) && d.chat_id) {
+          st.textContent = 'Configured';
+          st.style.color = 'var(--accent3)';
+        } else {
+          st.textContent = (d.token_set || d.bot_token) ? 'Disabled' : 'Not configured';
+          st.style.color = (d.token_set || d.bot_token) ? 'var(--warn)' : 'var(--danger)';
         }
       }).catch(function () { });
 
@@ -2743,6 +3256,29 @@
         el.style.marginTop = '8px';
       }).catch(function (e) {
         showMsg('alEmailMsg', 'Error: ' + e.message, false, true);
+      });
+    }
+
+    function saveTelegramConfig() {
+      var d = {
+        bot_token: document.getElementById('alTgToken').value.trim(),
+        chat_id: document.getElementById('alTgChatId').value.trim(),
+        enabled: document.getElementById('alTgEnabled').checked
+      };
+      apiPost('/api/alerts/telegram_config', d).then(function (r) {
+        showMsg('alTelegramMsg', r.success ? 'Telegram config saved!' : (r.error || 'Failed'), !!r.success);
+        if (r.success) loadAlerts();
+      }).catch(function (e) {
+        showMsg('alTelegramMsg', 'Request failed: ' + e.message, false, true);
+      });
+    }
+
+    function sendTestTelegram() {
+      showMsg('alTelegramMsg', 'Sending test message...', true, true);
+      apiPost('/api/alerts/test_telegram', {}).then(function (r) {
+        showMsg('alTelegramMsg', r.success ? String(r.error || 'Telegram sent!') : ('ERROR: ' + r.error), !!r.success, true);
+      }).catch(function (e) {
+        showMsg('alTelegramMsg', 'Request failed: ' + e.message, false, true);
       });
     }
 
@@ -3323,20 +3859,6 @@
         window._allOltProfiles = profiles;
         document.getElementById('oltProfileCount').textContent = profiles.length;
         buildOltProfileTable(profiles);
-
-        var diagSel = document.getElementById('diagOltSel');
-        var prevDiag = diagSel ? diagSel.value : '';
-        if (diagSel) {
-          diagSel.innerHTML = '<option value="">- select OLT -</option>';
-          profiles.forEach(function (p) {
-            var opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = (p.name || p.ip) + ' (' + p.ip + ')';
-            opt.dataset.ip = p.ip;
-            if (String(p.id) === String(prevDiag)) opt.selected = true;
-            diagSel.appendChild(opt);
-          });
-        }
 
         var uplinkSel = document.getElementById('oltUplinkOltSel');
         var dashUplinkSel = document.getElementById('dashUplinkOltSel');
@@ -4031,11 +4553,23 @@
       }
     }
 
+    function onDashUplinkRangeChange() {
+      onDashUplinkPortChange();
+    }
+
     var _uplinkChart = null;
     function loadUplinkHistory(ip, iface) {
       if (!ip) return;
-      var url = '/api/olt/uplink_stats?ip=' + encodeURIComponent(ip) + '&limit=5';
-      if (iface && iface !== '__saved__') url += '&interface=' + encodeURIComponent(iface);
+      var rangeSel = document.getElementById('dashUplinkRangeSel');
+      var range = rangeSel ? rangeSel.value : 'last5';
+      var url = '';
+      if (range === 'day' || range === 'week' || range === 'month') {
+        url = '/api/olt/uplink_aggregate?ip=' + encodeURIComponent(ip) + '&range=' + encodeURIComponent(range);
+        if (iface && iface !== '__saved__') url += '&interface=' + encodeURIComponent(iface);
+      } else {
+        url = '/api/olt/uplink_stats?ip=' + encodeURIComponent(ip) + '&limit=5';
+        if (iface && iface !== '__saved__') url += '&interface=' + encodeURIComponent(iface);
+      }
 
       console.log("[History] Fetching:", url);
       apiFetch(url).then(function (stats) {
@@ -4443,7 +4977,7 @@
       title.textContent = (iface === '__saved__' ? 'All Ports' : iface) + ' - Last ' + stats.length + ' points';
 
       var hist = stats.slice().reverse();
-      var labels = hist.map(function (h) { return new Date(h.poll_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); });
+      var labels = hist.map(function (h) { return new Date(h.poll_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }); });
       var portList = [...new Set(hist.map(function (h) { return h.interface; }))];
       var peakIn = Math.max.apply(null, hist.map(function (h) { return Number(h.in_mbps || 0); }));
       var peakOut = Math.max.apply(null, hist.map(function (h) { return Number(h.out_mbps || 0); }));
@@ -4506,72 +5040,6 @@
       applyChartsTheme();
     }
 
-
-    // ── DIAGNOSTICS ───────────────────────────────────────────────────────────────
-    function toggleDiagPanel() {
-      var body = document.getElementById('diagBody');
-      var arrow = document.getElementById('diagArrow');
-      if (!body) return;
-      var open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : 'block';
-      arrow.style.transform = open ? '' : 'rotate(180deg)';
-    }
-
-    function setDiagCmd(cmd) {
-      document.getElementById('diagCmd').value = cmd;
-    }
-
-    function copyDiagOutput() {
-      var pre = document.getElementById('diagOutput');
-      try {
-        navigator.clipboard.writeText(pre.textContent);
-      } catch (e) {
-        var ta = document.createElement('textarea');
-        ta.value = pre.textContent;
-        document.body.appendChild(ta); ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-    }
-
-    function runDiagCommand() {
-      var sel = document.getElementById('diagOltSel');
-      var pid = sel.value;
-      var cmd = (document.getElementById('diagCmd').value || '').trim();
-      if (!pid) { showMsg('diagStatus', 'Select an OLT profile first', false, true); return; }
-      if (!cmd) { showMsg('diagStatus', 'Enter a command to run', false, true); return; }
-
-      var btn = document.getElementById('diagRunBtn');
-      btn.disabled = true;
-      btn.textContent = 'Running...';
-      document.getElementById('diagOutput').textContent = 'Connecting to OLT and running: ' + cmd + '\n\nPlease wait...';
-      document.getElementById('diagMeta').textContent = '';
-      showMsg('diagStatus', 'Connecting...', true, true);
-
-      apiPost('/api/olt/raw_output', { id: parseInt(pid), command: cmd }).then(function (r) {
-        btn.disabled = false;
-        btn.textContent = '▶ Run';
-        if (r.success) {
-          var out = r.raw_output || '(empty — no output received)';
-          document.getElementById('diagOutput').textContent = out;
-          document.getElementById('diagMeta').textContent =
-            'Method: ' + r.method + '  |  Chars received: ' + r.length +
-            '  |  Command: ' + r.command;
-          showMsg('diagStatus',
-            'Got ' + r.length + ' chars via ' + r.method +
-            (r.length === 0 ? ' — output is empty, check command name' : ' — see below'),
-            r.length > 0, false);
-        } else {
-          document.getElementById('diagOutput').textContent = 'ERROR: ' + (r.error || 'Unknown error');
-          showMsg('diagStatus', 'Failed: ' + (r.error || 'Unknown'), false, true);
-        }
-      }).catch(function (e) {
-        btn.disabled = false;
-        btn.textContent = '▶ Run';
-        document.getElementById('diagOutput').textContent = 'Request error: ' + e.message;
-        showMsg('diagStatus', 'Error: ' + e.message, false, true);
-      });
-    }
 
     // ── THEME TOGGLE ─────────────────────────────────────────────────────────────
     function toggleTheme() {
@@ -5205,8 +5673,8 @@
 
         // Syslog stats
         document.getElementById('sysTotal').textContent = syslog.length;
-        document.getElementById('sysAuth').textContent = syslog.filter(function (s) { return s.event_tag === 'USER_LOGIN' || s.event_tag === 'USER_LOGOUT' || s.event_tag === 'LOGIN_FAILED'; }).length;
-        document.getElementById('sysLink').textContent = syslog.filter(function (s) { return s.event_tag === 'UPLINK_UP' || s.event_tag === 'UPLINK_DOWN'; }).length;
+        document.getElementById('sysAuth').textContent = sysEvts.filter(function (s) { return s.event_tag === 'USER_LOGIN' || s.event_tag === 'USER_LOGOUT' || s.event_tag === 'LOGIN_FAILED'; }).length;
+        document.getElementById('sysLink').textContent = sysEvts.filter(function (s) { return s.event_tag === 'UPLINK_UP' || s.event_tag === 'UPLINK_DOWN'; }).length;
         document.getElementById('sysEvtCount').textContent = sysEvts.length + ' events';
         document.getElementById('sysAllCount').textContent = syslog.length + ' msgs';
         if (sysEvts.length) {
@@ -5223,12 +5691,8 @@
         sysSevChart.update('none');
         document.getElementById('sevCount').textContent = sysSev.length + ' levels';
 
-        var setTb = document.getElementById('sysEvtTable');
-        if (!sysEvts.length) {
-          setTb.innerHTML = '<tr><td colspan="7"><div class="empty">No OLT events yet.</div></td></tr>';
-        } else {
-          buildEventsTable(setTb, sysEvts.slice(0, 100));
-        }
+        // Load first page of events for the Next/Prev UX
+        loadSysEventsPage(0);
 
         var satTb = document.getElementById('sysAllTable');
         if (!syslog.length) { satTb.innerHTML = '<tr><td colspan="8"><div class="empty">No syslog yet.</div></td></tr>'; }
@@ -5283,6 +5747,9 @@
     applyChartsTheme();
     loadTabOrder();
     loadUserInfo();
+    apiFetch('/api/settings/ui').then(function (u) {
+      if (u && u.visible_tabs) applyVisibleTabs(u.visible_tabs);
+    }).catch(function () { /* ignore */ });
     fetchAll();
     fetchPing();
     setInterval(fetchAll, 10000);

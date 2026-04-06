@@ -7,6 +7,8 @@ Same logic as Visual Syslog Server alert rules.
 import smtplib, threading, time, json, re, datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from urllib import request as _urlrequest
+from urllib import parse as _urlparse
 import noc_config as cfg
 from noc_config import execute_db, query_db, get_db_connection
 
@@ -53,7 +55,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}'
+        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.5.2'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,?,?)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -67,6 +69,16 @@ def init_alert_db():
         sent       INTEGER DEFAULT 0,
         error      TEXT DEFAULT ''
     )''')
+
+    execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS telegram_config (
+        id        INTEGER PRIMARY KEY,
+        bot_token TEXT DEFAULT '',
+        chat_id   TEXT DEFAULT '',
+        enabled   INTEGER DEFAULT 0
+    )''')
+    rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM telegram_config")
+    if not rows or rows[0]['count'] == 0:
+        execute_db(ALERT_DB, "INSERT INTO telegram_config (id, bot_token, chat_id, enabled) VALUES (1,'','',0)")
     
     print(f"Alert DB ({db_type}) ready.")
 
@@ -100,6 +112,33 @@ def send_email(to_addr, subject, body, cfg_override=None):
         server.sendmail(msg['From'], to_addr, msg.as_string())
         server.quit()
         return True, "Sent"
+    except Exception as e:
+        return False, str(e)
+
+# ── TELEGRAM SENDER ───────────────────────────────────────────────────────────
+def get_telegram_config():
+    rows = query_db(ALERT_DB, "SELECT id,bot_token,chat_id,enabled FROM telegram_config WHERE id=1")
+    return rows[0] if rows else {}
+
+
+def send_telegram(bot_token, chat_id, text):
+    if not bot_token or not chat_id:
+        return False, "Telegram not configured"
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        data = _urlparse.urlencode(payload).encode("utf-8")
+        req = _urlrequest.Request(url, data=data, method="POST")
+        with _urlrequest.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        # Telegram returns JSON, but we only need success/failure
+        if '"ok":true' in raw or '"ok": true' in raw:
+            return True, "Sent"
+        return False, raw[:200]
     except Exception as e:
         return False, str(e)
 
@@ -171,7 +210,10 @@ def process_alert(hostname, message, timestamp):
         return
 
     ec = get_email_config()
-    if not ec.get('enabled'):
+    tc = get_telegram_config()
+    email_enabled = bool(ec.get('enabled'))
+    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
+    if not email_enabled and not tg_enabled:
         return
 
     for rule in rules:
@@ -180,7 +222,17 @@ def process_alert(hostname, message, timestamp):
 
         subject, body = build_alert_email(
             rule, hostname, '', message, timestamp, '')
-        sent, error   = send_email(rule['to_email'], subject, body, ec)
+        sent = False
+        error = ""
+        if email_enabled:
+            sent, error = send_email(rule['to_email'], subject, body, ec)
+
+        if tg_enabled:
+            tg_text = subject + "\n\n" + body
+            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
+            if not tg_sent and not error:
+                error = tg_err
+            sent = sent or tg_sent
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
 
         # Log the alert

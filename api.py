@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
 import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys
+from collections import deque
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
@@ -12,7 +13,7 @@ app.config['SESSION_COOKIE_SECURE']   = False
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 CORS(app, supports_credentials=True)
 
-from alert_engine import send_email, get_email_template, save_email_template
+from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram
 
 HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
@@ -35,6 +36,7 @@ DASHBOARD  = _cfg.DASHBOARD
 TFTP_DB    = _cfg.TFTP_DB
 OLT_DB     = _cfg.OLT_DB
 BACKUP_DIR = _cfg.BACKUP_DIR
+LOGS_DIR   = os.path.join(BASE_DIR, "logs")
 
 # Ensure all tables exist
 try:
@@ -191,11 +193,34 @@ def verify_password(password, stored_hash, salt):
 def is_logged_in():
     return session.get('logged_in') is True and bool(session.get('username'))
 
+def _get_session_timeout_minutes():
+    raw = get_noc_setting('session_timeout_minutes', '')
+    try:
+        m = int(raw)
+        if m in (10, 30, 60):
+            return m
+    except Exception:
+        pass
+    # Default if not set: 30 minutes
+    return 30
+
+def _is_session_expired():
+    try:
+        login_time = float(session.get('login_time') or 0)
+    except Exception:
+        login_time = 0
+    if not login_time:
+        return False
+    timeout_s = _get_session_timeout_minutes() * 60
+    return (time.time() - login_time) > timeout_s
+
 def login_required(f):
     from functools import wraps
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not is_logged_in():
+        if not is_logged_in() or _is_session_expired():
+            if _is_session_expired():
+                session.clear()
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'unauthorized', 'redirect': '/login'}), 401
             return redirect('/login')
@@ -219,6 +244,11 @@ def init_auth_db():
         username   TEXT,
         created_at TEXT,
         expires_at TEXT
+    )''')
+    execute_db(AUTH_DB, '''CREATE TABLE IF NOT EXISTS noc_settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT DEFAULT '',
+        updated_at TEXT
     )''')
     # Create default admin if no users exist
     rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM users")
@@ -332,6 +362,30 @@ def _fetch_one(sql, params=()):
     return rows[0] if rows else None
 
 
+def get_noc_setting(key, default_value=None):
+    try:
+        rows = query_db(AUTH_DB, "SELECT value FROM noc_settings WHERE key=?", (key,))
+        if rows and rows[0].get('value') not in (None, ''):
+            return rows[0]['value']
+    except Exception:
+        pass
+    return default_value
+
+
+def set_noc_setting(key, value):
+    now = datetime.datetime.now().isoformat()
+    try:
+        execute_db(
+            AUTH_DB,
+            "INSERT INTO noc_settings (key,value,updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at",
+            (key, value if value is not None else '', now),
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _table_columns(conn, table_name):
     cur = conn.cursor()
     cur.execute(
@@ -362,7 +416,7 @@ def build_full_backup():
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
         return {
-            'version': '0.5.5.1',
+            'version': '0.5.5.2',
             'database': 'postgres',
             'created_at': datetime.datetime.now().isoformat(),
             'tables': tables,
@@ -601,6 +655,94 @@ def api_retention_settings():
         return jsonify({'error': 'Admin only'}), 403
     return jsonify({'success': True, **hardcoded_map})
 
+@app.route('/api/settings/ui', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_ui_settings():
+    default_tabs = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
+    if request.method == 'GET':
+        raw = get_noc_setting('visible_tabs', '')
+        if not raw:
+            return jsonify({'visible_tabs': default_tabs})
+        try:
+            tabs = json.loads(raw)
+            if not isinstance(tabs, list):
+                raise ValueError('visible_tabs not a list')
+            tabs = [str(t) for t in tabs if str(t).strip()]
+            if not tabs:
+                tabs = default_tabs
+        except Exception:
+            tabs = default_tabs
+        return jsonify({'visible_tabs': tabs})
+
+    # POST: admin only
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+
+    data = request.json or {}
+    tabs = data.get('visible_tabs', [])
+    if not isinstance(tabs, list):
+        return jsonify({'error': 'visible_tabs must be a list'}), 400
+
+    allowed = set(['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'users', 'logs', 'ont'])
+    tabs = [str(t) for t in tabs if str(t) in allowed]
+    if not tabs:
+        tabs = default_tabs
+
+    ok = set_noc_setting('visible_tabs', json.dumps(tabs))
+    if not ok:
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+    return jsonify({'success': True, 'visible_tabs': tabs})
+
+
+@app.route('/api/settings/storage_stats', methods=['GET'])
+@login_required
+def api_storage_stats():
+    # Row counts + oldest/newest timestamps for each retention-managed dataset.
+    items = []
+    for table_name, column_name, _retention_days in get_retention_policies():
+        try:
+            rows = query_db(
+                AUTH_DB,
+                f"SELECT COUNT(*) AS count, MIN({column_name}) AS oldest, MAX({column_name}) AS newest FROM {table_name}",
+            )
+            r = rows[0] if rows else {}
+            items.append({
+                'table': table_name,
+                'column': column_name,
+                'count': int(r.get('count') or 0),
+                'oldest': r.get('oldest'),
+                'newest': r.get('newest'),
+            })
+        except Exception as e:
+            items.append({
+                'table': table_name,
+                'column': column_name,
+                'count': 0,
+                'oldest': None,
+                'newest': None,
+                'error': str(e),
+            })
+    return jsonify({'items': items})
+
+@app.route('/api/settings/security', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_security_settings():
+    if request.method == 'GET':
+        return jsonify({'session_timeout_minutes': _get_session_timeout_minutes()})
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    try:
+        m = int(d.get('session_timeout_minutes') or 0)
+    except Exception:
+        m = 0
+    if m not in (10, 30, 60):
+        return jsonify({'error': 'Invalid session_timeout_minutes'}), 400
+    ok = set_noc_setting('session_timeout_minutes', str(m))
+    if not ok:
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+    return jsonify({'success': True, 'session_timeout_minutes': m})
+
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 @app.route('/')
@@ -611,6 +753,81 @@ def index():
         content = f.read()
     from flask import Response
     return Response(content, mimetype='text/html')
+
+# ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
+@app.route('/api/logs/list')
+@login_required
+def api_logs_list():
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+    items = []
+    try:
+        for name in os.listdir(LOGS_DIR):
+            if not name.lower().endswith('.log'):
+                continue
+            safe = os.path.basename(name)
+            path = os.path.join(LOGS_DIR, safe)
+            try:
+                st = os.stat(path)
+            except Exception:
+                continue
+            items.append({
+                'name': safe,
+                'size': int(getattr(st, 'st_size', 0) or 0),
+                'mtime': datetime.datetime.fromtimestamp(getattr(st, 'st_mtime', time.time())).isoformat()
+            })
+    except Exception:
+        items = []
+
+    items.sort(key=lambda x: x.get('mtime', ''), reverse=True)
+    return jsonify(items)
+
+
+@app.route('/api/logs/read')
+@login_required
+def api_logs_read():
+    name = (request.args.get('name') or '').strip()
+    try:
+        tail = int(request.args.get('tail') or 500)
+    except Exception:
+        tail = 500
+    tail = min(max(tail, 50), 5000)
+
+    if not name:
+        return jsonify({'error': 'name required'}), 400
+    safe = os.path.basename(name)
+    if safe != name or not safe.lower().endswith('.log'):
+        return jsonify({'error': 'invalid log name'}), 400
+
+    path = os.path.abspath(os.path.join(LOGS_DIR, safe))
+    logs_root = os.path.abspath(LOGS_DIR)
+    if not path.startswith(logs_root):
+        return jsonify({'error': 'invalid path'}), 400
+    if not os.path.exists(path):
+        return jsonify({'error': 'log not found'}), 404
+
+    lines = deque(maxlen=tail)
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                lines.append(line.rstrip('\n'))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    try:
+        st = os.stat(path)
+        meta = {
+            'name': safe,
+            'size': int(getattr(st, 'st_size', 0) or 0),
+            'mtime': datetime.datetime.fromtimestamp(getattr(st, 'st_mtime', time.time())).isoformat()
+        }
+    except Exception:
+        meta = {'name': safe}
+
+    return jsonify({'meta': meta, 'tail': tail, 'lines': list(lines)})
 
 # ── SNMP TRAPS ────────────────────────────────────────────────────────────────
 @app.route('/api/traps')
@@ -679,7 +896,18 @@ def syslog_events():
     if h:
         sql += " AND olt_hostname=?"
         params = (h,)
-    sql += " ORDER BY timestamp DESC LIMIT 200"
+    try:
+        limit = int(request.args.get('limit') or 200)
+    except Exception:
+        limit = 200
+    try:
+        offset = int(request.args.get('offset') or 0)
+    except Exception:
+        offset = 0
+    limit = min(max(limit, 1), 500)
+    offset = max(offset, 0)
+    sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params = tuple(list(params) + [limit, offset])
     return jsonify(query_db(SYSLOG_DB, sql, params))
 
 @app.route('/api/syslog/onu_events')
@@ -956,6 +1184,61 @@ def email_diag():
         'pass_set':  bool(ec.get('smtp_pass','')),
         'issues':    issues
     })
+
+@app.route('/api/alerts/telegram_config', methods=['GET'])
+@login_required
+def get_telegram_cfg():
+    d = get_telegram_config() or {}
+    # Never echo token in full if present
+    token = d.get('bot_token', '') or ''
+    safe = token[:6] + '...' + token[-4:] if len(token) > 12 else token
+    return jsonify({
+        'bot_token': safe if token else '',
+        'chat_id': d.get('chat_id', '') or '',
+        'enabled': bool(d.get('enabled')),
+        'token_set': bool(token),
+    })
+
+
+@app.route('/api/alerts/telegram_config', methods=['POST'])
+@login_required
+def save_telegram_cfg():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    bot_token = (d.get('bot_token') or '').strip()
+    chat_id = (d.get('chat_id') or '').strip()
+    enabled = 1 if d.get('enabled') else 0
+
+    # Allow UI to send masked token; keep existing if looks masked
+    if '...' in bot_token:
+        cur = get_telegram_config() or {}
+        bot_token = cur.get('bot_token', '') or ''
+
+    execute_db(
+        AUTH_DB,
+        "UPDATE telegram_config SET bot_token=?, chat_id=?, enabled=? WHERE id=1",
+        (bot_token, chat_id, enabled),
+    )
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/test_telegram', methods=['POST'])
+@login_required
+def test_telegram():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    cur = get_telegram_config() or {}
+    if not cur.get('enabled'):
+        return jsonify({'success': False, 'error': 'Telegram is DISABLED. Enable it and save config.'})
+    if not cur.get('bot_token'):
+        return jsonify({'success': False, 'error': 'Bot token is empty. Save Telegram config first.'})
+    if not cur.get('chat_id'):
+        return jsonify({'success': False, 'error': 'Chat ID is empty. Save Telegram config first.'})
+
+    text = f"[SNOC] Test Alert\nTelegram alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
+    sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
+    return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
 
 @app.route('/api/alerts/rules', methods=['GET'])
 @login_required
@@ -1561,6 +1844,48 @@ def get_uplink_stats():
     params.append(limit)
     return jsonify(query_db(OLT_DB, sql, params))
 
+@app.route('/api/olt/uplink_aggregate', methods=['GET'])
+@login_required
+def get_uplink_aggregate():
+    ip = request.args.get('ip', '')
+    iface = request.args.get('interface', '')
+    rng = (request.args.get('range') or 'day').strip().lower()
+    if rng not in ('day', 'week', 'month'):
+        rng = 'day'
+
+    now = datetime.datetime.now()
+    if rng == 'day':
+        cutoff = now - datetime.timedelta(days=1)
+        bucket = 'hour'
+    elif rng == 'week':
+        cutoff = now - datetime.timedelta(days=7)
+        bucket = 'day'
+    else:
+        cutoff = now - datetime.timedelta(days=30)
+        bucket = 'day'
+
+    sql = f"""SELECT
+        DATE_TRUNC('{bucket}', poll_time::timestamp) AS poll_time,
+        olt_ip,
+        COALESCE(interface, '') AS interface,
+        AVG(COALESCE(in_mbps,0))  AS in_mbps,
+        AVG(COALESCE(out_mbps,0)) AS out_mbps,
+        COUNT(*) AS samples
+      FROM uplink_stats
+      WHERE olt_ip=? AND poll_time >= ?"""
+    params = [ip, cutoff.replace(microsecond=0).isoformat()]
+    if iface:
+        sql += " AND interface=?"
+        params.append(iface)
+    sql += " GROUP BY poll_time, olt_ip, interface ORDER BY poll_time ASC"
+    rows = query_db(OLT_DB, sql, params)
+    # Normalize poll_time into ISO strings (pg may return datetime)
+    for r in rows:
+        pt = r.get('poll_time')
+        if hasattr(pt, 'isoformat'):
+            r['poll_time'] = pt.replace(microsecond=0).isoformat()
+    return jsonify(rows)
+
 @app.route('/api/olt/uplink_latest', methods=['GET'])
 @login_required
 def get_uplink_latest():
@@ -1693,7 +2018,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print("  SimpleNOC v0.5.5.1  –  Starting servers")
+    print("  SimpleNOC v0.5.5.2  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

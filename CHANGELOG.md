@@ -2,6 +2,25 @@
 
 ---
 
+## v0.5.5.2 — Dashboard UX, Logs/ONT, Telegram, Paging
+**Pre-release:** 2026-04-06
+
+### Added
+- **Dashboard Settings** — Global **Visible tabs** control (admin) to show/hide main tabs for all users.
+- **Logs tab** — View and search recent lines from `logs/*.log` directly in the dashboard.
+- **ONT tab** — Search ONU/ONT history by serial number and graph Rx power over time.
+- **Telegram alerts** — Bot Token + Chat ID setup, plus “Send Test” button (admin).
+- **Syslog events paging** — Next/Prev controls for OLT Uplink & Login Events.
+- **Uplink history ranges** — Daily/Weekly/Monthly aggregated history with date+time labels.
+- **Settings storage stats** — Row counts + oldest/newest timestamps per retention-managed dataset.
+- **Session timeout** — Admin-configured auto-logout (10/30/60 minutes).
+
+### Changed
+- **Syslog counters** — Login/Uplink counters now reflect the events feed, not only the last 200 syslog messages.
+- **OLT Connect** — Raw Output Diagnostics removed from UI.
+
+---
+
 ## v0.5.5.1 — UI / appearance (pre-release)
 **Pre-release:** 2026-04-04
 

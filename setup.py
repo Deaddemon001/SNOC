@@ -1,11 +1,11 @@
 """
-Simple NOC v0.5.5.1 - Setup & Installer
+Simple NOC v0.5.5.2 - Setup & Installer
 Run as Administrator: python setup.py
 """
 import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 
 APP_NAME    = "SimpleNOC"
-APP_VERSION = "0.5.5.1"
+APP_VERSION = "0.5.5.2"
 INSTALL_DIR = r"C:\SimpleNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
@@ -66,7 +66,7 @@ BANNER = r"""
   ___) | | | | | | | |_) | |  __/ | |\  | |_| | |___
  |____/|_|_| |_| |_| .__/|_|\___| |_| \_|\___/ \____|
                     |_|
-         v0.5.5.1 - Network Operations Center
+         v0.5.5.2 - Network Operations Center
 """
 
 def is_admin():

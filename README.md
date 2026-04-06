@@ -1,6 +1,6 @@
-# SimpleNOC v0.5.5.1
+# SimpleNOC v0.5.5.2
 
-**v0.5.5.1** is a focused on **dashboard UI and appearance** (theme contrast, Settings for database retention, Refresh behavior, uplink card readability). Core behavior matches **v0.5.5** unless noted in [CHANGELOG.md](CHANGELOG.md).
+**v0.5.5.2** adds **tab visibility controls**, a **Logs** tab, an **ONT** lookup tab, **Telegram alerts**, syslog event paging, uplink history ranges, storage stats, and a configurable session timeout. See [CHANGELOG.md](CHANGELOG.md).
 
 SimpleNOC is a Windows-focused Network Operations Center application for small ISP and OLT operations. It provides a web dashboard, SNMP trap collection, syslog collection, TFTP backup intake, OLT polling, ping monitoring, and alerting on top of a PostgreSQL backend.
 
