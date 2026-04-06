@@ -2158,8 +2158,17 @@
                 style="resize:vertical;font-family:'Share Tech Mono',monospace;font-size:11px"
                 placeholder="Uplink-port&#10;Down"></textarea>
             </div>
-            <div><label class="flabel">SEND ALERT TO EMAIL</label><input id="alToEmail" class="finp"
-                placeholder="admin@yourdomain.com" /></div>
+            <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
+              <div><label class="flabel">SEND ALERT TO (Email)</label><input id="alToEmail" class="finp"
+                  placeholder="admin@yourdomain.com" /></div>
+              <div><label class="flabel">NOTIFY VIA</label>
+                <select id="alNotifyVia" class="finp">
+                  <option value="both" selected>Both</option>
+                  <option value="email">Email</option>
+                  <option value="telegram">Telegram</option>
+                </select>
+              </div>
+            </div>
             <div id="alRuleMsg" class="smsg"></div>
             <button class="rb" style="padding:9px;font-size:13px" onclick="addAlertRule()">+ Add Rule</button>
           </div>
@@ -2722,7 +2731,8 @@
         items.forEach(function (it) {
           var oldest = it.oldest ? new Date(it.oldest).toLocaleString() : '—';
           var newest = it.newest ? new Date(it.newest).toLocaleString() : '—';
-          lines.push((it.table || '—') + ': ' + (it.count || 0) + ' rows | oldest ' + oldest + ' | newest ' + newest);
+          var size = it.size_mb ? ' (' + it.size_mb + ')' : '';
+          lines.push((it.table || '—') + size + ': ' + (it.count || 0) + ' rows | oldest ' + oldest + ' | newest ' + newest);
         });
         box.textContent = lines.join('\n');
       }).catch(function () {
@@ -3167,7 +3177,7 @@
           { html: '<span style="color:var(--text);font-weight:700">' + r.name + '</span>' },
           { html: '<span class="b bc">' + (r.host_match || 'any') + '</span>' },
           { html: '<span class="mono" style="font-size:10px;color:var(--accent3)">' + (r.text_match || '').replace(/\n/g, '<br>') + '</span>' },
-          { text: r.to_email || '—', cls: 'mu' },
+          { text: (r.to_email || '—') + ' (' + (r.notify_via || 'both') + ')', cls: 'mu' },
           { html: '<span style="color:var(--warn)">' + (r.hit_count || 0) + '</span>' },
           { html: '<span class="mu" style="font-size:10px">' + lastHit + '</span>' },
           { html: r.enabled ? '<span class="b bg">ACTIVE</span>' : '<span class="b bx">OFF</span>' },
@@ -3287,11 +3297,16 @@
       var host_match = document.getElementById('alHostMatch').value.trim();
       var text_match = document.getElementById('alTextMatch').value.trim();
       var to_email = document.getElementById('alToEmail').value.trim();
-      if (!name || !text_match || !to_email) {
-        showMsg('alRuleMsg', 'Rule name, text match and email are required', false);
+      var notify_via = document.getElementById('alNotifyVia') ? document.getElementById('alNotifyVia').value : 'both';
+      if (!name || !text_match) {
+        showMsg('alRuleMsg', 'Rule name and text match are required', false);
         return;
       }
-      apiPost('/api/alerts/rules/add', { name: name, host_match: host_match, text_match: text_match, to_email: to_email })
+      if ((notify_via === 'email' || notify_via === 'both') && !to_email) {
+        showMsg('alRuleMsg', 'Email is required when alerting via Email', false);
+        return;
+      }
+      apiPost('/api/alerts/rules/add', { name: name, host_match: host_match, text_match: text_match, to_email: to_email, notify_via: notify_via })
         .then(function (r) {
           if (r.success) {
             showMsg('alRuleMsg', 'Rule added!', true);
@@ -3299,6 +3314,7 @@
             document.getElementById('alHostMatch').value = '';
             document.getElementById('alTextMatch').value = '';
             document.getElementById('alToEmail').value = '';
+            if (document.getElementById('alNotifyVia')) document.getElementById('alNotifyVia').value = 'both';
             loadAlerts();
           } else { showMsg('alRuleMsg', r.error || 'Failed', false); }
         });

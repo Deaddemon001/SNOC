@@ -705,14 +705,19 @@ def api_storage_stats():
                 AUTH_DB,
                 f"SELECT COUNT(*) AS count, MIN({column_name}) AS oldest, MAX({column_name}) AS newest FROM {table_name}",
             )
+            size_rows = query_db(AUTH_DB, f"SELECT pg_total_relation_size('{table_name}') AS size_bytes")
             r = rows[0] if rows else {}
+            s = size_rows[0] if size_rows else {}
+            size_mb = f"{s.get('size_bytes', 0) / (1024 * 1024):.1f} MB" if s.get('size_bytes') is not None else "0.0 MB"
             items.append({
                 'table': table_name,
                 'column': column_name,
                 'count': int(r.get('count') or 0),
+                'size_mb': size_mb,
                 'oldest': r.get('oldest'),
                 'newest': r.get('newest'),
             })
+
         except Exception as e:
             items.append({
                 'table': table_name,
@@ -946,7 +951,7 @@ def onu_history():
         return jsonify({'error': 'serial_no required'}), 400
     # Return last 100 snapshots for this ONU
     return jsonify(query_db(OLT_DB,
-        "SELECT * FROM onu_history WHERE serial_no=? ORDER BY poll_time DESC LIMIT 100", (sn,)))
+        "SELECT * FROM onu_data WHERE serial_no=? ORDER BY poll_time DESC LIMIT 100", (sn,)))
 
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
 @app.route('/api/syslog/devices')
@@ -1254,10 +1259,11 @@ def add_alert_rule():
     d = request.json or {}
     if not d.get('name') or not d.get('text_match'):
         return jsonify({'error': 'name and text_match required'}), 400
+    notify_via = d.get('notify_via', 'both')
     execute_db(AUTH_DB,
-        "INSERT INTO alert_rules (name,host_match,text_match,to_email,enabled,created_at) VALUES (?,?,?,?,1,?)",
+        "INSERT INTO alert_rules (name,host_match,text_match,to_email,notify_via,enabled,created_at) VALUES (?,?,?,?,?,1,?)",
         (d['name'], d.get('host_match',''), d['text_match'],
-         d.get('to_email',''), datetime.datetime.now().isoformat()))
+         d.get('to_email',''), notify_via, datetime.datetime.now().isoformat()))
     return jsonify({'success': True})
 
 

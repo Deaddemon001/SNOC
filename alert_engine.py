@@ -40,11 +40,16 @@ def init_alert_db():
         host_match  TEXT DEFAULT '',
         text_match  TEXT DEFAULT '',
         to_email    TEXT DEFAULT '',
+        notify_via  TEXT DEFAULT 'both',
         enabled     INTEGER DEFAULT 1,
         created_at  TEXT,
         hit_count   INTEGER DEFAULT 0,
         last_hit    TEXT
     )''')
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN notify_via TEXT DEFAULT 'both'")
+    except Exception:
+        pass
 
     execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS email_template (
         id      INTEGER PRIMARY KEY,
@@ -224,10 +229,11 @@ def process_alert(hostname, message, timestamp):
             rule, hostname, '', message, timestamp, '')
         sent = False
         error = ""
-        if email_enabled:
+        notify_via = rule.get('notify_via') or 'both'
+        if email_enabled and notify_via in ('email', 'both'):
             sent, error = send_email(rule['to_email'], subject, body, ec)
 
-        if tg_enabled:
+        if tg_enabled and notify_via in ('telegram', 'both'):
             tg_text = subject + "\n\n" + body
             tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
             if not tg_sent and not error:
