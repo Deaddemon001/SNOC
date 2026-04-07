@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SNOC v0.5.5.1</title>
+  <title>SNOC v0.5.5.2</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2146,14 +2146,25 @@
         <div class="panel">
           <div class="ph">
             <div class="pt">Add Alert Rule</div>
-            <div class="pb2">Host + Text = Email</div>
+            <div class="pb2">Syslog or Ping Monitor notifications</div>
           </div>
           <div class="pb" style="display:grid;gap:10px">
             <div><label class="flabel">RULE NAME</label><input id="alRuleName" class="finp"
                 placeholder="e.g. BSNL_TMG Uplink Alert" /></div>
+            <div><label class="flabel">ALERT SOURCE</label>
+              <select id="alSourceType" class="finp" onchange="updateAlertRuleSourceUI()">
+                <option value="syslog" selected>Syslog</option>
+                <option value="ping">Ping Monitor Offline</option>
+              </select>
+            </div>
             <div><label class="flabel">HOST MATCH (leave empty = all hosts)</label><input id="alHostMatch" class="finp"
                 placeholder="e.g. BSNL_TMG" /></div>
-            <div><label class="flabel">TEXT CONTAINS (one per line = AND logic)</label>
+            <div><label class="flabel">EXCLUDE HOSTS / IPS</label>
+              <textarea id="alExcludeHosts" class="finp" rows="2"
+                style="resize:vertical;font-family:'Share Tech Mono',monospace;font-size:11px"
+                placeholder="One per line or comma-separated"></textarea>
+            </div>
+            <div id="alTextMatchWrap"><label class="flabel">TEXT CONTAINS (one per line = AND logic)</label>
               <textarea id="alTextMatch" class="finp" rows="3"
                 style="resize:vertical;font-family:'Share Tech Mono',monospace;font-size:11px"
                 placeholder="Uplink-port&#10;Down"></textarea>
@@ -2185,7 +2196,9 @@
               <tr>
                 <th>#</th>
                 <th>Rule Name</th>
+                <th>Source</th>
                 <th>Host Match</th>
+                <th>Exclude</th>
                 <th>Text Contains</th>
                 <th>Send To</th>
                 <th>Hits</th>
@@ -2196,7 +2209,7 @@
             </thead>
             <tbody id="alRulesTable">
               <tr>
-                <td colspan="9">
+                <td colspan="11">
                   <div class="empty">No rules yet.</div>
                 </td>
               </tr>
@@ -2362,6 +2375,7 @@
 
   <div id="settingsModal" class="modal-overlay" onclick="onSettingsOverlayClick(event)">
     <div class="modal-panel" role="dialog" aria-labelledby="settingsModalTitle">
+      <div id="settingsAdminSections">
       <h3 id="settingsModalTitle">Settings — Database retention</h3>
       <p class="set-note">Days to keep data before automatic cleanup (hourly). Use 0 to disable pruning for a category.
         Defaults from <span class="mu">noc_config.py</span> apply until you save overrides here. Max 3650 days.</p>
@@ -2396,6 +2410,14 @@
       <div id="portSettingsMsg" class="smsg"></div>
 
       <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
+      <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Admin Users - Enabled tabs</h3>
+      <p class="set-note" style="margin-top:0">Choose which product tabs are available for users. User-specific permissions can only use tabs enabled here.</p>
+      <div id="settingsVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+      <div id="settingsTabsMsg" class="smsg"></div>
+      </div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
+      <div id="settingsSessionSection">
       <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Security — Session timeout</h3>
       <p class="set-note" style="margin-top:0">Automatically log out inactive sessions after the selected time.</p>
       <div class="set-row">
@@ -2407,11 +2429,13 @@
         </select>
       </div>
       <div id="sessionTimeoutMsg" class="smsg"></div>
+      </div>
 
       <div id="settingsModalMsg"></div>
       <div class="modal-actions">
         <button class="ubtn" type="button" onclick="closeSettingsModal()">Close</button>
         <button class="ubtn" type="button" id="portsSaveBtn" style="display:none" onclick="savePortSettings()">Save Ports</button>
+        <button class="ubtn" type="button" id="settingsTabsSaveBtn" style="display:none" onclick="saveVisibleTabSettings()">Save Tabs</button>
         <button class="ubtn" type="button" id="timeoutSaveBtn" style="display:none" onclick="saveSessionTimeout()">Save Timeout</button>
         <button class="rbtn" type="button" id="settingsSaveBtn" onclick="saveRetentionSettings()">Save</button>
       </div>
@@ -2425,6 +2449,7 @@
     var currentUsername = '';
     var currentRole = '';
     var currentVisibleTabs = [];
+    var globalVisibleTabs = getDefaultTabsForRole('viewer');
     var currentPortSettings = {};
     var editingUsername = '';
 
@@ -2450,6 +2475,9 @@
       { id: 'logs', label: 'Logs' },
       { id: 'ont', label: 'ONT' }
     ];
+    var SETTINGS_TAB_OPTIONS = USER_TAB_OPTIONS.filter(function (tab) {
+      return tab.id !== 'users' && tab.id !== 'logs';
+    });
 
     // ── HELPERS ───────────────────────────────────────────────────────────────────
     function apiFetch(url, opts) {
@@ -2520,6 +2548,16 @@
       box.innerHTML = html;
     }
 
+    function renderSettingsTabCheckboxes() {
+      var box = document.getElementById('settingsVisibleTabs');
+      if (!box) return;
+      var html = '';
+      SETTINGS_TAB_OPTIONS.forEach(function (tab) {
+        html += '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" value="' + tab.id + '" /> ' + tab.label + '</label>';
+      });
+      box.innerHTML = html;
+    }
+
     function setUserTabSelections(containerId, tabs) {
       if (!Array.isArray(tabs) || !tabs.length) tabs = getDefaultTabsForRole('viewer');
       var box = document.getElementById(containerId);
@@ -2537,6 +2575,9 @@
           if (cb.checked) tabs.push(cb.value);
         });
       }
+      tabs = tabs.filter(function (tab) {
+        return role === 'admin' ? (globalVisibleTabs.indexOf(tab) !== -1 || tab === 'users' || tab === 'logs') : (globalVisibleTabs.indexOf(tab) !== -1);
+      });
       if (!tabs.length) tabs = getDefaultTabsForRole(role);
       if (role === 'admin') {
         ['users', 'logs'].forEach(function (tab) {
@@ -2544,6 +2585,36 @@
         });
       }
       return tabs;
+    }
+
+    function setSettingsTabSelections(tabs) {
+      var box = document.getElementById('settingsVisibleTabs');
+      if (!box) return;
+      box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.checked = tabs.indexOf(cb.value) !== -1;
+      });
+    }
+
+    function getSettingsTabSelections() {
+      var box = document.getElementById('settingsVisibleTabs');
+      var tabs = [];
+      if (!box) return tabs;
+      box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        if (cb.checked) tabs.push(cb.value);
+      });
+      if (!tabs.length) tabs = getDefaultTabsForRole('viewer');
+      return tabs;
+    }
+
+    function syncUserTabAvailability(containerId, role) {
+      var box = document.getElementById(containerId);
+      if (!box) return;
+      box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        var alwaysAllowed = role === 'admin' && (cb.value === 'users' || cb.value === 'logs');
+        var enabled = alwaysAllowed || globalVisibleTabs.indexOf(cb.value) !== -1;
+        cb.disabled = !enabled;
+        if (!enabled) cb.checked = false;
+      });
     }
 
     // ── TABS ──────────────────────────────────────────────────────────────────────
@@ -2790,11 +2861,17 @@
       modal.classList.add('show');
       var saveBtn = document.getElementById('settingsSaveBtn');
       var portsBtn = document.getElementById('portsSaveBtn');
+      var tabsBtn = document.getElementById('settingsTabsSaveBtn');
       var timeoutBtn = document.getElementById('timeoutSaveBtn');
+      var adminSections = document.getElementById('settingsAdminSections');
+      var sessionSection = document.getElementById('settingsSessionSection');
       var admin = currentRole === 'admin';
       if (saveBtn) saveBtn.style.display = admin ? 'inline-block' : 'none';
       if (portsBtn) portsBtn.style.display = admin ? 'inline-block' : 'none';
-      if (timeoutBtn) timeoutBtn.style.display = admin ? 'inline-block' : 'none';
+      if (tabsBtn) tabsBtn.style.display = admin ? 'inline-block' : 'none';
+      if (timeoutBtn) timeoutBtn.style.display = 'inline-block';
+      if (adminSections) adminSections.style.display = admin ? 'block' : 'none';
+      if (sessionSection) sessionSection.style.display = 'block';
       RETENTION_KEY_IDS.forEach(function (k) {
         var inp = document.getElementById(k);
         if (inp) inp.readOnly = !admin;
@@ -2804,7 +2881,7 @@
         if (inp) inp.readOnly = !admin;
       });
       var toSel = document.getElementById('session_timeout_minutes');
-      if (toSel) toSel.disabled = !admin;
+      if (toSel) toSel.disabled = false;
       apiFetch('/api/settings/retention').then(function (m) {
         RETENTION_KEY_IDS.forEach(function (k) {
           var inp = document.getElementById(k);
@@ -2845,6 +2922,19 @@
         if (!sel) return;
         var v = String(d.session_timeout_minutes || 30);
         sel.value = v;
+      }).catch(function () { /* ignore */ });
+
+      apiFetch('/api/settings/ui').then(function (d) {
+        globalVisibleTabs = Array.isArray(d.visible_tabs) ? d.visible_tabs.slice() : getDefaultTabsForRole('viewer');
+        setSettingsTabSelections(globalVisibleTabs);
+        var settingsBox = document.getElementById('settingsVisibleTabs');
+        if (settingsBox) {
+          settingsBox.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+            cb.disabled = !admin;
+          });
+        }
+        syncUserTabAvailability('nuVisibleTabs', document.getElementById('nuRole').value);
+        syncUserTabAvailability('euVisibleTabs', document.getElementById('euRole').value);
       }).catch(function () { /* ignore */ });
     }
 
@@ -2904,7 +2994,6 @@
     }
 
     function saveSessionTimeout() {
-      if (currentRole !== 'admin') return;
       var sel = document.getElementById('session_timeout_minutes');
       var msg = document.getElementById('sessionTimeoutMsg');
       var v = sel ? parseInt(sel.value, 10) : 30;
@@ -2917,6 +3006,25 @@
       }).catch(function (e) {
         if (e.message === '401') return;
         if (msg) showMsg('sessionTimeoutMsg', e.message || 'Save failed', false, true);
+      });
+    }
+
+    function saveVisibleTabSettings() {
+      if (currentRole !== 'admin') return;
+      var tabs = getSettingsTabSelections();
+      apiPost('/api/settings/ui', { visible_tabs: tabs }).then(function (r) {
+        globalVisibleTabs = Array.isArray(r.visible_tabs) ? r.visible_tabs.slice() : tabs.slice();
+        setSettingsTabSelections(globalVisibleTabs);
+        syncUserTabAvailability('nuVisibleTabs', document.getElementById('nuRole').value);
+        syncUserTabAvailability('euVisibleTabs', document.getElementById('euRole').value);
+        currentVisibleTabs = currentVisibleTabs.filter(function (tab) {
+          return globalVisibleTabs.indexOf(tab) !== -1 || tab === 'users' || tab === 'logs';
+        });
+        applyVisibleTabs(currentVisibleTabs);
+        showMsg('settingsTabsMsg', 'Visible tabs saved.', true, true);
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        showMsg('settingsTabsMsg', e.message || 'Save failed', false, true);
       });
     }
 
@@ -3249,17 +3357,20 @@
       var tb = document.getElementById('alRulesTable');
       tb.innerHTML = '';
       if (!rules.length) {
-        tb.innerHTML = '<tr><td colspan="9"><div class="empty">No rules yet. Add one above.</div></td></tr>';
+        tb.innerHTML = '<tr><td colspan="11"><div class="empty">No rules yet. Add one above.</div></td></tr>';
         return;
       }
       rules.forEach(function (r) {
         var tr = document.createElement('tr');
         var lastHit = r.last_hit ? new Date(r.last_hit).toLocaleString() : 'Never';
+        var sourceLabel = (r.source_type || 'syslog') === 'ping' ? 'PING OFFLINE' : 'SYSLOG';
 
         var cells = [
           { text: r.id, cls: 'mu' },
           { html: '<span style="color:var(--text);font-weight:700">' + r.name + '</span>' },
+          { html: '<span class="b bc">' + sourceLabel + '</span>' },
           { html: '<span class="b bc">' + (r.host_match || 'any') + '</span>' },
+          { html: '<span class="mono" style="font-size:10px;color:var(--muted)">' + ((r.exclude_hosts || '').replace(/\n/g, '<br>') || '—') + '</span>' },
           { html: '<span class="mono" style="font-size:10px;color:var(--accent3)">' + (r.text_match || '').replace(/\n/g, '<br>') + '</span>' },
           { text: (r.to_email || '—') + ' (' + (r.notify_via || 'both') + ')', cls: 'mu' },
           { html: '<span style="color:var(--warn)">' + (r.hit_count || 0) + '</span>' },
@@ -3378,30 +3489,49 @@
 
     function addAlertRule() {
       var name = document.getElementById('alRuleName').value.trim();
+      var source_type = document.getElementById('alSourceType').value;
       var host_match = document.getElementById('alHostMatch').value.trim();
+      var exclude_hosts = document.getElementById('alExcludeHosts').value.trim();
       var text_match = document.getElementById('alTextMatch').value.trim();
       var to_email = document.getElementById('alToEmail').value.trim();
       var notify_via = document.getElementById('alNotifyVia') ? document.getElementById('alNotifyVia').value : 'both';
-      if (!name || !text_match) {
-        showMsg('alRuleMsg', 'Rule name and text match are required', false);
+      if (!name) {
+        showMsg('alRuleMsg', 'Rule name is required', false);
+        return;
+      }
+      if (source_type === 'syslog' && !text_match) {
+        showMsg('alRuleMsg', 'Text match is required for syslog alerts', false);
         return;
       }
       if ((notify_via === 'email' || notify_via === 'both') && !to_email) {
         showMsg('alRuleMsg', 'Email is required when alerting via Email', false);
         return;
       }
-      apiPost('/api/alerts/rules/add', { name: name, host_match: host_match, text_match: text_match, to_email: to_email, notify_via: notify_via })
+      apiPost('/api/alerts/rules/add', { name: name, source_type: source_type, host_match: host_match, exclude_hosts: exclude_hosts, text_match: text_match, to_email: to_email, notify_via: notify_via })
         .then(function (r) {
           if (r.success) {
             showMsg('alRuleMsg', 'Rule added!', true);
             document.getElementById('alRuleName').value = '';
+            document.getElementById('alSourceType').value = 'syslog';
             document.getElementById('alHostMatch').value = '';
+            document.getElementById('alExcludeHosts').value = '';
             document.getElementById('alTextMatch').value = '';
             document.getElementById('alToEmail').value = '';
             if (document.getElementById('alNotifyVia')) document.getElementById('alNotifyVia').value = 'both';
+            updateAlertRuleSourceUI();
             loadAlerts();
           } else { showMsg('alRuleMsg', r.error || 'Failed', false); }
         });
+    }
+
+    function updateAlertRuleSourceUI() {
+      var source = document.getElementById('alSourceType') ? document.getElementById('alSourceType').value : 'syslog';
+      var wrap = document.getElementById('alTextMatchWrap');
+      var host = document.getElementById('alHostMatch');
+      var text = document.getElementById('alTextMatch');
+      if (wrap) wrap.style.display = source === 'syslog' ? 'block' : 'none';
+      if (host) host.placeholder = source === 'ping' ? 'Optional host label or IP filter' : 'e.g. BSNL_TMG';
+      if (text) text.placeholder = source === 'syslog' ? 'Uplink-port\nDown' : '';
     }
 
     function deleteAlertRule(id) {
@@ -3486,7 +3616,7 @@
         apiFetch('/api/auth/users').catch(function () { return []; })
       ]).then(function (results) {
         var backup = {
-          version: '0.5.5.1',
+          version: '0.5.5.2',
           created_at: new Date().toISOString(),
           email_config: results[0],
           alert_rules: results[1],
@@ -3541,9 +3671,12 @@
                 return Promise.all(backup.alert_rules.map(function (r) {
                   return apiPost('/api/alerts/rules/add', {
                     name: r.name,
+                    source_type: r.source_type || 'syslog',
                     host_match: r.host_match,
+                    exclude_hosts: r.exclude_hosts || '',
                     text_match: r.text_match,
-                    to_email: r.to_email
+                    to_email: r.to_email,
+                    notify_via: r.notify_via || 'both'
                   });
                 }));
               })
@@ -5276,16 +5409,25 @@
       apiFetch('/api/auth/me').then(function (d) {
         currentUsername = d.username;
         currentRole = d.role;
-        currentVisibleTabs = Array.isArray(d.visible_tabs) ? d.visible_tabs.slice() : getDefaultTabsForRole(d.role);
+        globalVisibleTabs = Array.isArray(d.global_visible_tabs) ? d.global_visible_tabs.slice() : getDefaultTabsForRole('viewer');
+        currentVisibleTabs = Array.isArray(d.effective_visible_tabs) ? d.effective_visible_tabs.slice() : getDefaultTabsForRole(d.role);
         document.getElementById('currentUser').textContent = d.username;
         document.getElementById('currentRole').textContent = roleLabel(d.role);
         applyVisibleTabs(currentVisibleTabs);
+        setSettingsTabSelections(globalVisibleTabs);
+        syncUserTabAvailability('nuVisibleTabs', document.getElementById('nuRole').value);
+        syncUserTabAvailability('euVisibleTabs', document.getElementById('euRole').value);
         if (d.role === 'admin') {
-          document.getElementById('usersBtn').style.display = 'block';
-          document.getElementById('usersTab').style.display = 'block';
-          document.getElementById('addUserPanel').style.display = 'block';
-          document.getElementById('userListPanel').style.display = 'block';
-          document.getElementById('editUserPanel').style.display = 'block';
+          var usersBtn = document.getElementById('usersBtn');
+          var usersTabBtn = document.getElementById('tab-btn-users');
+          var addUserPanel = document.getElementById('addUserPanel');
+          var userListPanel = document.getElementById('userListPanel');
+          var editUserPanel = document.getElementById('editUserPanel');
+          if (usersBtn) usersBtn.style.display = 'block';
+          if (usersTabBtn) usersTabBtn.style.display = 'block';
+          if (addUserPanel) addUserPanel.style.display = 'block';
+          if (userListPanel) userListPanel.style.display = 'block';
+          if (editUserPanel) editUserPanel.style.display = 'block';
         }
       }).catch(function () { });
     }
@@ -5324,14 +5466,15 @@
       if (!username || !password) { showMsg('nuMsg', 'All fields required', false); return; }
       apiPost('/api/auth/users/add', { username: username, password: password, role: role, visible_tabs: visibleTabs })
         .then(function (d) {
-          if (d.success) {
-            showMsg('nuMsg', 'User created: ' + username, true);
-            document.getElementById('nuUsername').value = '';
-            document.getElementById('nuPassword').value = '';
-            document.getElementById('nuRole').value = 'viewer';
-            setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
-            loadUsers();
-          } else { showMsg('nuMsg', d.error || 'Failed', false); }
+      if (d.success) {
+        showMsg('nuMsg', 'User created: ' + username, true);
+        document.getElementById('nuUsername').value = '';
+        document.getElementById('nuPassword').value = '';
+        document.getElementById('nuRole').value = 'viewer';
+        setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
+        syncUserTabAvailability('nuVisibleTabs', 'viewer');
+        loadUsers();
+      } else { showMsg('nuMsg', d.error || 'Failed', false); }
         });
     }
 
@@ -5345,6 +5488,7 @@
       document.getElementById('euUsername').value = editingUsername;
       document.getElementById('euRole').value = user.role || 'viewer';
       setUserTabSelections('euVisibleTabs', user.visible_tabs || getDefaultTabsForRole(user.role || 'viewer'));
+      syncUserTabAvailability('euVisibleTabs', user.role || 'viewer');
       showMsg('euMsg', 'Editing ' + editingUsername, true, true);
     }
 
@@ -5359,7 +5503,9 @@
           showMsg('euMsg', 'User updated: ' + username, true, true);
           if (username === currentUsername) {
             currentRole = d.role;
-            currentVisibleTabs = d.visible_tabs || currentVisibleTabs;
+            currentVisibleTabs = (d.visible_tabs || currentVisibleTabs).filter(function (tab) {
+              return globalVisibleTabs.indexOf(tab) !== -1 || tab === 'users' || tab === 'logs';
+            });
             document.getElementById('currentRole').textContent = roleLabel(currentRole);
             applyVisibleTabs(currentVisibleTabs);
           }
@@ -5436,6 +5582,7 @@
 
     // ── PING ──────────────────────────────────────────────────────────────────────
     function addPingTarget() {
+      if (currentRole !== 'admin') { alert('Admin only'); return; }
       var ip = document.getElementById('pingIpInput').value.trim();
       var name = document.getElementById('pingNameInput').value.trim();
       if (!ip) { alert('Please enter an IP address'); return; }
@@ -5455,11 +5602,13 @@
     }
 
     function removePingTarget(ip) {
+      if (currentRole !== 'admin') { alert('Admin only'); return; }
       if (!confirm('Remove ' + ip + '?')) return;
       apiPost('/api/ping/remove', { ip: ip }).then(function () { fetchPing(); });
     }
 
     function renamePingTarget(ip) {
+      if (currentRole !== 'admin') { alert('Admin only'); return; }
       var mid = ip.replace(/\./g, '_');
       var inp = document.getElementById('pinp_' + mid);
       if (!inp || !inp.value.trim()) return;
@@ -5651,6 +5800,12 @@
       tdAct.style.textAlign = 'center';
       tdAct.onclick = function (e) { e.stopPropagation(); };
 
+      if (currentRole !== 'admin') {
+        tdAct.innerHTML = '<span class="mu" style="font-size:10px">View only</span>';
+        tr.appendChild(tdAct);
+        return tr;
+      }
+
       var renBtn = document.createElement('button');
       renBtn.className = 'rb';
       renBtn.style.cssText = 'font-size:9px;padding:3px 7px;margin-right:4px';
@@ -5687,6 +5842,16 @@
     // ── FETCH PING ────────────────────────────────────────────────────────────────
     function fetchPing() {
       apiFetch('/api/ping/targets').then(function (targets) {
+        var pingAddBtn = document.getElementById('pingAddBtn');
+        var pingIpInput = document.getElementById('pingIpInput');
+        var pingNameInput = document.getElementById('pingNameInput');
+        var canManagePing = currentRole === 'admin';
+        if (pingAddBtn) {
+          pingAddBtn.disabled = !canManagePing;
+          pingAddBtn.textContent = canManagePing ? '+ ADD' : 'VIEW ONLY';
+        }
+        if (pingIpInput) pingIpInput.disabled = !canManagePing;
+        if (pingNameInput) pingNameInput.disabled = !canManagePing;
         document.getElementById('pingOnline').textContent = targets.filter(function (t) { return t.status === 'online'; }).length;
         document.getElementById('pingOffline').textContent = targets.filter(function (t) { return t.status === 'offline'; }).length;
         document.getElementById('pingHighLat').textContent = targets.filter(function (t) { return t.latency_ms && t.latency_ms > 100; }).length;
@@ -5898,13 +6063,17 @@
     loadTabOrder();
     renderUserTabCheckboxes('nuVisibleTabs');
     renderUserTabCheckboxes('euVisibleTabs');
+    renderSettingsTabCheckboxes();
+    updateAlertRuleSourceUI();
     setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
     setUserTabSelections('euVisibleTabs', getDefaultTabsForRole('viewer'));
     document.getElementById('nuRole').addEventListener('change', function () {
       setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole(this.value));
+      syncUserTabAvailability('nuVisibleTabs', this.value);
     });
     document.getElementById('euRole').addEventListener('change', function () {
       setUserTabSelections('euVisibleTabs', getDefaultTabsForRole(this.value));
+      syncUserTabAvailability('euVisibleTabs', this.value);
     });
     apiFetch('/api/settings/ports').then(function (p) {
       currentPortSettings = p || {};

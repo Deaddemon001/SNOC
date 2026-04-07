@@ -13,7 +13,7 @@ app.config['SESSION_COOKIE_SECURE']   = False
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 CORS(app, supports_credentials=True)
 
-from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram
+from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, process_ping_alert
 
 HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
@@ -41,6 +41,7 @@ LOGS_DIR   = os.path.join(BASE_DIR, "logs")
 
 DEFAULT_VISIBLE_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
 ALL_VISIBLE_TABS = DEFAULT_VISIBLE_TABS + ['users', 'logs', 'ont']
+GLOBAL_SETTINGS_TABS = DEFAULT_VISIBLE_TABS + ['ont']
 
 # Ensure all tables exist
 try:
@@ -193,6 +194,13 @@ def hash_password(password, salt=None):
 def verify_password(password, stored_hash, salt):
     hashed, _ = hash_password(password, salt)
     return hashed == stored_hash
+
+
+def _normalize_role(value):
+    role = str(value or 'viewer').strip().lower()
+    if role in ('readonly', 'read-only', 'read only'):
+        return 'viewer'
+    return 'admin' if role == 'admin' else 'viewer'
 
 def is_logged_in():
     return session.get('logged_in') is True and bool(session.get('username'))
@@ -402,8 +410,31 @@ def set_noc_setting(key, value):
         return False
 
 
+def _get_global_visible_tabs():
+    raw = get_noc_setting('visible_tabs', '')
+    tabs = raw
+    if isinstance(raw, str):
+        try:
+            tabs = json.loads(raw)
+        except Exception:
+            tabs = []
+    if not isinstance(tabs, list):
+        tabs = []
+    cleaned = []
+    seen = set()
+    for tab in tabs:
+        tab = str(tab).strip()
+        if tab in GLOBAL_SETTINGS_TABS and tab not in seen:
+            cleaned.append(tab)
+            seen.add(tab)
+    return cleaned or list(DEFAULT_VISIBLE_TABS)
+
+
 def _default_visible_tabs_for_role(role):
-    return list(ALL_VISIBLE_TABS if role == 'admin' else DEFAULT_VISIBLE_TABS)
+    base_tabs = _get_global_visible_tabs()
+    if role == 'admin':
+        return list(base_tabs + [tab for tab in ('users', 'logs') if tab not in base_tabs])
+    return list(base_tabs)
 
 
 def _normalize_visible_tabs(value, role='viewer'):
@@ -436,6 +467,16 @@ def _visible_tabs_json(value, role='viewer'):
     return json.dumps(_normalize_visible_tabs(value, role))
 
 
+def _effective_visible_tabs(user_tabs, role='viewer'):
+    allowed = set(_get_global_visible_tabs())
+    tabs = [tab for tab in _normalize_visible_tabs(user_tabs, role) if tab in allowed]
+    if role == 'admin':
+        for extra in ('users', 'logs'):
+            if extra not in tabs:
+                tabs.append(extra)
+    return tabs or _default_visible_tabs_for_role(role)
+
+
 def _get_user_record(username):
     users = query_db(AUTH_DB, "SELECT * FROM users WHERE username=?", (username,))
     if not users:
@@ -454,11 +495,14 @@ def _get_current_user_payload():
         visible_tabs = user.get('visible_tabs', _default_visible_tabs_for_role(role))
     else:
         visible_tabs = _default_visible_tabs_for_role(role)
+    global_visible_tabs = _get_global_visible_tabs()
     return {
         'logged_in': True,
         'username': username,
         'role': role,
         'visible_tabs': visible_tabs,
+        'global_visible_tabs': global_visible_tabs,
+        'effective_visible_tabs': _effective_visible_tabs(visible_tabs, role),
     }
 
 
@@ -712,11 +756,9 @@ def add_user():
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
-    role     = data.get('role', 'viewer')
+    role     = _normalize_role(data.get('role', 'viewer'))
     if not username or len(password) < 6:
         return jsonify({'error': 'Username required, password min 6 chars'}), 400
-    if role not in ('admin', 'viewer'):
-        role = 'viewer'
     visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
     
     hashed, salt = hash_password(password)
@@ -736,11 +778,9 @@ def edit_user():
         return jsonify({'error': 'Admin only'}), 403
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()
-    role = data.get('role', 'viewer')
+    role = _normalize_role(data.get('role', 'viewer'))
     if not username:
         return jsonify({'error': 'Username required'}), 400
-    if role not in ('admin', 'viewer'):
-        role = 'viewer'
     if username == session.get('username') and role != 'admin':
         return jsonify({'error': 'Cannot remove your own admin role'}), 400
 
@@ -794,21 +834,8 @@ def api_retention_settings():
 @app.route('/api/settings/ui', methods=['GET', 'POST'], strict_slashes=False)
 @login_required
 def api_ui_settings():
-    default_tabs = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
     if request.method == 'GET':
-        raw = get_noc_setting('visible_tabs', '')
-        if not raw:
-            return jsonify({'visible_tabs': default_tabs})
-        try:
-            tabs = json.loads(raw)
-            if not isinstance(tabs, list):
-                raise ValueError('visible_tabs not a list')
-            tabs = [str(t) for t in tabs if str(t).strip()]
-            if not tabs:
-                tabs = default_tabs
-        except Exception:
-            tabs = default_tabs
-        return jsonify({'visible_tabs': tabs})
+        return jsonify({'visible_tabs': _get_global_visible_tabs()})
 
     # POST: admin only
     if session.get('role') != 'admin':
@@ -819,10 +846,10 @@ def api_ui_settings():
     if not isinstance(tabs, list):
         return jsonify({'error': 'visible_tabs must be a list'}), 400
 
-    allowed = set(['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'users', 'logs', 'ont'])
+    allowed = set(GLOBAL_SETTINGS_TABS)
     tabs = [str(t) for t in tabs if str(t) in allowed]
     if not tabs:
-        tabs = default_tabs
+        tabs = list(DEFAULT_VISIBLE_TABS)
 
     ok = set_noc_setting('visible_tabs', json.dumps(tabs))
     if not ok:
@@ -921,8 +948,6 @@ def api_storage_stats():
 def api_security_settings():
     if request.method == 'GET':
         return jsonify({'session_timeout_minutes': _get_session_timeout_minutes()})
-    if session.get('role') != 'admin':
-        return jsonify({'error': 'Admin only'}), 403
     d = request.json or {}
     try:
         m = int(d.get('session_timeout_minutes') or 0)
@@ -1208,6 +1233,8 @@ def ping_db_writer():
             if t == 'result':
                 _, ip, latency, status = task
                 now = datetime.datetime.now().isoformat()
+                prev_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
+                prev_status = prev_rows[0]['status'] if prev_rows else ''
                 execute_db(PING_DB,
                     "INSERT INTO ping_results (timestamp,ip,latency_ms,status) VALUES (?,?,?,?)",
                     (now, ip, latency, status))
@@ -1231,6 +1258,12 @@ def ping_db_writer():
                 loss = (len([r for r in rows if r['status']!='online'])/len(rows)*100) if rows else 0
                 execute_db(PING_DB, "UPDATE ping_status SET avg_latency=?,loss_pct=? WHERE ip=?",
                              (avg, loss, ip))
+                current_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
+                if current_rows:
+                    current_status = current_rows[0].get('status') or ''
+                    current_name = current_rows[0].get('name') or ip
+                    if current_status == 'offline' and prev_status != 'offline':
+                        process_ping_alert(current_name, ip, current_status, now)
         except __import__('queue').Empty:
             continue
         except Exception as e:
@@ -1265,6 +1298,8 @@ def ping_targets():
 @app.route('/api/ping/add', methods=['POST'])
 @login_required
 def ping_add():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     d    = request.json
     ip   = (d.get('ip') or '').strip()
     name = (d.get('name') or ip).strip()
@@ -1285,6 +1320,8 @@ def ping_add():
 @app.route('/api/ping/remove', methods=['POST'])
 @login_required
 def ping_remove():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     ip = (request.json or {}).get('ip')
     if not ip:
         return jsonify({'error': 'ip required'}), 400
@@ -1295,6 +1332,8 @@ def ping_remove():
 @app.route('/api/ping/rename', methods=['POST'])
 @login_required
 def ping_rename():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     d    = request.json or {}
     ip   = d.get('ip')
     name = d.get('name')
@@ -1355,7 +1394,7 @@ def test_email():
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
     sent, err = send_email(to,
         '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.5.1\nEmail alerts are working correctly.')
+        'This is a test alert from SNOC v0.5.5.2\nEmail alerts are working correctly.')
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -1445,12 +1484,17 @@ def add_alert_rule():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
     d = request.json or {}
-    if not d.get('name') or not d.get('text_match'):
-        return jsonify({'error': 'name and text_match required'}), 400
+    source_type = (d.get('source_type') or 'syslog').strip().lower()
+    if source_type not in ('syslog', 'ping'):
+        source_type = 'syslog'
+    if not d.get('name'):
+        return jsonify({'error': 'name required'}), 400
+    if source_type == 'syslog' and not d.get('text_match'):
+        return jsonify({'error': 'text_match required for syslog alerts'}), 400
     notify_via = d.get('notify_via', 'both')
     execute_db(AUTH_DB,
-        "INSERT INTO alert_rules (name,host_match,text_match,to_email,notify_via,enabled,created_at) VALUES (?,?,?,?,?,1,?)",
-        (d['name'], d.get('host_match',''), d['text_match'],
+        "INSERT INTO alert_rules (name,source_type,host_match,exclude_hosts,text_match,to_email,notify_via,enabled,created_at) VALUES (?,?,?,?,?,?,?,1,?)",
+        (d['name'], source_type, d.get('host_match',''), d.get('exclude_hosts',''), d.get('text_match',''),
          d.get('to_email',''), notify_via, datetime.datetime.now().isoformat()))
     return jsonify({'success': True})
 
@@ -1487,7 +1531,7 @@ def alert_log():
 @login_required
 def alert_stats():
     rules = query_db(AUTH_DB,
-        "SELECT id,name,host_match,text_match,hit_count,last_hit,enabled FROM alert_rules ORDER BY hit_count DESC")
+        "SELECT id,name,source_type,host_match,exclude_hosts,text_match,to_email,notify_via,hit_count,last_hit,enabled FROM alert_rules ORDER BY hit_count DESC")
     
     total_sent_rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM alert_log WHERE sent=1")
     total_failed_rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM alert_log WHERE sent=0")

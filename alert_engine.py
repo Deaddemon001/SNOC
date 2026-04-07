@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.1 - Alert Engine
+SimpleNOC v0.5.5.2 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
@@ -35,19 +35,29 @@ def init_alert_db():
         execute_db(ALERT_DB, "INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, use_tls, enabled) VALUES (1,'',587,'','','',1,0)")
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_rules (
-        id          {pk},
-        name        TEXT,
-        host_match  TEXT DEFAULT '',
-        text_match  TEXT DEFAULT '',
-        to_email    TEXT DEFAULT '',
-        notify_via  TEXT DEFAULT 'both',
-        enabled     INTEGER DEFAULT 1,
-        created_at  TEXT,
-        hit_count   INTEGER DEFAULT 0,
-        last_hit    TEXT
+        id            {pk},
+        name          TEXT,
+        source_type   TEXT DEFAULT 'syslog',
+        host_match    TEXT DEFAULT '',
+        exclude_hosts TEXT DEFAULT '',
+        text_match    TEXT DEFAULT '',
+        to_email      TEXT DEFAULT '',
+        notify_via    TEXT DEFAULT 'both',
+        enabled       INTEGER DEFAULT 1,
+        created_at    TEXT,
+        hit_count     INTEGER DEFAULT 0,
+        last_hit      TEXT
     )''')
     try:
         execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN notify_via TEXT DEFAULT 'both'")
+    except Exception:
+        pass
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN source_type TEXT DEFAULT 'syslog'")
+    except Exception:
+        pass
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN exclude_hosts TEXT DEFAULT ''")
     except Exception:
         pass
 
@@ -172,21 +182,39 @@ def get_rules():
     return query_db(ALERT_DB, "SELECT * FROM alert_rules WHERE enabled=1")
 
 
-def match_rule(rule, hostname, message):
-    """Return True if syslog message matches this rule"""
+def _parse_rule_terms(value):
+    return [item.strip().lower() for item in re.split(r'[\n,]', value or '') if item.strip()]
+
+
+def _host_excluded(rule, hostname):
+    host = (hostname or '').strip().lower()
+    if not host:
+        return False
+    for excluded in _parse_rule_terms(rule.get('exclude_hosts') or ''):
+        if excluded in host:
+            return True
+    return False
+
+
+def match_rule(rule, hostname, message, source_type='syslog'):
+    """Return True if the event matches this rule."""
+    if (rule.get('source_type') or 'syslog') != source_type:
+        return False
+
     host_match = (rule.get('host_match') or '').strip()
     text_match = (rule.get('text_match') or '').strip()
+    hostname = hostname or ''
 
-    # Host match — empty means match all hosts
+    if _host_excluded(rule, hostname):
+        return False
+
     if host_match:
         if host_match.lower() not in hostname.lower():
             return False
 
-    # Text match — supports multiple keywords separated by newline or comma
-    if text_match:
+    if text_match and source_type == 'syslog':
         keywords = [k.strip() for k in re.split(r'[\n,]', text_match) if k.strip()]
         msg_lower = message.lower()
-        # All keywords must match (AND logic, same as Visual Syslog)
         if not all(k.lower() in msg_lower for k in keywords):
             return False
 
@@ -222,7 +250,7 @@ def process_alert(hostname, message, timestamp):
         return
 
     for rule in rules:
-        if not match_rule(rule, hostname, message):
+        if not match_rule(rule, hostname, message, 'syslog'):
             continue
 
         subject, body = build_alert_email(
@@ -255,3 +283,47 @@ def process_alert(hostname, message, timestamp):
             print(f"[ALERT] Sent: {rule['name']} → {rule['to_email']}")
         else:
             print(f"[ALERT] Failed: {rule['name']} → {error}")
+def process_ping_alert(hostname, source_ip, status, timestamp):
+    if status != 'offline':
+        return
+
+    rules = get_rules()
+    if not rules:
+        return
+
+    ec = get_email_config()
+    tc = get_telegram_config()
+    email_enabled = bool(ec.get('enabled'))
+    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
+    if not email_enabled and not tg_enabled:
+        return
+
+    display_host = hostname or source_ip
+    message = f"Ping monitor detected {source_ip} as offline"
+    for rule in rules:
+        if not match_rule(rule, display_host, message, 'ping'):
+            continue
+
+        subject, body = build_alert_email(rule, display_host, source_ip, message, timestamp, 'critical')
+        sent = False
+        error = ""
+        notify_via = rule.get('notify_via') or 'both'
+        if email_enabled and notify_via in ('email', 'both'):
+            sent, error = send_email(rule.get('to_email', ''), subject, body, ec)
+
+        if tg_enabled and notify_via in ('telegram', 'both'):
+            tg_text = subject + "\n\n" + body
+            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
+            if not tg_sent and not error:
+                error = tg_err
+            sent = sent or tg_sent
+
+        now = time.strftime('%Y-%m-%dT%H:%M:%S')
+        execute_db(ALERT_DB, """INSERT INTO alert_log
+            (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (now, rule['id'], rule['name'], display_host,
+             message, rule.get('to_email', ''), 1 if sent else 0, error))
+        execute_db(ALERT_DB, """UPDATE alert_rules SET
+            hit_count=hit_count+1, last_hit=? WHERE id=?""",
+            (now, rule['id']))
