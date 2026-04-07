@@ -19,6 +19,7 @@ HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
 SSL_CERT      = getattr(_cfg, 'SSL_CERT',      '')
 SSL_KEY       = getattr(_cfg, 'SSL_KEY',       '')
+CONFIG_FILE   = os.path.join(BASE_DIR if 'BASE_DIR' in globals() else os.path.dirname(os.path.abspath(__file__)), 'noc_config.py')
 
 def ensure_mac_mapping_table():
     execute_db(SYSLOG_DB, '''CREATE TABLE IF NOT EXISTS mac_mapping (
@@ -37,6 +38,9 @@ TFTP_DB    = _cfg.TFTP_DB
 OLT_DB     = _cfg.OLT_DB
 BACKUP_DIR = _cfg.BACKUP_DIR
 LOGS_DIR   = os.path.join(BASE_DIR, "logs")
+
+DEFAULT_VISIBLE_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
+ALL_VISIBLE_TABS = DEFAULT_VISIBLE_TABS + ['users', 'logs', 'ont']
 
 # Ensure all tables exist
 try:
@@ -236,6 +240,7 @@ def init_auth_db():
         password   TEXT NOT NULL,
         salt       TEXT NOT NULL,
         role       TEXT DEFAULT 'viewer',
+        visible_tabs TEXT DEFAULT '',
         created_at TEXT,
         last_login TEXT
     )''')
@@ -250,13 +255,24 @@ def init_auth_db():
         value      TEXT DEFAULT '',
         updated_at TEXT
     )''')
+    execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN visible_tabs TEXT DEFAULT ''")
+    execute_db(
+        AUTH_DB,
+        "UPDATE users SET visible_tabs=? WHERE COALESCE(visible_tabs, '')=''",
+        (json.dumps(DEFAULT_VISIBLE_TABS),)
+    )
+    execute_db(
+        AUTH_DB,
+        "UPDATE users SET visible_tabs=? WHERE role='admin' AND COALESCE(visible_tabs, '') IN ('', ?)",
+        (json.dumps(ALL_VISIBLE_TABS), json.dumps(DEFAULT_VISIBLE_TABS))
+    )
     # Create default admin if no users exist
     rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM users")
     if not rows or rows[0]['count'] == 0:
         hashed, salt = hash_password('admin123')
         execute_db(AUTH_DB,
-            "INSERT INTO users (username,password,salt,role,created_at) VALUES (?,?,?,?,?)",
-            ('admin', hashed, salt, 'admin', datetime.datetime.now().isoformat()))
+            "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
+            ('admin', hashed, salt, 'admin', json.dumps(ALL_VISIBLE_TABS), datetime.datetime.now().isoformat()))
         print("Default admin created: username=admin password=admin123")
         print("IMPORTANT: Change the password after first login!")
 
@@ -384,6 +400,92 @@ def set_noc_setting(key, value):
         return True
     except Exception:
         return False
+
+
+def _default_visible_tabs_for_role(role):
+    return list(ALL_VISIBLE_TABS if role == 'admin' else DEFAULT_VISIBLE_TABS)
+
+
+def _normalize_visible_tabs(value, role='viewer'):
+    tabs = value
+    if isinstance(value, str):
+        try:
+            tabs = json.loads(value)
+        except Exception:
+            tabs = []
+    if not isinstance(tabs, list):
+        tabs = []
+    cleaned = []
+    seen = set()
+    for tab in tabs:
+        tab = str(tab).strip()
+        if tab in ALL_VISIBLE_TABS and tab not in seen:
+            cleaned.append(tab)
+            seen.add(tab)
+    defaults = _default_visible_tabs_for_role(role)
+    if not cleaned:
+        cleaned = defaults
+    if role == 'admin':
+        for extra in ('users', 'logs'):
+            if extra not in cleaned:
+                cleaned.append(extra)
+    return cleaned
+
+
+def _visible_tabs_json(value, role='viewer'):
+    return json.dumps(_normalize_visible_tabs(value, role))
+
+
+def _get_user_record(username):
+    users = query_db(AUTH_DB, "SELECT * FROM users WHERE username=?", (username,))
+    if not users:
+        return None
+    user = dict(users[0])
+    user['visible_tabs'] = _normalize_visible_tabs(user.get('visible_tabs'), user.get('role', 'viewer'))
+    return user
+
+
+def _get_current_user_payload():
+    username = session.get('username')
+    role = session.get('role') or 'viewer'
+    user = _get_user_record(username) if username else None
+    if user:
+        role = user.get('role', role)
+        visible_tabs = user.get('visible_tabs', _default_visible_tabs_for_role(role))
+    else:
+        visible_tabs = _default_visible_tabs_for_role(role)
+    return {
+        'logged_in': True,
+        'username': username,
+        'role': role,
+        'visible_tabs': visible_tabs,
+    }
+
+
+def _update_config_ports(port_values):
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as fh:
+            content = fh.read()
+    except Exception as e:
+        raise RuntimeError(f'Unable to read noc_config.py: {e}')
+
+    for key, value in port_values.items():
+        pattern = rf"(?m)^({re.escape(key)}\s*=\s*)\d+\s*$"
+        new_content, count = re.subn(pattern, rf"\g<1>{int(value)}", content, count=1)
+        if count != 1:
+            raise RuntimeError(f'Could not update {key} in noc_config.py')
+        content = new_content
+
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8', newline='') as fh:
+            fh.write(content)
+    except Exception as e:
+        raise RuntimeError(f'Unable to write noc_config.py: {e}')
+
+    for key, value in port_values.items():
+        setattr(_cfg, key, int(value))
+    global HTTPS_PORT
+    HTTPS_PORT = int(port_values.get('HTTPS_PORT', HTTPS_PORT))
 
 
 def _table_columns(conn, table_name):
@@ -525,10 +627,9 @@ def do_login():
     if not username or not password:
         return jsonify({'success': False, 'error': 'Username and password required'}), 400
 
-    users = query_db(AUTH_DB, "SELECT * FROM users WHERE username=?", (username,))
-    if not users:
+    user = _get_user_record(username)
+    if not user:
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
-    user = users[0]
 
     if not verify_password(password, user['password'], user['salt']):
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
@@ -548,7 +649,8 @@ def do_login():
     return jsonify({
         'success':  True,
         'username': username,
-        'role':     user['role']
+        'role':     user['role'],
+        'visible_tabs': user['visible_tabs'],
     })
 
 
@@ -561,11 +663,9 @@ def do_logout():
 def auth_me():
     if not is_logged_in():
         return jsonify({'logged_in': False}), 401
-    return jsonify({
-        'logged_in': True,
-        'username':  session.get('username'),
-        'role':      session.get('role')
-    })
+    payload = _get_current_user_payload()
+    session['role'] = payload['role']
+    return jsonify(payload)
 
 @app.route('/api/auth/change_password', methods=['POST'])
 @login_required
@@ -598,8 +698,11 @@ def change_password():
 def list_users():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
-    return jsonify(query_db(AUTH_DB,
-        "SELECT id,username,role,created_at,last_login FROM users ORDER BY id"))
+    rows = query_db(AUTH_DB,
+        "SELECT id,username,role,visible_tabs,created_at,last_login FROM users ORDER BY id")
+    for row in rows:
+        row['visible_tabs'] = _normalize_visible_tabs(row.get('visible_tabs'), row.get('role', 'viewer'))
+    return jsonify(rows)
 
 @app.route('/api/auth/users/add', methods=['POST'])
 @login_required
@@ -614,15 +717,48 @@ def add_user():
         return jsonify({'error': 'Username required, password min 6 chars'}), 400
     if role not in ('admin', 'viewer'):
         role = 'viewer'
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
     
     hashed, salt = hash_password(password)
     success = execute_db(AUTH_DB,
-        "INSERT INTO users (username,password,salt,role,created_at) VALUES (?,?,?,?,?)",
-        (username, hashed, salt, role, datetime.datetime.now().isoformat()))
+        "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
+        (username, hashed, salt, role, json.dumps(visible_tabs), datetime.datetime.now().isoformat()))
     if success:
-        return jsonify({'success': True, 'username': username})
+        return jsonify({'success': True, 'username': username, 'visible_tabs': visible_tabs})
     else:
         return jsonify({'error': 'Username already exists or database error'}), 409
+
+
+@app.route('/api/auth/users/edit', methods=['POST'])
+@login_required
+def edit_user():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    data = request.json or {}
+    username = (data.get('username') or '').strip().lower()
+    role = data.get('role', 'viewer')
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+    if role not in ('admin', 'viewer'):
+        role = 'viewer'
+    if username == session.get('username') and role != 'admin':
+        return jsonify({'error': 'Cannot remove your own admin role'}), 400
+
+    existing = _get_user_record(username)
+    if not existing:
+        return jsonify({'error': 'User not found'}), 404
+
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', existing.get('visible_tabs', [])), role)
+    success = execute_db(
+        AUTH_DB,
+        "UPDATE users SET role=?, visible_tabs=? WHERE username=?",
+        (role, json.dumps(visible_tabs), username)
+    )
+    if not success:
+        return jsonify({'error': 'Database error'}), 500
+    if username == session.get('username'):
+        session['role'] = role
+    return jsonify({'success': True, 'username': username, 'role': role, 'visible_tabs': visible_tabs})
 
 
 @app.route('/api/auth/users/delete', methods=['POST'])
@@ -692,6 +828,57 @@ def api_ui_settings():
     if not ok:
         return jsonify({'success': False, 'error': 'Database error'}), 500
     return jsonify({'success': True, 'visible_tabs': tabs})
+
+
+@app.route('/api/settings/ports', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_port_settings():
+    port_map = {
+        'api_port': int(getattr(_cfg, 'API_PORT', 5000)),
+        'https_port': int(getattr(_cfg, 'HTTPS_PORT', 5443)),
+        'snmp_port': int(getattr(_cfg, 'SNMP_PORT', 162)),
+        'syslog_port': int(getattr(_cfg, 'SYSLOG_PORT', 5141)),
+        'tftp_port': int(getattr(_cfg, 'TFTP_PORT', 69)),
+    }
+    if request.method == 'GET':
+        return jsonify(port_map)
+
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+
+    data = request.json or {}
+    updates = {}
+    field_to_cfg = {
+        'api_port': 'API_PORT',
+        'https_port': 'HTTPS_PORT',
+        'snmp_port': 'SNMP_PORT',
+        'syslog_port': 'SYSLOG_PORT',
+        'tftp_port': 'TFTP_PORT',
+    }
+    for field, cfg_key in field_to_cfg.items():
+        try:
+            value = int(data.get(field, port_map[field]))
+        except Exception:
+            return jsonify({'error': f'Invalid value for {field}'}), 400
+        if value < 1 or value > 65535:
+            return jsonify({'error': f'{field} must be between 1 and 65535'}), 400
+        updates[cfg_key] = value
+
+    try:
+        _update_config_ports(updates)
+    except RuntimeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    return jsonify({
+        'success': True,
+        'restart_required': True,
+        'message': 'Ports saved to noc_config.py. Restart SimpleNOC to use the new ports.',
+        'api_port': updates['API_PORT'],
+        'https_port': updates['HTTPS_PORT'],
+        'snmp_port': updates['SNMP_PORT'],
+        'syslog_port': updates['SYSLOG_PORT'],
+        'tftp_port': updates['TFTP_PORT'],
+    })
 
 
 @app.route('/api/settings/storage_stats', methods=['GET'])
@@ -949,9 +1136,10 @@ def onu_history():
     sn = request.args.get('serial_no')
     if not sn:
         return jsonify({'error': 'serial_no required'}), 400
-    # Return last 100 snapshots for this ONU
+    # Return last 100 snapshots for this ONU (case-insensitive partial match)
+    sn_like = f"%{sn}%"
     return jsonify(query_db(OLT_DB,
-        "SELECT * FROM onu_data WHERE serial_no=? ORDER BY poll_time DESC LIMIT 100", (sn,)))
+        "SELECT * FROM onu_data WHERE serial_no ILIKE ? ORDER BY poll_time DESC LIMIT 100", (sn_like,)))
 
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
 @app.route('/api/syslog/devices')

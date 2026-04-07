@@ -1534,7 +1534,7 @@
         </div>
         <div class="sc r">
           <div class="sl">TFTP Port</div>
-          <div class="sv">69</div>
+          <div class="sv" id="tftpPortValue">69</div>
           <div class="ss">UDP / needs Admin</div>
         </div>
       </div>
@@ -1668,7 +1668,7 @@
               <tr>
                 <td colspan="9">
                   <div class="empty">No backup files received yet.<br>Configure your OLT TFTP settings to point to this
-                    server IP on port 69.</div>
+                    server IP on port <span id="tftpPortHint">69</span>.</div>
                 </td>
               </tr>
             </tbody>
@@ -2264,12 +2264,37 @@
                 placeholder="Password (min 6 chars)" /></div>
             <div><label class="flabel">ROLE</label>
               <select id="nuRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
-                <option value="viewer">Viewer (read-only)</option>
+                <option value="viewer">Read-only</option>
                 <option value="admin">Admin (full access)</option>
               </select>
             </div>
+            <div>
+              <label class="flabel">VISIBLE TABS</label>
+              <div id="nuVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+            </div>
             <div id="nuMsg" class="smsg"></div>
             <button class="rb" style="padding:9px;font-size:13px" onclick="addUser()">Add User</button>
+          </div>
+        </div>
+        <div class="panel" id="editUserPanel" style="display:none">
+          <div class="ph">
+            <div class="pt">Edit User</div>
+            <div class="pb2">Update role and visible tabs</div>
+          </div>
+          <div class="pb" style="display:grid;gap:12px">
+            <div><label class="flabel">USERNAME</label><input id="euUsername" class="finp" readonly /></div>
+            <div><label class="flabel">ROLE</label>
+              <select id="euRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
+                <option value="viewer">Read-only</option>
+                <option value="admin">Admin (full access)</option>
+              </select>
+            </div>
+            <div>
+              <label class="flabel">VISIBLE TABS</label>
+              <div id="euVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+            </div>
+            <div id="euMsg" class="smsg"></div>
+            <button class="rb" style="padding:9px;font-size:13px" onclick="saveUserEdit()">Save User</button>
           </div>
         </div>
       </div>
@@ -2316,6 +2341,7 @@
                 <th>#</th>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Visible Tabs</th>
                 <th>Created</th>
                 <th>Last Login</th>
                 <th>Action</th>
@@ -2323,7 +2349,7 @@
             </thead>
             <tbody id="userTable">
               <tr>
-                <td colspan="6">
+                <td colspan="7">
                   <div class="empty">No users.</div>
                 </td>
               </tr>
@@ -2360,21 +2386,14 @@
       </div>
 
       <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
-      <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">UI — Visible tabs</h3>
-      <p class="set-note" style="margin-top:0">Choose which main dashboard tabs are visible for all users.</p>
-      <div id="tabVisibilityBox" style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px;margin-bottom:6px">
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_syslog" /> Syslog</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_snmp" /> SNMP Trap</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_tftp" /> TFTP Backups</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_ping" /> Ping Monitor</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_alerts" /> Alerts</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_olt" /> OLT Connect</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="tabvis_uplink" /> Uplink Traffic</label>
-        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_users" /> Users</label>
-        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_logs" /> Logs</label>
-        <label style="display:flex;gap:8px;align-items:center;opacity:0.85"><input type="checkbox" id="tabvis_ont" /> ONT</label>
-      </div>
-      <div id="tabVisibilityMsg" class="smsg"></div>
+      <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Network — Server ports</h3>
+      <p class="set-note" style="margin-top:0">These ports are saved into <span class="mu">noc_config.py</span>. Restart SimpleNOC after saving to apply them.</p>
+      <div class="set-row"><label for="api_port">Dashboard API</label><input type="number" id="api_port" min="1" max="65535" step="1" /></div>
+      <div class="set-row"><label for="https_port">Dashboard HTTPS</label><input type="number" id="https_port" min="1" max="65535" step="1" /></div>
+      <div class="set-row"><label for="snmp_port">SNMP Trap</label><input type="number" id="snmp_port" min="1" max="65535" step="1" /></div>
+      <div class="set-row"><label for="syslog_port">Syslog</label><input type="number" id="syslog_port" min="1" max="65535" step="1" /></div>
+      <div class="set-row"><label for="tftp_port">TFTP</label><input type="number" id="tftp_port" min="1" max="65535" step="1" /></div>
+      <div id="portSettingsMsg" class="smsg"></div>
 
       <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
       <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Security — Session timeout</h3>
@@ -2392,7 +2411,7 @@
       <div id="settingsModalMsg"></div>
       <div class="modal-actions">
         <button class="ubtn" type="button" onclick="closeSettingsModal()">Close</button>
-        <button class="ubtn" type="button" id="tabsSaveBtn" style="display:none" onclick="saveUiSettings()">Save Tabs</button>
+        <button class="ubtn" type="button" id="portsSaveBtn" style="display:none" onclick="savePortSettings()">Save Ports</button>
         <button class="ubtn" type="button" id="timeoutSaveBtn" style="display:none" onclick="saveSessionTimeout()">Save Timeout</button>
         <button class="rbtn" type="button" id="settingsSaveBtn" onclick="saveRetentionSettings()">Save</button>
       </div>
@@ -2405,6 +2424,9 @@
     var currentSysOlt = '';
     var currentUsername = '';
     var currentRole = '';
+    var currentVisibleTabs = [];
+    var currentPortSettings = {};
+    var editingUsername = '';
 
     var RETENTION_KEY_IDS = [
       'trap_retention_days',
@@ -2414,6 +2436,19 @@
       'alert_log_retention_days',
       'olt_data_retention_days',
       'olt_session_retention_days'
+    ];
+    var PORT_KEY_IDS = ['api_port', 'https_port', 'snmp_port', 'syslog_port', 'tftp_port'];
+    var USER_TAB_OPTIONS = [
+      { id: 'syslog', label: 'Syslog' },
+      { id: 'snmp', label: 'SNMP Trap' },
+      { id: 'tftp', label: 'TFTP Backups' },
+      { id: 'ping', label: 'Ping Monitor' },
+      { id: 'alerts', label: 'Alerts' },
+      { id: 'olt', label: 'OLT Connect' },
+      { id: 'uplink', label: 'Uplink Traffic' },
+      { id: 'users', label: 'Users' },
+      { id: 'logs', label: 'Logs' },
+      { id: 'ont', label: 'ONT' }
     ];
 
     // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -2450,6 +2485,65 @@
       if (!persist) {
         setTimeout(function () { el.style.display = 'none'; }, 5000);
       }
+    }
+
+    function roleLabel(role) {
+      return role === 'admin' ? 'ADMIN' : 'READ-ONLY';
+    }
+
+    function roleOptionLabel(role) {
+      return role === 'admin' ? 'Admin (full access)' : 'Read-only';
+    }
+
+    function getDefaultTabsForRole(role) {
+      var tabs = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink'];
+      if (role === 'admin') tabs = tabs.concat(['users', 'logs', 'ont']);
+      return tabs;
+    }
+
+    function setTftpPortLabels(port) {
+      var value = String(port || 69);
+      ['tftpPortValue', 'tftpPortHint', 'tftpPortEmpty'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = value;
+      });
+    }
+
+    function renderUserTabCheckboxes(containerId) {
+      var box = document.getElementById(containerId);
+      if (!box) return;
+      var html = '';
+      USER_TAB_OPTIONS.forEach(function (tab) {
+        html += '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" value="' + tab.id + '" /> ' + tab.label + '</label>';
+      });
+      box.innerHTML = html;
+    }
+
+    function setUserTabSelections(containerId, tabs) {
+      if (!Array.isArray(tabs) || !tabs.length) tabs = getDefaultTabsForRole('viewer');
+      var box = document.getElementById(containerId);
+      if (!box) return;
+      box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.checked = tabs.indexOf(cb.value) !== -1;
+      });
+    }
+
+    function getUserTabSelections(containerId, role) {
+      var box = document.getElementById(containerId);
+      var tabs = [];
+      if (box) {
+        box.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+          if (cb.checked) tabs.push(cb.value);
+        });
+      }
+      if (!tabs.length) tabs = getDefaultTabsForRole(role);
+      if (role === 'admin') {
+        ['users', 'logs'].forEach(function (tab) {
+          if (tabs.indexOf(tab) === -1) tabs.push(tab);
+        });
+      }
+      return tabs;
     }
 
     // ── TABS ──────────────────────────────────────────────────────────────────────
@@ -2691,21 +2785,24 @@
       var modal = document.getElementById('settingsModal');
       var msg = document.getElementById('settingsModalMsg');
       if (msg) { msg.textContent = ''; msg.style.color = ''; }
-      var tmsg = document.getElementById('tabVisibilityMsg');
-      if (tmsg) { tmsg.textContent = ''; tmsg.style.display = 'none'; }
+      var pmsg = document.getElementById('portSettingsMsg');
+      if (pmsg) { pmsg.textContent = ''; pmsg.style.display = 'none'; }
       modal.classList.add('show');
       var saveBtn = document.getElementById('settingsSaveBtn');
-      var tabsBtn = document.getElementById('tabsSaveBtn');
+      var portsBtn = document.getElementById('portsSaveBtn');
       var timeoutBtn = document.getElementById('timeoutSaveBtn');
       var admin = currentRole === 'admin';
       if (saveBtn) saveBtn.style.display = admin ? 'inline-block' : 'none';
-      if (tabsBtn) tabsBtn.style.display = admin ? 'inline-block' : 'none';
+      if (portsBtn) portsBtn.style.display = admin ? 'inline-block' : 'none';
       if (timeoutBtn) timeoutBtn.style.display = admin ? 'inline-block' : 'none';
       RETENTION_KEY_IDS.forEach(function (k) {
         var inp = document.getElementById(k);
         if (inp) inp.readOnly = !admin;
       });
-      setTabVisibilityReadOnly(!admin);
+      PORT_KEY_IDS.forEach(function (k) {
+        var inp = document.getElementById(k);
+        if (inp) inp.readOnly = !admin;
+      });
       var toSel = document.getElementById('session_timeout_minutes');
       if (toSel) toSel.disabled = !admin;
       apiFetch('/api/settings/retention').then(function (m) {
@@ -2718,8 +2815,13 @@
         if (msg) { msg.textContent = 'Failed to load settings: ' + e.message; msg.style.color = 'var(--danger)'; }
       });
 
-      apiFetch('/api/settings/ui').then(function (u) {
-        applyUiSettingsToModal(u);
+      apiFetch('/api/settings/ports').then(function (p) {
+        currentPortSettings = p || {};
+        PORT_KEY_IDS.forEach(function (k) {
+          var inp = document.getElementById(k);
+          if (inp && p[k] !== undefined) inp.value = p[k];
+        });
+        setTftpPortLabels(p.tftp_port);
       }).catch(function () { /* ignore */ });
 
       apiFetch('/api/settings/storage_stats').then(function (d) {
@@ -2729,10 +2831,8 @@
         if (!items.length) { box.textContent = 'No stats available.'; return; }
         var lines = [];
         items.forEach(function (it) {
-          var oldest = it.oldest ? new Date(it.oldest).toLocaleString() : '—';
-          var newest = it.newest ? new Date(it.newest).toLocaleString() : '—';
-          var size = it.size_mb ? ' (' + it.size_mb + ')' : '';
-          lines.push((it.table || '—') + size + ': ' + (it.count || 0) + ' rows | oldest ' + oldest + ' | newest ' + newest);
+          var size = it.size_mb || '0.0 MB';
+          lines.push((it.table || '—') + ': ' + size);
         });
         box.textContent = lines.join('\n');
       }).catch(function () {
@@ -2779,43 +2879,27 @@
       });
     }
 
-    // ── UI SETTINGS (Visible Tabs) ───────────────────────────────────────────────
-    var UI_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'users', 'logs', 'ont'];
-    function setTabVisibilityReadOnly(ro) {
-      UI_TABS.forEach(function (t) {
-        var cb = document.getElementById('tabvis_' + t);
-        if (cb) cb.disabled = !!ro;
-      });
-    }
-
-    function applyUiSettingsToModal(u) {
-      var tabs = (u && u.visible_tabs) ? u.visible_tabs : [];
-      if (!Array.isArray(tabs)) tabs = [];
-      UI_TABS.forEach(function (t) {
-        var cb = document.getElementById('tabvis_' + t);
-        if (cb) cb.checked = tabs.indexOf(t) !== -1;
-      });
-    }
-
-    function getTabsFromModal() {
-      var tabs = [];
-      UI_TABS.forEach(function (t) {
-        var cb = document.getElementById('tabvis_' + t);
-        if (cb && cb.checked) tabs.push(t);
-      });
-      return tabs;
-    }
-
-    function saveUiSettings() {
+    // ── PORT SETTINGS ────────────────────────────────────────────────────────────
+    function savePortSettings() {
       if (currentRole !== 'admin') return;
-      var msg = document.getElementById('tabVisibilityMsg');
-      var tabs = getTabsFromModal();
-      apiPost('/api/settings/ui', { visible_tabs: tabs }).then(function (r) {
-        if (r && r.visible_tabs) applyVisibleTabs(r.visible_tabs);
-        if (msg) showMsg('tabVisibilityMsg', 'Saved.', true, true);
+      var body = {};
+      for (var i = 0; i < PORT_KEY_IDS.length; i++) {
+        var key = PORT_KEY_IDS[i];
+        var inp = document.getElementById(key);
+        var value = inp ? parseInt(inp.value, 10) : NaN;
+        if (isNaN(value) || value < 1 || value > 65535) {
+          showMsg('portSettingsMsg', 'Invalid port: ' + key, false, true);
+          return;
+        }
+        body[key] = value;
+      }
+      apiPost('/api/settings/ports', body).then(function (r) {
+        currentPortSettings = r || {};
+        setTftpPortLabels(r.tftp_port);
+        showMsg('portSettingsMsg', r.message || 'Ports saved. Restart SimpleNOC to apply them.', true, true);
       }).catch(function (e) {
         if (e.message === '401') return;
-        if (msg) showMsg('tabVisibilityMsg', e.message || 'Save failed', false, true);
+        showMsg('portSettingsMsg', e.message || 'Save failed', false, true);
       });
     }
 
@@ -3680,7 +3764,7 @@
       var tb = document.getElementById('tftpFilesTable');
       tb.innerHTML = '';
       if (!files || !files.length) {
-        tb.innerHTML = '<tr><td colspan="9"><div class="empty">No backup files received yet.<br>Configure your OLT TFTP target IP to point to this server on port 69.</div></td></tr>';
+        tb.innerHTML = '<tr><td colspan="9"><div class="empty">No backup files received yet.<br>Configure your OLT TFTP target IP to point to this server on port <span id="tftpPortEmpty">69</span>.</div></td></tr>';
         return;
       }
       files.forEach(function (f) {
@@ -5192,13 +5276,16 @@
       apiFetch('/api/auth/me').then(function (d) {
         currentUsername = d.username;
         currentRole = d.role;
+        currentVisibleTabs = Array.isArray(d.visible_tabs) ? d.visible_tabs.slice() : getDefaultTabsForRole(d.role);
         document.getElementById('currentUser').textContent = d.username;
-        document.getElementById('currentRole').textContent = d.role.toUpperCase();
+        document.getElementById('currentRole').textContent = roleLabel(d.role);
+        applyVisibleTabs(currentVisibleTabs);
         if (d.role === 'admin') {
           document.getElementById('usersBtn').style.display = 'block';
           document.getElementById('usersTab').style.display = 'block';
           document.getElementById('addUserPanel').style.display = 'block';
           document.getElementById('userListPanel').style.display = 'block';
+          document.getElementById('editUserPanel').style.display = 'block';
         }
       }).catch(function () { });
     }
@@ -5233,16 +5320,57 @@
       var username = document.getElementById('nuUsername').value.trim();
       var password = document.getElementById('nuPassword').value;
       var role = document.getElementById('nuRole').value;
+      var visibleTabs = getUserTabSelections('nuVisibleTabs', role);
       if (!username || !password) { showMsg('nuMsg', 'All fields required', false); return; }
-      apiPost('/api/auth/users/add', { username: username, password: password, role: role })
+      apiPost('/api/auth/users/add', { username: username, password: password, role: role, visible_tabs: visibleTabs })
         .then(function (d) {
           if (d.success) {
             showMsg('nuMsg', 'User created: ' + username, true);
             document.getElementById('nuUsername').value = '';
             document.getElementById('nuPassword').value = '';
+            document.getElementById('nuRole').value = 'viewer';
+            setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
             loadUsers();
           } else { showMsg('nuMsg', d.error || 'Failed', false); }
         });
+    }
+
+    function startEditUser(encodedUser) {
+      var user = encodedUser;
+      if (typeof encodedUser === 'string') {
+        try { user = JSON.parse(decodeURIComponent(encodedUser)); } catch (e) { user = null; }
+      }
+      if (!user) return;
+      editingUsername = user.username || '';
+      document.getElementById('euUsername').value = editingUsername;
+      document.getElementById('euRole').value = user.role || 'viewer';
+      setUserTabSelections('euVisibleTabs', user.visible_tabs || getDefaultTabsForRole(user.role || 'viewer'));
+      showMsg('euMsg', 'Editing ' + editingUsername, true, true);
+    }
+
+    function saveUserEdit() {
+      if (currentRole !== 'admin') return;
+      var username = document.getElementById('euUsername').value.trim();
+      var role = document.getElementById('euRole').value;
+      var visibleTabs = getUserTabSelections('euVisibleTabs', role);
+      if (!username) { showMsg('euMsg', 'Select a user to edit first.', false, true); return; }
+      apiPost('/api/auth/users/edit', { username: username, role: role, visible_tabs: visibleTabs }).then(function (d) {
+        if (d.success) {
+          showMsg('euMsg', 'User updated: ' + username, true, true);
+          if (username === currentUsername) {
+            currentRole = d.role;
+            currentVisibleTabs = d.visible_tabs || currentVisibleTabs;
+            document.getElementById('currentRole').textContent = roleLabel(currentRole);
+            applyVisibleTabs(currentVisibleTabs);
+          }
+          loadUsers();
+        } else {
+          showMsg('euMsg', d.error || 'Failed', false, true);
+        }
+      }).catch(function (e) {
+        if (e.message === '401') return;
+        showMsg('euMsg', e.message || 'Failed', false, true);
+      });
     }
 
     function deleteUser(username) {
@@ -5254,24 +5382,29 @@
       apiFetch('/api/auth/users').then(function (users) {
         document.getElementById('userCount').textContent = users.length + ' users';
         if (!users.length) {
-          document.getElementById('userTable').innerHTML = '<tr><td colspan="6"><div class="empty">No users.</div></td></tr>';
+          document.getElementById('userTable').innerHTML = '<tr><td colspan="7"><div class="empty">No users.</div></td></tr>';
           return;
         }
         var html = '';
         users.forEach(function (u) {
           var isMe = u.username === currentUsername;
           var roleCls = u.role === 'admin' ? 'bo' : 'bx';
+          var tabs = Array.isArray(u.visible_tabs) ? u.visible_tabs : [];
+          var tabsLabel = tabs.length ? tabs.join(', ') : 'default';
+          var payload = encodeURIComponent(JSON.stringify({ username: u.username, role: u.role, visible_tabs: tabs }));
           var created = u.created_at ? new Date(u.created_at).toLocaleDateString() : '—';
           var lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : 'Never';
+          var editBtn = '<button class="dbtn" data-user="' + payload + '" onclick="startEditUser(this.dataset.user)">Edit</button>';
           var meTag = isMe ? ' <span class="b bc" style="font-size:9px">YOU</span>' : '';
           var delBtn = isMe ? '—' : ('<button class="dbtn" data-uname="' + u.username + '" onclick="deleteUser(this.dataset.uname)">Delete</button>');
           html += '<tr>';
           html += '<td class="mu">' + u.id + '</td>';
           html += '<td style="color:var(--accent3)">' + u.username + meTag + '</td>';
-          html += '<td><span class="b ' + roleCls + '">' + u.role.toUpperCase() + '</span></td>';
+          html += '<td><span class="b ' + roleCls + '">' + roleLabel(u.role) + '</span></td>';
+          html += '<td class="mu">' + tabsLabel + '</td>';
           html += '<td class="mu">' + created + '</td>';
           html += '<td class="mu">' + lastLogin + '</td>';
-          html += '<td>' + delBtn + '</td>';
+          html += '<td>' + (isMe ? editBtn : (editBtn + ' ' + delBtn)) + '</td>';
           html += '</tr>';
         });
         document.getElementById('userTable').innerHTML = html;
@@ -5749,6 +5882,7 @@
         }
 
         document.getElementById('upd').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        setTftpPortLabels(currentPortSettings.tftp_port);
 
       }).catch(function (e) {
         if (e.message === '401') return;
@@ -5762,10 +5896,21 @@
     initCharts();
     applyChartsTheme();
     loadTabOrder();
-    loadUserInfo();
-    apiFetch('/api/settings/ui').then(function (u) {
-      if (u && u.visible_tabs) applyVisibleTabs(u.visible_tabs);
+    renderUserTabCheckboxes('nuVisibleTabs');
+    renderUserTabCheckboxes('euVisibleTabs');
+    setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
+    setUserTabSelections('euVisibleTabs', getDefaultTabsForRole('viewer'));
+    document.getElementById('nuRole').addEventListener('change', function () {
+      setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole(this.value));
+    });
+    document.getElementById('euRole').addEventListener('change', function () {
+      setUserTabSelections('euVisibleTabs', getDefaultTabsForRole(this.value));
+    });
+    apiFetch('/api/settings/ports').then(function (p) {
+      currentPortSettings = p || {};
+      setTftpPortLabels(p.tftp_port);
     }).catch(function () { /* ignore */ });
+    loadUserInfo();
     fetchAll();
     fetchPing();
     setInterval(fetchAll, 10000);

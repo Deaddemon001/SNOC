@@ -1,12 +1,12 @@
 # SimpleNOC v0.5.5.2
 
-**v0.5.5.2** adds **tab visibility controls**, a **Logs** tab, an **ONT** lookup tab, **Telegram alerts**, syslog event paging, uplink history ranges, storage stats, and a configurable session timeout. See [CHANGELOG.md](CHANGELOG.md).
+**v0.5.5.2** adds **tab visibility controls**, per-user dashboard permissions, a **Logs** tab, an **ONT** lookup tab, configurable server ports, **Telegram alerts**, syslog event paging, uplink history ranges, storage stats, and a configurable session timeout. See [CHANGELOG.md](CHANGELOG.md).
 
 SimpleNOC is a Windows-focused Network Operations Center application for small ISP and OLT operations. It provides a web dashboard, SNMP trap collection, syslog collection, TFTP backup intake, OLT polling, ping monitoring, and alerting on top of a PostgreSQL backend.
 
 ## Features
 
-- Web dashboard with login and role-based admin actions
+- Web dashboard with login, role-based admin actions, and per-user tab permissions
 - SNMP trap receiver
 - Syslog server with device state tracking
 - TFTP backup receiver
@@ -100,10 +100,12 @@ Notes:
 - Ports `69` and `162` usually require Administrator privileges on Windows.
 - When HTTPS is enabled, HTTP redirects to HTTPS.
 - If certificate generation fails, the API disables HTTPS and falls back to HTTP-only behavior.
+- The dashboard Settings modal can update the listener ports in `noc_config.py`.
+- Restart SimpleNOC after changing the listener ports so the new values are loaded.
 
 ## Database Model
 
-SimpleNOC v0.5.5.1 is configured for PostgreSQL only.
+SimpleNOC v0.5.5.2 is configured for PostgreSQL only.
 
 Default application database settings from [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py):
 
@@ -286,6 +288,12 @@ If no users exist, the application creates this default user automatically:
 
 Change the password after first login.
 
+User management notes:
+
+- The `viewer` role is shown as `read-only` in the dashboard UI.
+- Admins can assign visible tabs per user when creating or editing accounts.
+- Per-user tab permissions are stored in the authentication database and applied after login.
+
 ## Configuration
 
 The main configuration file is [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py).
@@ -297,6 +305,7 @@ Key settings include:
 - PostgreSQL connection details
 - retention periods
 - SSL certificate paths
+- The Settings modal also includes configurable server ports, storage retention, session timeout, and visible-tab controls.
 
 The API also auto-generates a self-signed certificate under:
 
