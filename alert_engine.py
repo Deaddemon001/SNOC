@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.1 - Alert Engine
+SimpleNOC v0.5.5.2 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
@@ -7,6 +7,8 @@ Same logic as Visual Syslog Server alert rules.
 import smtplib, threading, time, json, re, datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from urllib import request as _urlrequest
+from urllib import parse as _urlparse
 import noc_config as cfg
 from noc_config import execute_db, query_db, get_db_connection
 
@@ -33,16 +35,31 @@ def init_alert_db():
         execute_db(ALERT_DB, "INSERT INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, use_tls, enabled) VALUES (1,'',587,'','','',1,0)")
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_rules (
-        id          {pk},
-        name        TEXT,
-        host_match  TEXT DEFAULT '',
-        text_match  TEXT DEFAULT '',
-        to_email    TEXT DEFAULT '',
-        enabled     INTEGER DEFAULT 1,
-        created_at  TEXT,
-        hit_count   INTEGER DEFAULT 0,
-        last_hit    TEXT
+        id            {pk},
+        name          TEXT,
+        source_type   TEXT DEFAULT 'syslog',
+        host_match    TEXT DEFAULT '',
+        exclude_hosts TEXT DEFAULT '',
+        text_match    TEXT DEFAULT '',
+        to_email      TEXT DEFAULT '',
+        notify_via    TEXT DEFAULT 'both',
+        enabled       INTEGER DEFAULT 1,
+        created_at    TEXT,
+        hit_count     INTEGER DEFAULT 0,
+        last_hit      TEXT
     )''')
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN notify_via TEXT DEFAULT 'both'")
+    except Exception:
+        pass
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN source_type TEXT DEFAULT 'syslog'")
+    except Exception:
+        pass
+    try:
+        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN exclude_hosts TEXT DEFAULT ''")
+    except Exception:
+        pass
 
     execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS email_template (
         id      INTEGER PRIMARY KEY,
@@ -53,7 +70,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}'
+        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.5.2'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,?,?)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -67,6 +84,16 @@ def init_alert_db():
         sent       INTEGER DEFAULT 0,
         error      TEXT DEFAULT ''
     )''')
+
+    execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS telegram_config (
+        id        INTEGER PRIMARY KEY,
+        bot_token TEXT DEFAULT '',
+        chat_id   TEXT DEFAULT '',
+        enabled   INTEGER DEFAULT 0
+    )''')
+    rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM telegram_config")
+    if not rows or rows[0]['count'] == 0:
+        execute_db(ALERT_DB, "INSERT INTO telegram_config (id, bot_token, chat_id, enabled) VALUES (1,'','',0)")
     
     print(f"Alert DB ({db_type}) ready.")
 
@@ -103,6 +130,33 @@ def send_email(to_addr, subject, body, cfg_override=None):
     except Exception as e:
         return False, str(e)
 
+# ── TELEGRAM SENDER ───────────────────────────────────────────────────────────
+def get_telegram_config():
+    rows = query_db(ALERT_DB, "SELECT id,bot_token,chat_id,enabled FROM telegram_config WHERE id=1")
+    return rows[0] if rows else {}
+
+
+def send_telegram(bot_token, chat_id, text):
+    if not bot_token or not chat_id:
+        return False, "Telegram not configured"
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        data = _urlparse.urlencode(payload).encode("utf-8")
+        req = _urlrequest.Request(url, data=data, method="POST")
+        with _urlrequest.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        # Telegram returns JSON, but we only need success/failure
+        if '"ok":true' in raw or '"ok": true' in raw:
+            return True, "Sent"
+        return False, raw[:200]
+    except Exception as e:
+        return False, str(e)
+
 # ── EMAIL TEMPLATE ───────────────────────────────────────────────────────────
 def get_email_template():
     rows = query_db(ALERT_DB, "SELECT subject, body FROM email_template WHERE id=1")
@@ -128,21 +182,39 @@ def get_rules():
     return query_db(ALERT_DB, "SELECT * FROM alert_rules WHERE enabled=1")
 
 
-def match_rule(rule, hostname, message):
-    """Return True if syslog message matches this rule"""
+def _parse_rule_terms(value):
+    return [item.strip().lower() for item in re.split(r'[\n,]', value or '') if item.strip()]
+
+
+def _host_excluded(rule, hostname):
+    host = (hostname or '').strip().lower()
+    if not host:
+        return False
+    for excluded in _parse_rule_terms(rule.get('exclude_hosts') or ''):
+        if excluded in host:
+            return True
+    return False
+
+
+def match_rule(rule, hostname, message, source_type='syslog'):
+    """Return True if the event matches this rule."""
+    if (rule.get('source_type') or 'syslog') != source_type:
+        return False
+
     host_match = (rule.get('host_match') or '').strip()
     text_match = (rule.get('text_match') or '').strip()
+    hostname = hostname or ''
 
-    # Host match — empty means match all hosts
+    if _host_excluded(rule, hostname):
+        return False
+
     if host_match:
         if host_match.lower() not in hostname.lower():
             return False
 
-    # Text match — supports multiple keywords separated by newline or comma
-    if text_match:
+    if text_match and source_type == 'syslog':
         keywords = [k.strip() for k in re.split(r'[\n,]', text_match) if k.strip()]
         msg_lower = message.lower()
-        # All keywords must match (AND logic, same as Visual Syslog)
         if not all(k.lower() in msg_lower for k in keywords):
             return False
 
@@ -171,16 +243,30 @@ def process_alert(hostname, message, timestamp):
         return
 
     ec = get_email_config()
-    if not ec.get('enabled'):
+    tc = get_telegram_config()
+    email_enabled = bool(ec.get('enabled'))
+    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
+    if not email_enabled and not tg_enabled:
         return
 
     for rule in rules:
-        if not match_rule(rule, hostname, message):
+        if not match_rule(rule, hostname, message, 'syslog'):
             continue
 
         subject, body = build_alert_email(
             rule, hostname, '', message, timestamp, '')
-        sent, error   = send_email(rule['to_email'], subject, body, ec)
+        sent = False
+        error = ""
+        notify_via = rule.get('notify_via') or 'both'
+        if email_enabled and notify_via in ('email', 'both'):
+            sent, error = send_email(rule['to_email'], subject, body, ec)
+
+        if tg_enabled and notify_via in ('telegram', 'both'):
+            tg_text = subject + "\n\n" + body
+            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
+            if not tg_sent and not error:
+                error = tg_err
+            sent = sent or tg_sent
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
 
         # Log the alert
@@ -197,3 +283,47 @@ def process_alert(hostname, message, timestamp):
             print(f"[ALERT] Sent: {rule['name']} → {rule['to_email']}")
         else:
             print(f"[ALERT] Failed: {rule['name']} → {error}")
+def process_ping_alert(hostname, source_ip, status, timestamp):
+    if status != 'offline':
+        return
+
+    rules = get_rules()
+    if not rules:
+        return
+
+    ec = get_email_config()
+    tc = get_telegram_config()
+    email_enabled = bool(ec.get('enabled'))
+    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
+    if not email_enabled and not tg_enabled:
+        return
+
+    display_host = hostname or source_ip
+    message = f"Ping monitor detected {source_ip} as offline"
+    for rule in rules:
+        if not match_rule(rule, display_host, message, 'ping'):
+            continue
+
+        subject, body = build_alert_email(rule, display_host, source_ip, message, timestamp, 'critical')
+        sent = False
+        error = ""
+        notify_via = rule.get('notify_via') or 'both'
+        if email_enabled and notify_via in ('email', 'both'):
+            sent, error = send_email(rule.get('to_email', ''), subject, body, ec)
+
+        if tg_enabled and notify_via in ('telegram', 'both'):
+            tg_text = subject + "\n\n" + body
+            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
+            if not tg_sent and not error:
+                error = tg_err
+            sent = sent or tg_sent
+
+        now = time.strftime('%Y-%m-%dT%H:%M:%S')
+        execute_db(ALERT_DB, """INSERT INTO alert_log
+            (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (now, rule['id'], rule['name'], display_host,
+             message, rule.get('to_email', ''), 1 if sent else 0, error))
+        execute_db(ALERT_DB, """UPDATE alert_rules SET
+            hit_count=hit_count+1, last_hit=? WHERE id=?""",
+            (now, rule['id']))

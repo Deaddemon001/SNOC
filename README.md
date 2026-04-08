@@ -1,119 +1,182 @@
-# SimpleNOC v0.5.5.1
+# SimpleNOC v0.5.5.2
 
-**v0.5.5.1** is a focused on **dashboard UI and appearance** (theme contrast, Settings for database retention, Refresh behavior, uplink card readability). Core behavior matches **v0.5.5** unless noted in [CHANGELOG.md](CHANGELOG.md).
+SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-SimpleNOC is a Windows-focused Network Operations Center application for small ISP and OLT operations. It provides a web dashboard, SNMP trap collection, syslog collection, TFTP backup intake, OLT polling, ping monitoring, and alerting on top of a PostgreSQL backend.
+This repository contains the full desktop/server application used by SNOC v0.5.5.2.
 
-## Features
+## What the App Does
 
-- Web dashboard with login and role-based admin actions
+SimpleNOC is built around one main dashboard and several background services:
+
+- A Flask-based HTTPS dashboard and API
+- SNMP trap collection
+- Syslog ingestion and device/event tracking
+- TFTP backup intake
+- Ping monitoring with online/offline state tracking
+- Alerting through email and Telegram
+- OLT profile management and ONU/uplink polling
+- User login, role-based access, and tab-level permissions
+
+## Major Modules
+
+- `api.py`
+  Main Flask server, authentication, settings APIs, ping engine, dashboard endpoints, backup/restore, OLT APIs, and retention helpers.
+
+- `dashboard.html`
+  Single-page web UI for Syslog, SNMP, TFTP, Ping Monitor, Alerts, OLT Connect, Uplink Traffic, Logs, ONT lookup, and Users.
+
+- `login.html`
+  Login page for authenticated dashboard access.
+
+- `alert_engine.py`
+  Alert rule storage, matching, email sending, Telegram sending, template rendering, and alert logging.
+
+- `launcher.pyw`
+  Windows launcher GUI that starts all runtime services together.
+
+- `trap_receiver.py`
+  SNMP trap receiver and trap/event ingestion.
+
+- `syslog_server.py`
+  Syslog receiver and syslog device/event processing.
+
+- `tftp_server.py`
+  TFTP receive server used for OLT backup/config uploads.
+
+- `olt_connector.py`
+  OLT connection logic, SSH/Telnet polling, ONU parsing, uplink collection, and OLT database initialization.
+
+- `noc_config.py`
+  Central configuration for ports, paths, PostgreSQL, SSL, and retention defaults.
+
+- `setup.py`
+  Installer/uninstaller flow for Windows deployment.
+
+- `setup_postgres.bat`
+  PostgreSQL bootstrap helper.
+
+- `init_postgres.sql`
+  Database/user initialization SQL for PostgreSQL.
+
+## Core Features
+
+### Dashboard and Access
+
+- Login-protected dashboard
+- Admin and read-only user roles
+- Per-user visible tab permissions
+- Global tab enable/disable controls from Settings
+- Password change flow
+- Backup and restore of operational configuration
+
+### Monitoring and Collection
+
 - SNMP trap receiver
-- Syslog server with device state tracking
-- TFTP backup receiver
-- Ping monitor
-- Alert rules with SMTP email delivery
-- OLT Connect for SSH/Telnet access profiles
-- ONU and uplink polling for supported VSOL OLT models
-- HTTPS dashboard with auto-generated self-signed certificate
+- Syslog receiver with event summaries
+- Ping monitor with online/offline/high-latency view
+- TFTP backup receiver with file inventory
+- Log viewer for local service logs
+- ONT history lookup by serial number
 
-## Repository Layout
+### OLT and ONU Operations
 
-- `api.py` - main Flask API and dashboard server
-- `dashboard.html` - main web UI
-- `login.html` - login page
-- `launcher.pyw` - GUI launcher that starts all app services
-- `trap_receiver.py` - SNMP trap service
-- `syslog_server.py` - syslog service
-- `tftp_server.py` - TFTP backup receiver
-- `olt_connector.py` - OLT login, polling, parsers, and OLT DB init
-- `alert_engine.py` - SMTP config, alert rules, and alert log
-- `noc_config.py` - central application configuration
-- `setup.py` - installer/uninstaller
-- `run.bat` - setup and maintenance menu
-- `setup_postgres.bat` - PostgreSQL bootstrap helper
-- `init_postgres.sql` - PostgreSQL DB and user creation script
+- OLT connection profiles
+- SSH/Telnet polling support
+- ONU inventory/history storage
+- Uplink statistics collection
+- Scheduled OLT polling jobs
+- ONT history charting
 
-## Platform Support
+### Alerts
 
-This version is built for Windows.
+- SMTP email alerts
+- Telegram alerts
+- Alert templates
+- Syslog-based alert rules
+- Ping monitor offline alerts
+- Host match and excluded-host filters in rules
 
-Recommended environments:
+### Settings and Runtime Control
 
-- Windows 10 or Windows 11
-- Windows Server 2019 or newer
-- Administrator access during install and when binding privileged ports
+- Retention visibility and cleanup settings
+- Configurable server ports
+- Session timeout control
+- HTTPS support with generated certificate files
 
-## Prerequisites
+## Current v0.5.5.2 Highlights
 
-Install these before first setup:
+This version includes:
 
-- Python 3.10 or newer
-- PostgreSQL 12 or newer
-- Network access for monitored devices
-- Local firewall access for dashboard and listener ports
+- User creation and editing with role selection
+- Per-user tab permissions
+- Global tab visibility controls
+- Read-only-safe Ping Monitor behavior
+- Ping offline alert rules
+- Alert host exclusion support
+- Logs tab
+- ONT lookup tab
+- Telegram alert support
+- Session timeout setting
 
-Recommended Python installation options:
+See [CHANGELOG.md](CHANGELOG.md) for release details.
 
-- Enable `Add Python to PATH`
-- Enable `Install for all users`
+## Runtime Architecture
 
-Recommended PostgreSQL installation options:
+Typical runtime flow:
 
-- Install PostgreSQL Server
-- Install `psql` command-line tools
-- Keep the PostgreSQL service running
-- Note the PostgreSQL superuser account and password
+1. `launcher.pyw` starts the application stack.
+2. `api.py` serves the dashboard/API and runs supporting background workers.
+3. `trap_receiver.py`, `syslog_server.py`, and `tftp_server.py` collect network data.
+4. `olt_connector.py` is used by dashboard/API flows to poll OLTs and store ONU/uplink data.
+5. `alert_engine.py` evaluates rules and sends notifications.
+6. PostgreSQL stores users, events, alert rules/logs, ping status/history, OLT data, and TFTP metadata.
 
-## Python Dependencies
+## Technology Stack
 
-The application installer currently installs these packages automatically:
+- Python 3
+- Flask
+- Flask-CORS
+- PostgreSQL
+- Paramiko
+- PySNMP
+- HTML/CSS/JavaScript dashboard
+- Tkinter launcher
 
-- `flask`
-- `flask-cors`
-- `pysnmp`
-- `paramiko`
-- `psycopg2-binary`
+## Supported Environment
 
-For HTTPS certificate generation, install this package as well:
+- Windows 10 / 11
+- Windows Server deployments
+- PostgreSQL 12+
+- Python 3.10+
 
-- `cryptography`
+Administrator rights are typically required for installation and for binding to privileged ports like `69/udp` and `162/udp`.
 
-If you are running from source, install everything manually:
+## Default Services and Ports
 
-```powershell
-python -m pip install flask flask-cors pysnmp paramiko psycopg2-binary cryptography
-```
+Defaults come from [`noc_config.py`](noc_config.py):
 
-## Default Ports
+- Dashboard HTTP: `5000`
+- Dashboard HTTPS: `5443`
+- SNMP trap listener: `162/udp`
+- Syslog listener: `5141/udp`
+- TFTP listener: `69/udp`
+- PostgreSQL: `5432`
 
-Configured in [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py):
+The dashboard can update listener ports from Settings, and a restart is required after changing them.
 
-- `5000` - HTTP listener
-- `5443` - HTTPS dashboard
-- `162/udp` - SNMP trap receiver
-- `5141/udp` - syslog server
-- `69/udp` - TFTP server
-- `5432` - PostgreSQL
+## Database
 
-Notes:
+SimpleNOC v0.5.5.2 is PostgreSQL-based.
 
-- Ports `69` and `162` usually require Administrator privileges on Windows.
-- When HTTPS is enabled, HTTP redirects to HTTPS.
-- If certificate generation fails, the API disables HTTPS and falls back to HTTP-only behavior.
+Default app DB values:
 
-## Database Model
-
-SimpleNOC v0.5.5.1 is configured for PostgreSQL only.
-
-Default application database settings from [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py):
-
-- Database name: `simplenoc`
-- App DB user: `adminsql`
-- App DB password: `adminsql`
+- Database: `simplenoc`
+- User: `adminsql`
+- Password: `adminsql`
 - Host: `localhost`
 - Port: `5432`
 
-These can also be overridden with environment variables:
+Supported environment variable overrides:
 
 - `SIMPLENOC_PGHOST`
 - `SIMPLENOC_PGPORT`
@@ -121,141 +184,97 @@ These can also be overridden with environment variables:
 - `SIMPLENOC_PGPASSWORD`
 - `SIMPLENOC_PGDBNAME`
 
-## Installation Options
+## Install and Run
 
-There are two practical ways to install this project.
+### Option 1: Windows menu flow
 
-### Option 1: Install Using the Included Windows Menu
-
-This is the recommended path for most users.
-
-1. Clone or copy this repository to a local Windows machine.
-2. Open an elevated Command Prompt or PowerShell window.
-3. Run:
+Use the bundled menu:
 
 ```bat
 run.bat
 ```
 
-4. Choose `1. Install or Update SimpleNOC`.
-5. After install completes, return to the menu and choose `2. Setup PostgreSQL Database`.
+Recommended order:
 
-What this does:
+1. `Install or Update SimpleNOC`
+2. `Setup PostgreSQL Database`
+3. Start the app with the launcher or installed scripts
 
-- installs Python dependencies
-- creates `C:\SimpleNOC`
-- copies app files into `C:\SimpleNOC`
-- creates logs and control scripts
-- attempts to install Windows Services if `nssm` is available
-- otherwise uses `launcher.pyw` as the main runtime entrypoint
+### Option 2: Run from source
 
-### Option 2: Run From Source
-
-Use this if you are developing, testing, or preparing the repository for GitHub.
-
-1. Clone the repository:
-
-```powershell
-git clone <your-repo-url>
-cd SimpleNOCv0.5.5
-```
-
-2. Open a terminal in the project root.
-3. Install Python dependencies:
+Install dependencies:
 
 ```powershell
 python -m pip install flask flask-cors pysnmp paramiko psycopg2-binary cryptography
 ```
 
-4. Set up PostgreSQL using the bundled script:
+Initialize PostgreSQL:
 
 ```bat
 setup_postgres.bat
 ```
 
-5. Start the full app:
+Start the full stack:
 
 ```powershell
 python launcher.pyw
 ```
 
-Alternative source startup:
+Start only dashboard/API:
 
 ```powershell
 python api.py
 ```
 
-`python api.py` starts only the dashboard/API process. It does not start SNMP, syslog, or TFTP collectors.
-
-## PostgreSQL Setup
-
-The bundled PostgreSQL helper script:
-
-```bat
-setup_postgres.bat
-```
-
-This script:
-
-- locates `psql.exe`
-- prompts for the PostgreSQL superuser name
-- runs [init_postgres.sql](/E:/codex/SimpleNOCv0.5.5/init_postgres.sql)
-- creates the `simplenoc` database if it does not exist
-- creates or resets the `adminsql` DB user password
-- grants privileges on the `public` schema
-
-If `psql` is not in PATH, the script will also search common install paths such as:
-
-- `C:\Program Files\PostgreSQL\18\bin`
-- `C:\Program Files\PostgreSQL\17\bin`
-- `C:\Program Files\PostgreSQL\16\bin`
-- `C:\Program Files\PostgreSQL\15\bin`
-- `C:\Program Files\PostgreSQL\14\bin`
-
-If PostgreSQL is installed elsewhere, enter the `bin` path manually when prompted.
-
-## Installed Location
-
-The installer copies the application to:
+## Repository Layout
 
 ```text
-C:\SimpleNOC
+SimpleNOC/
+├── api.py
+├── alert_engine.py
+├── dashboard.html
+├── login.html
+├── launcher.pyw
+├── noc_config.py
+├── olt_connector.py
+├── setup.py
+├── setup_postgres.bat
+├── init_postgres.sql
+├── trap_receiver.py
+├── syslog_server.py
+├── tftp_server.py
+├── CHANGELOG.md
+└── data/ logs/ backups/
 ```
 
-Important installed files:
+## Security and Permissions Model
 
-- `C:\SimpleNOC\run.bat`
-- `C:\SimpleNOC\launcher.pyw`
-- `C:\SimpleNOC\START_NOC.bat`
-- `C:\SimpleNOC\STOP_NOC.bat`
-- `C:\SimpleNOC\STATUS_NOC.bat`
-- `C:\SimpleNOC\noc_config.py`
-- `C:\SimpleNOC\logs\`
-- `C:\SimpleNOC\data\`
-- `C:\SimpleNOC\backups\`
+- Admin users can manage settings, users, alert rules, ping targets, backup/restore, and OLT profiles/jobs.
+- Read-only users can view assigned tabs and operational data.
+- Tab access is controlled at two levels:
+  - global enabled tabs
+  - per-user visible tabs
 
-## Starting the Application
+## Known Scope of This Release
 
-Recommended:
+This release is focused on Windows-based operations with a local launcher and PostgreSQL backend. It is best suited for small NOC environments, OLT monitoring, backup intake, and internal operations teams.
 
-```powershell
-python launcher.pyw
-```
+## Upcoming Updates
 
-or after installation:
+Planned next-step items:
 
-```bat
-C:\SimpleNOC\launcher.pyw
-```
+- Android app to display ONT details
+- Limit users to specific OLT profiles so they cannot view ONU information from other OLTs
 
-`launcher.pyw` starts:
+## Notes for GitHub
 
-- SNMP Trap Receiver
-- Syslog Server
-- TFTP Server
-- API and Dashboard
+- Some installer/runtime scripts are Windows-specific by design.
+- The dashboard is a single-file HTML/JS UI rather than a separate frontend framework project.
+- The project currently favors operational simplicity over deep service separation.
 
-Other startup helpers:
+## License / Project Status
+
+This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.5.2.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes
@@ -286,6 +305,12 @@ If no users exist, the application creates this default user automatically:
 
 Change the password after first login.
 
+User management notes:
+
+- The `viewer` role is shown as `read-only` in the dashboard UI.
+- Admins can assign visible tabs per user when creating or editing accounts.
+- Per-user tab permissions are stored in the authentication database and applied after login.
+
 ## Configuration
 
 The main configuration file is [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py).
@@ -297,6 +322,7 @@ Key settings include:
 - PostgreSQL connection details
 - retention periods
 - SSL certificate paths
+- The Settings modal also includes configurable server ports, storage retention, session timeout, and visible-tab controls.
 
 The API also auto-generates a self-signed certificate under:
 

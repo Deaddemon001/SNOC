@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
 import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys
+from collections import deque
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
@@ -12,12 +13,13 @@ app.config['SESSION_COOKIE_SECURE']   = False
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 CORS(app, supports_credentials=True)
 
-from alert_engine import send_email, get_email_template, save_email_template
+from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, process_ping_alert
 
 HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
 SSL_CERT      = getattr(_cfg, 'SSL_CERT',      '')
 SSL_KEY       = getattr(_cfg, 'SSL_KEY',       '')
+CONFIG_FILE   = os.path.join(BASE_DIR if 'BASE_DIR' in globals() else os.path.dirname(os.path.abspath(__file__)), 'noc_config.py')
 
 def ensure_mac_mapping_table():
     execute_db(SYSLOG_DB, '''CREATE TABLE IF NOT EXISTS mac_mapping (
@@ -35,6 +37,11 @@ DASHBOARD  = _cfg.DASHBOARD
 TFTP_DB    = _cfg.TFTP_DB
 OLT_DB     = _cfg.OLT_DB
 BACKUP_DIR = _cfg.BACKUP_DIR
+LOGS_DIR   = os.path.join(BASE_DIR, "logs")
+
+DEFAULT_VISIBLE_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
+ALL_VISIBLE_TABS = DEFAULT_VISIBLE_TABS + ['users', 'logs', 'ont']
+GLOBAL_SETTINGS_TABS = DEFAULT_VISIBLE_TABS + ['ont']
 
 # Ensure all tables exist
 try:
@@ -188,14 +195,44 @@ def verify_password(password, stored_hash, salt):
     hashed, _ = hash_password(password, salt)
     return hashed == stored_hash
 
+
+def _normalize_role(value):
+    role = str(value or 'viewer').strip().lower()
+    if role in ('readonly', 'read-only', 'read only'):
+        return 'viewer'
+    return 'admin' if role == 'admin' else 'viewer'
+
 def is_logged_in():
     return session.get('logged_in') is True and bool(session.get('username'))
+
+def _get_session_timeout_minutes():
+    raw = get_noc_setting('session_timeout_minutes', '')
+    try:
+        m = int(raw)
+        if m in (10, 30, 60):
+            return m
+    except Exception:
+        pass
+    # Default if not set: 30 minutes
+    return 30
+
+def _is_session_expired():
+    try:
+        login_time = float(session.get('login_time') or 0)
+    except Exception:
+        login_time = 0
+    if not login_time:
+        return False
+    timeout_s = _get_session_timeout_minutes() * 60
+    return (time.time() - login_time) > timeout_s
 
 def login_required(f):
     from functools import wraps
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not is_logged_in():
+        if not is_logged_in() or _is_session_expired():
+            if _is_session_expired():
+                session.clear()
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'unauthorized', 'redirect': '/login'}), 401
             return redirect('/login')
@@ -211,6 +248,7 @@ def init_auth_db():
         password   TEXT NOT NULL,
         salt       TEXT NOT NULL,
         role       TEXT DEFAULT 'viewer',
+        visible_tabs TEXT DEFAULT '',
         created_at TEXT,
         last_login TEXT
     )''')
@@ -220,13 +258,29 @@ def init_auth_db():
         created_at TEXT,
         expires_at TEXT
     )''')
+    execute_db(AUTH_DB, '''CREATE TABLE IF NOT EXISTS noc_settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT DEFAULT '',
+        updated_at TEXT
+    )''')
+    execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN visible_tabs TEXT DEFAULT ''")
+    execute_db(
+        AUTH_DB,
+        "UPDATE users SET visible_tabs=? WHERE COALESCE(visible_tabs, '')=''",
+        (json.dumps(DEFAULT_VISIBLE_TABS),)
+    )
+    execute_db(
+        AUTH_DB,
+        "UPDATE users SET visible_tabs=? WHERE role='admin' AND COALESCE(visible_tabs, '') IN ('', ?)",
+        (json.dumps(ALL_VISIBLE_TABS), json.dumps(DEFAULT_VISIBLE_TABS))
+    )
     # Create default admin if no users exist
     rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM users")
     if not rows or rows[0]['count'] == 0:
         hashed, salt = hash_password('admin123')
         execute_db(AUTH_DB,
-            "INSERT INTO users (username,password,salt,role,created_at) VALUES (?,?,?,?,?)",
-            ('admin', hashed, salt, 'admin', datetime.datetime.now().isoformat()))
+            "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
+            ('admin', hashed, salt, 'admin', json.dumps(ALL_VISIBLE_TABS), datetime.datetime.now().isoformat()))
         print("Default admin created: username=admin password=admin123")
         print("IMPORTANT: Change the password after first login!")
 
@@ -332,6 +386,152 @@ def _fetch_one(sql, params=()):
     return rows[0] if rows else None
 
 
+def get_noc_setting(key, default_value=None):
+    try:
+        rows = query_db(AUTH_DB, "SELECT value FROM noc_settings WHERE key=?", (key,))
+        if rows and rows[0].get('value') not in (None, ''):
+            return rows[0]['value']
+    except Exception:
+        pass
+    return default_value
+
+
+def set_noc_setting(key, value):
+    now = datetime.datetime.now().isoformat()
+    try:
+        execute_db(
+            AUTH_DB,
+            "INSERT INTO noc_settings (key,value,updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at",
+            (key, value if value is not None else '', now),
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _get_global_visible_tabs():
+    raw = get_noc_setting('visible_tabs', '')
+    tabs = raw
+    if isinstance(raw, str):
+        try:
+            tabs = json.loads(raw)
+        except Exception:
+            tabs = []
+    if not isinstance(tabs, list):
+        tabs = []
+    cleaned = []
+    seen = set()
+    for tab in tabs:
+        tab = str(tab).strip()
+        if tab in GLOBAL_SETTINGS_TABS and tab not in seen:
+            cleaned.append(tab)
+            seen.add(tab)
+    return cleaned or list(DEFAULT_VISIBLE_TABS)
+
+
+def _default_visible_tabs_for_role(role):
+    base_tabs = _get_global_visible_tabs()
+    if role == 'admin':
+        return list(base_tabs + [tab for tab in ('users', 'logs') if tab not in base_tabs])
+    return list(base_tabs)
+
+
+def _normalize_visible_tabs(value, role='viewer'):
+    tabs = value
+    if isinstance(value, str):
+        try:
+            tabs = json.loads(value)
+        except Exception:
+            tabs = []
+    if not isinstance(tabs, list):
+        tabs = []
+    cleaned = []
+    seen = set()
+    for tab in tabs:
+        tab = str(tab).strip()
+        if tab in ALL_VISIBLE_TABS and tab not in seen:
+            cleaned.append(tab)
+            seen.add(tab)
+    defaults = _default_visible_tabs_for_role(role)
+    if not cleaned:
+        cleaned = defaults
+    if role == 'admin':
+        for extra in ('users', 'logs'):
+            if extra not in cleaned:
+                cleaned.append(extra)
+    return cleaned
+
+
+def _visible_tabs_json(value, role='viewer'):
+    return json.dumps(_normalize_visible_tabs(value, role))
+
+
+def _effective_visible_tabs(user_tabs, role='viewer'):
+    allowed = set(_get_global_visible_tabs())
+    tabs = [tab for tab in _normalize_visible_tabs(user_tabs, role) if tab in allowed]
+    if role == 'admin':
+        for extra in ('users', 'logs'):
+            if extra not in tabs:
+                tabs.append(extra)
+    return tabs or _default_visible_tabs_for_role(role)
+
+
+def _get_user_record(username):
+    users = query_db(AUTH_DB, "SELECT * FROM users WHERE username=?", (username,))
+    if not users:
+        return None
+    user = dict(users[0])
+    user['visible_tabs'] = _normalize_visible_tabs(user.get('visible_tabs'), user.get('role', 'viewer'))
+    return user
+
+
+def _get_current_user_payload():
+    username = session.get('username')
+    role = session.get('role') or 'viewer'
+    user = _get_user_record(username) if username else None
+    if user:
+        role = user.get('role', role)
+        visible_tabs = user.get('visible_tabs', _default_visible_tabs_for_role(role))
+    else:
+        visible_tabs = _default_visible_tabs_for_role(role)
+    global_visible_tabs = _get_global_visible_tabs()
+    return {
+        'logged_in': True,
+        'username': username,
+        'role': role,
+        'visible_tabs': visible_tabs,
+        'global_visible_tabs': global_visible_tabs,
+        'effective_visible_tabs': _effective_visible_tabs(visible_tabs, role),
+    }
+
+
+def _update_config_ports(port_values):
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as fh:
+            content = fh.read()
+    except Exception as e:
+        raise RuntimeError(f'Unable to read noc_config.py: {e}')
+
+    for key, value in port_values.items():
+        pattern = rf"(?m)^({re.escape(key)}\s*=\s*)\d+\s*$"
+        new_content, count = re.subn(pattern, rf"\g<1>{int(value)}", content, count=1)
+        if count != 1:
+            raise RuntimeError(f'Could not update {key} in noc_config.py')
+        content = new_content
+
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8', newline='') as fh:
+            fh.write(content)
+    except Exception as e:
+        raise RuntimeError(f'Unable to write noc_config.py: {e}')
+
+    for key, value in port_values.items():
+        setattr(_cfg, key, int(value))
+    global HTTPS_PORT
+    HTTPS_PORT = int(port_values.get('HTTPS_PORT', HTTPS_PORT))
+
+
 def _table_columns(conn, table_name):
     cur = conn.cursor()
     cur.execute(
@@ -362,7 +562,7 @@ def build_full_backup():
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
         return {
-            'version': '0.5.5.1',
+            'version': '0.5.5.2',
             'database': 'postgres',
             'created_at': datetime.datetime.now().isoformat(),
             'tables': tables,
@@ -471,10 +671,9 @@ def do_login():
     if not username or not password:
         return jsonify({'success': False, 'error': 'Username and password required'}), 400
 
-    users = query_db(AUTH_DB, "SELECT * FROM users WHERE username=?", (username,))
-    if not users:
+    user = _get_user_record(username)
+    if not user:
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
-    user = users[0]
 
     if not verify_password(password, user['password'], user['salt']):
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
@@ -494,7 +693,8 @@ def do_login():
     return jsonify({
         'success':  True,
         'username': username,
-        'role':     user['role']
+        'role':     user['role'],
+        'visible_tabs': user['visible_tabs'],
     })
 
 
@@ -507,11 +707,9 @@ def do_logout():
 def auth_me():
     if not is_logged_in():
         return jsonify({'logged_in': False}), 401
-    return jsonify({
-        'logged_in': True,
-        'username':  session.get('username'),
-        'role':      session.get('role')
-    })
+    payload = _get_current_user_payload()
+    session['role'] = payload['role']
+    return jsonify(payload)
 
 @app.route('/api/auth/change_password', methods=['POST'])
 @login_required
@@ -544,8 +742,11 @@ def change_password():
 def list_users():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
-    return jsonify(query_db(AUTH_DB,
-        "SELECT id,username,role,created_at,last_login FROM users ORDER BY id"))
+    rows = query_db(AUTH_DB,
+        "SELECT id,username,role,visible_tabs,created_at,last_login FROM users ORDER BY id")
+    for row in rows:
+        row['visible_tabs'] = _normalize_visible_tabs(row.get('visible_tabs'), row.get('role', 'viewer'))
+    return jsonify(rows)
 
 @app.route('/api/auth/users/add', methods=['POST'])
 @login_required
@@ -555,20 +756,49 @@ def add_user():
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
-    role     = data.get('role', 'viewer')
+    role     = _normalize_role(data.get('role', 'viewer'))
     if not username or len(password) < 6:
         return jsonify({'error': 'Username required, password min 6 chars'}), 400
-    if role not in ('admin', 'viewer'):
-        role = 'viewer'
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
     
     hashed, salt = hash_password(password)
     success = execute_db(AUTH_DB,
-        "INSERT INTO users (username,password,salt,role,created_at) VALUES (?,?,?,?,?)",
-        (username, hashed, salt, role, datetime.datetime.now().isoformat()))
+        "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
+        (username, hashed, salt, role, json.dumps(visible_tabs), datetime.datetime.now().isoformat()))
     if success:
-        return jsonify({'success': True, 'username': username})
+        return jsonify({'success': True, 'username': username, 'visible_tabs': visible_tabs})
     else:
         return jsonify({'error': 'Username already exists or database error'}), 409
+
+
+@app.route('/api/auth/users/edit', methods=['POST'])
+@login_required
+def edit_user():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    data = request.json or {}
+    username = (data.get('username') or '').strip().lower()
+    role = _normalize_role(data.get('role', 'viewer'))
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+    if username == session.get('username') and role != 'admin':
+        return jsonify({'error': 'Cannot remove your own admin role'}), 400
+
+    existing = _get_user_record(username)
+    if not existing:
+        return jsonify({'error': 'User not found'}), 404
+
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', existing.get('visible_tabs', [])), role)
+    success = execute_db(
+        AUTH_DB,
+        "UPDATE users SET role=?, visible_tabs=? WHERE username=?",
+        (role, json.dumps(visible_tabs), username)
+    )
+    if not success:
+        return jsonify({'error': 'Database error'}), 500
+    if username == session.get('username'):
+        session['role'] = role
+    return jsonify({'success': True, 'username': username, 'role': role, 'visible_tabs': visible_tabs})
 
 
 @app.route('/api/auth/users/delete', methods=['POST'])
@@ -601,6 +831,135 @@ def api_retention_settings():
         return jsonify({'error': 'Admin only'}), 403
     return jsonify({'success': True, **hardcoded_map})
 
+@app.route('/api/settings/ui', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_ui_settings():
+    if request.method == 'GET':
+        return jsonify({'visible_tabs': _get_global_visible_tabs()})
+
+    # POST: admin only
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+
+    data = request.json or {}
+    tabs = data.get('visible_tabs', [])
+    if not isinstance(tabs, list):
+        return jsonify({'error': 'visible_tabs must be a list'}), 400
+
+    allowed = set(GLOBAL_SETTINGS_TABS)
+    tabs = [str(t) for t in tabs if str(t) in allowed]
+    if not tabs:
+        tabs = list(DEFAULT_VISIBLE_TABS)
+
+    ok = set_noc_setting('visible_tabs', json.dumps(tabs))
+    if not ok:
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+    return jsonify({'success': True, 'visible_tabs': tabs})
+
+
+@app.route('/api/settings/ports', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_port_settings():
+    port_map = {
+        'api_port': int(getattr(_cfg, 'API_PORT', 5000)),
+        'https_port': int(getattr(_cfg, 'HTTPS_PORT', 5443)),
+        'snmp_port': int(getattr(_cfg, 'SNMP_PORT', 162)),
+        'syslog_port': int(getattr(_cfg, 'SYSLOG_PORT', 5141)),
+        'tftp_port': int(getattr(_cfg, 'TFTP_PORT', 69)),
+    }
+    if request.method == 'GET':
+        return jsonify(port_map)
+
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+
+    data = request.json or {}
+    updates = {}
+    field_to_cfg = {
+        'api_port': 'API_PORT',
+        'https_port': 'HTTPS_PORT',
+        'snmp_port': 'SNMP_PORT',
+        'syslog_port': 'SYSLOG_PORT',
+        'tftp_port': 'TFTP_PORT',
+    }
+    for field, cfg_key in field_to_cfg.items():
+        try:
+            value = int(data.get(field, port_map[field]))
+        except Exception:
+            return jsonify({'error': f'Invalid value for {field}'}), 400
+        if value < 1 or value > 65535:
+            return jsonify({'error': f'{field} must be between 1 and 65535'}), 400
+        updates[cfg_key] = value
+
+    try:
+        _update_config_ports(updates)
+    except RuntimeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    return jsonify({
+        'success': True,
+        'restart_required': True,
+        'message': 'Ports saved to noc_config.py. Restart SimpleNOC to use the new ports.',
+        'api_port': updates['API_PORT'],
+        'https_port': updates['HTTPS_PORT'],
+        'snmp_port': updates['SNMP_PORT'],
+        'syslog_port': updates['SYSLOG_PORT'],
+        'tftp_port': updates['TFTP_PORT'],
+    })
+
+
+@app.route('/api/settings/storage_stats', methods=['GET'])
+@login_required
+def api_storage_stats():
+    # Row counts + oldest/newest timestamps for each retention-managed dataset.
+    items = []
+    for table_name, column_name, _retention_days in get_retention_policies():
+        try:
+            rows = query_db(
+                AUTH_DB,
+                f"SELECT COUNT(*) AS count, MIN({column_name}) AS oldest, MAX({column_name}) AS newest FROM {table_name}",
+            )
+            size_rows = query_db(AUTH_DB, f"SELECT pg_total_relation_size('{table_name}') AS size_bytes")
+            r = rows[0] if rows else {}
+            s = size_rows[0] if size_rows else {}
+            size_mb = f"{s.get('size_bytes', 0) / (1024 * 1024):.1f} MB" if s.get('size_bytes') is not None else "0.0 MB"
+            items.append({
+                'table': table_name,
+                'column': column_name,
+                'count': int(r.get('count') or 0),
+                'size_mb': size_mb,
+                'oldest': r.get('oldest'),
+                'newest': r.get('newest'),
+            })
+
+        except Exception as e:
+            items.append({
+                'table': table_name,
+                'column': column_name,
+                'count': 0,
+                'oldest': None,
+                'newest': None,
+                'error': str(e),
+            })
+    return jsonify({'items': items})
+
+@app.route('/api/settings/security', methods=['GET', 'POST'], strict_slashes=False)
+@login_required
+def api_security_settings():
+    if request.method == 'GET':
+        return jsonify({'session_timeout_minutes': _get_session_timeout_minutes()})
+    d = request.json or {}
+    try:
+        m = int(d.get('session_timeout_minutes') or 0)
+    except Exception:
+        m = 0
+    if m not in (10, 30, 60):
+        return jsonify({'error': 'Invalid session_timeout_minutes'}), 400
+    ok = set_noc_setting('session_timeout_minutes', str(m))
+    if not ok:
+        return jsonify({'success': False, 'error': 'Database error'}), 500
+    return jsonify({'success': True, 'session_timeout_minutes': m})
+
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 @app.route('/')
@@ -611,6 +970,81 @@ def index():
         content = f.read()
     from flask import Response
     return Response(content, mimetype='text/html')
+
+# ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
+@app.route('/api/logs/list')
+@login_required
+def api_logs_list():
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+    items = []
+    try:
+        for name in os.listdir(LOGS_DIR):
+            if not name.lower().endswith('.log'):
+                continue
+            safe = os.path.basename(name)
+            path = os.path.join(LOGS_DIR, safe)
+            try:
+                st = os.stat(path)
+            except Exception:
+                continue
+            items.append({
+                'name': safe,
+                'size': int(getattr(st, 'st_size', 0) or 0),
+                'mtime': datetime.datetime.fromtimestamp(getattr(st, 'st_mtime', time.time())).isoformat()
+            })
+    except Exception:
+        items = []
+
+    items.sort(key=lambda x: x.get('mtime', ''), reverse=True)
+    return jsonify(items)
+
+
+@app.route('/api/logs/read')
+@login_required
+def api_logs_read():
+    name = (request.args.get('name') or '').strip()
+    try:
+        tail = int(request.args.get('tail') or 500)
+    except Exception:
+        tail = 500
+    tail = min(max(tail, 50), 5000)
+
+    if not name:
+        return jsonify({'error': 'name required'}), 400
+    safe = os.path.basename(name)
+    if safe != name or not safe.lower().endswith('.log'):
+        return jsonify({'error': 'invalid log name'}), 400
+
+    path = os.path.abspath(os.path.join(LOGS_DIR, safe))
+    logs_root = os.path.abspath(LOGS_DIR)
+    if not path.startswith(logs_root):
+        return jsonify({'error': 'invalid path'}), 400
+    if not os.path.exists(path):
+        return jsonify({'error': 'log not found'}), 404
+
+    lines = deque(maxlen=tail)
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                lines.append(line.rstrip('\n'))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    try:
+        st = os.stat(path)
+        meta = {
+            'name': safe,
+            'size': int(getattr(st, 'st_size', 0) or 0),
+            'mtime': datetime.datetime.fromtimestamp(getattr(st, 'st_mtime', time.time())).isoformat()
+        }
+    except Exception:
+        meta = {'name': safe}
+
+    return jsonify({'meta': meta, 'tail': tail, 'lines': list(lines)})
 
 # ── SNMP TRAPS ────────────────────────────────────────────────────────────────
 @app.route('/api/traps')
@@ -679,7 +1113,18 @@ def syslog_events():
     if h:
         sql += " AND olt_hostname=?"
         params = (h,)
-    sql += " ORDER BY timestamp DESC LIMIT 200"
+    try:
+        limit = int(request.args.get('limit') or 200)
+    except Exception:
+        limit = 200
+    try:
+        offset = int(request.args.get('offset') or 0)
+    except Exception:
+        offset = 0
+    limit = min(max(limit, 1), 500)
+    offset = max(offset, 0)
+    sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params = tuple(list(params) + [limit, offset])
     return jsonify(query_db(SYSLOG_DB, sql, params))
 
 @app.route('/api/syslog/onu_events')
@@ -716,9 +1161,10 @@ def onu_history():
     sn = request.args.get('serial_no')
     if not sn:
         return jsonify({'error': 'serial_no required'}), 400
-    # Return last 100 snapshots for this ONU
+    # Return last 100 snapshots for this ONU (case-insensitive partial match)
+    sn_like = f"%{sn}%"
     return jsonify(query_db(OLT_DB,
-        "SELECT * FROM onu_history WHERE serial_no=? ORDER BY poll_time DESC LIMIT 100", (sn,)))
+        "SELECT * FROM onu_data WHERE serial_no ILIKE ? ORDER BY poll_time DESC LIMIT 100", (sn_like,)))
 
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
 @app.route('/api/syslog/devices')
@@ -787,6 +1233,8 @@ def ping_db_writer():
             if t == 'result':
                 _, ip, latency, status = task
                 now = datetime.datetime.now().isoformat()
+                prev_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
+                prev_status = prev_rows[0]['status'] if prev_rows else ''
                 execute_db(PING_DB,
                     "INSERT INTO ping_results (timestamp,ip,latency_ms,status) VALUES (?,?,?,?)",
                     (now, ip, latency, status))
@@ -810,6 +1258,12 @@ def ping_db_writer():
                 loss = (len([r for r in rows if r['status']!='online'])/len(rows)*100) if rows else 0
                 execute_db(PING_DB, "UPDATE ping_status SET avg_latency=?,loss_pct=? WHERE ip=?",
                              (avg, loss, ip))
+                current_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
+                if current_rows:
+                    current_status = current_rows[0].get('status') or ''
+                    current_name = current_rows[0].get('name') or ip
+                    if current_status == 'offline' and prev_status != 'offline':
+                        process_ping_alert(current_name, ip, current_status, now)
         except __import__('queue').Empty:
             continue
         except Exception as e:
@@ -844,6 +1298,8 @@ def ping_targets():
 @app.route('/api/ping/add', methods=['POST'])
 @login_required
 def ping_add():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     d    = request.json
     ip   = (d.get('ip') or '').strip()
     name = (d.get('name') or ip).strip()
@@ -864,6 +1320,8 @@ def ping_add():
 @app.route('/api/ping/remove', methods=['POST'])
 @login_required
 def ping_remove():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     ip = (request.json or {}).get('ip')
     if not ip:
         return jsonify({'error': 'ip required'}), 400
@@ -874,6 +1332,8 @@ def ping_remove():
 @app.route('/api/ping/rename', methods=['POST'])
 @login_required
 def ping_rename():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
     d    = request.json or {}
     ip   = d.get('ip')
     name = d.get('name')
@@ -934,7 +1394,7 @@ def test_email():
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
     sent, err = send_email(to,
         '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.5.1\nEmail alerts are working correctly.')
+        'This is a test alert from SNOC v0.5.5.2\nEmail alerts are working correctly.')
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -957,6 +1417,61 @@ def email_diag():
         'issues':    issues
     })
 
+@app.route('/api/alerts/telegram_config', methods=['GET'])
+@login_required
+def get_telegram_cfg():
+    d = get_telegram_config() or {}
+    # Never echo token in full if present
+    token = d.get('bot_token', '') or ''
+    safe = token[:6] + '...' + token[-4:] if len(token) > 12 else token
+    return jsonify({
+        'bot_token': safe if token else '',
+        'chat_id': d.get('chat_id', '') or '',
+        'enabled': bool(d.get('enabled')),
+        'token_set': bool(token),
+    })
+
+
+@app.route('/api/alerts/telegram_config', methods=['POST'])
+@login_required
+def save_telegram_cfg():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    bot_token = (d.get('bot_token') or '').strip()
+    chat_id = (d.get('chat_id') or '').strip()
+    enabled = 1 if d.get('enabled') else 0
+
+    # Allow UI to send masked token; keep existing if looks masked
+    if '...' in bot_token:
+        cur = get_telegram_config() or {}
+        bot_token = cur.get('bot_token', '') or ''
+
+    execute_db(
+        AUTH_DB,
+        "UPDATE telegram_config SET bot_token=?, chat_id=?, enabled=? WHERE id=1",
+        (bot_token, chat_id, enabled),
+    )
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/test_telegram', methods=['POST'])
+@login_required
+def test_telegram():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    cur = get_telegram_config() or {}
+    if not cur.get('enabled'):
+        return jsonify({'success': False, 'error': 'Telegram is DISABLED. Enable it and save config.'})
+    if not cur.get('bot_token'):
+        return jsonify({'success': False, 'error': 'Bot token is empty. Save Telegram config first.'})
+    if not cur.get('chat_id'):
+        return jsonify({'success': False, 'error': 'Chat ID is empty. Save Telegram config first.'})
+
+    text = f"[SNOC] Test Alert\nTelegram alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
+    sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
+    return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
+
 @app.route('/api/alerts/rules', methods=['GET'])
 @login_required
 def get_alert_rules():
@@ -969,12 +1484,18 @@ def add_alert_rule():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
     d = request.json or {}
-    if not d.get('name') or not d.get('text_match'):
-        return jsonify({'error': 'name and text_match required'}), 400
+    source_type = (d.get('source_type') or 'syslog').strip().lower()
+    if source_type not in ('syslog', 'ping'):
+        source_type = 'syslog'
+    if not d.get('name'):
+        return jsonify({'error': 'name required'}), 400
+    if source_type == 'syslog' and not d.get('text_match'):
+        return jsonify({'error': 'text_match required for syslog alerts'}), 400
+    notify_via = d.get('notify_via', 'both')
     execute_db(AUTH_DB,
-        "INSERT INTO alert_rules (name,host_match,text_match,to_email,enabled,created_at) VALUES (?,?,?,?,1,?)",
-        (d['name'], d.get('host_match',''), d['text_match'],
-         d.get('to_email',''), datetime.datetime.now().isoformat()))
+        "INSERT INTO alert_rules (name,source_type,host_match,exclude_hosts,text_match,to_email,notify_via,enabled,created_at) VALUES (?,?,?,?,?,?,?,1,?)",
+        (d['name'], source_type, d.get('host_match',''), d.get('exclude_hosts',''), d.get('text_match',''),
+         d.get('to_email',''), notify_via, datetime.datetime.now().isoformat()))
     return jsonify({'success': True})
 
 
@@ -1010,7 +1531,7 @@ def alert_log():
 @login_required
 def alert_stats():
     rules = query_db(AUTH_DB,
-        "SELECT id,name,host_match,text_match,hit_count,last_hit,enabled FROM alert_rules ORDER BY hit_count DESC")
+        "SELECT id,name,source_type,host_match,exclude_hosts,text_match,to_email,notify_via,hit_count,last_hit,enabled FROM alert_rules ORDER BY hit_count DESC")
     
     total_sent_rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM alert_log WHERE sent=1")
     total_failed_rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM alert_log WHERE sent=0")
@@ -1561,6 +2082,48 @@ def get_uplink_stats():
     params.append(limit)
     return jsonify(query_db(OLT_DB, sql, params))
 
+@app.route('/api/olt/uplink_aggregate', methods=['GET'])
+@login_required
+def get_uplink_aggregate():
+    ip = request.args.get('ip', '')
+    iface = request.args.get('interface', '')
+    rng = (request.args.get('range') or 'day').strip().lower()
+    if rng not in ('day', 'week', 'month'):
+        rng = 'day'
+
+    now = datetime.datetime.now()
+    if rng == 'day':
+        cutoff = now - datetime.timedelta(days=1)
+        bucket = 'hour'
+    elif rng == 'week':
+        cutoff = now - datetime.timedelta(days=7)
+        bucket = 'day'
+    else:
+        cutoff = now - datetime.timedelta(days=30)
+        bucket = 'day'
+
+    sql = f"""SELECT
+        DATE_TRUNC('{bucket}', poll_time::timestamp) AS poll_time,
+        olt_ip,
+        COALESCE(interface, '') AS interface,
+        AVG(COALESCE(in_mbps,0))  AS in_mbps,
+        AVG(COALESCE(out_mbps,0)) AS out_mbps,
+        COUNT(*) AS samples
+      FROM uplink_stats
+      WHERE olt_ip=? AND poll_time >= ?"""
+    params = [ip, cutoff.replace(microsecond=0).isoformat()]
+    if iface:
+        sql += " AND interface=?"
+        params.append(iface)
+    sql += " GROUP BY poll_time, olt_ip, interface ORDER BY poll_time ASC"
+    rows = query_db(OLT_DB, sql, params)
+    # Normalize poll_time into ISO strings (pg may return datetime)
+    for r in rows:
+        pt = r.get('poll_time')
+        if hasattr(pt, 'isoformat'):
+            r['poll_time'] = pt.replace(microsecond=0).isoformat()
+    return jsonify(rows)
+
 @app.route('/api/olt/uplink_latest', methods=['GET'])
 @login_required
 def get_uplink_latest():
@@ -1693,7 +2256,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print("  SimpleNOC v0.5.5.1  –  Starting servers")
+    print("  SimpleNOC v0.5.5.2  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 
