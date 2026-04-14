@@ -18,8 +18,7 @@ write_queue = queue.Queue()
 
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 def init_db():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
-    pk = "SERIAL" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    pk = "SERIAL"
     
     execute_db(DB_PATH, f'''CREATE TABLE IF NOT EXISTS traps (
         id        {pk},
@@ -37,25 +36,20 @@ def init_db():
         onu_id TEXT, pon_slot TEXT, alarm_port TEXT,
         description TEXT, status TEXT)''')
 
-    if db_type == 'postgres':
-        execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_traps_timestamp ON traps (timestamp DESC)")
-        execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp DESC)")
-    else:
-        execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_traps_timestamp ON traps (timestamp)")
-        execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp)")
+    execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_traps_timestamp ON traps (timestamp DESC)")
+    execute_db(DB_PATH, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp DESC)")
 
-    print(f"Trap DB ({db_type}) ready.")
+    print(f"Trap DB (postgres) ready.")
 
 
 # ── DB WRITER ─────────────────────────────────────────────────────────────────
 def db_writer():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
     conn = get_db_connection(DB_PATH)
     if not conn:
         print("CRITICAL: Trap DB writer could not connect.")
         return
 
-    print(f"Trap DB writer ({db_type}) started.")
+    print(f"Trap DB writer (postgres) started.")
     while True:
         try:
             task = write_queue.get(timeout=2)
@@ -64,29 +58,22 @@ def db_writer():
             
             if t == 'trap':
                 _, src, mac, oid_id, oid, name, val = task
-                sql = "INSERT INTO traps (timestamp,source_ip,olt_mac,olt_id,oid,oid_name,value) VALUES (?,?,?,?,?,?,?)"
+                sql = "INSERT INTO traps (timestamp,source_ip,olt_mac,olt_id,oid,oid_name,value) VALUES (%s,%s,%s,%s,%s,%s,%s)"
                 params = (datetime.datetime.now().isoformat(), src, mac, oid_id, oid, name, val)
-                if db_type == 'postgres': sql = sql.replace('?', '%s')
                 
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(sql, params)
                 conn.commit()
 
             elif t == 'device':
                 _, src, mac, oid_id = task
                 now = datetime.datetime.now().isoformat()
-                if db_type == 'postgres':
-                    sql = """INSERT INTO devices (olt_mac,source_ip,olt_id,name,last_seen,status)
-                        VALUES (%s,%s,%s,%s,%s,'online') ON CONFLICT(olt_mac) DO UPDATE SET
-                        source_ip=EXCLUDED.source_ip, last_seen=EXCLUDED.last_seen,
-                        status='online', olt_id=EXCLUDED.olt_id"""
-                else:
-                    sql = """INSERT INTO devices (olt_mac,source_ip,olt_id,name,last_seen,status)
-                        VALUES (?,?,?,?,?,'online') ON CONFLICT(olt_mac) DO UPDATE SET
-                        source_ip=excluded.source_ip, last_seen=excluded.last_seen,
-                        status='online', olt_id=excluded.olt_id"""
+                sql = """INSERT INTO devices (olt_mac,source_ip,olt_id,name,last_seen,status)
+                    VALUES (%s,%s,%s,%s,%s,'online') ON CONFLICT(olt_mac) DO UPDATE SET
+                    source_ip=EXCLUDED.source_ip, last_seen=EXCLUDED.last_seen,
+                    status='online', olt_id=EXCLUDED.olt_id"""
                 
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(sql, (mac, src, oid_id, oid_id, now))
                 conn.commit()
 
@@ -96,21 +83,19 @@ def db_writer():
                     sql = """INSERT INTO events
                         (timestamp,olt_mac,olt_id,alarm_type,alarm_name,severity,
                          onu_id,pon_slot,alarm_port,description,status)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)"""
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
                     params = (datetime.datetime.now().isoformat(), mac, oid_id,
                               atype, aname, sev, onu, slot, port, desc, sta)
-                    if db_type == 'postgres': sql = sql.replace('?', '%s')
                     
-                    with conn.cursor() if db_type == 'postgres' else conn as cur:
+                    with conn.cursor() as cur:
                         cur.execute(sql, params)
                     conn.commit()
 
             elif t == 'offline':
                 threshold = (datetime.datetime.now() - datetime.timedelta(seconds=OFFLINE_S)).isoformat()
-                sql = "UPDATE devices SET status='offline' WHERE last_seen < ? AND status='online'"
-                if db_type == 'postgres': sql = sql.replace('?', '%s')
+                sql = "UPDATE devices SET status='offline' WHERE last_seen < %s AND status='online'"
                 
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(sql, (threshold,))
                 conn.commit()
 

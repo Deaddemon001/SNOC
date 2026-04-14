@@ -4,7 +4,7 @@ SSH (primary) or Telnet (raw socket, Python 3.13 compatible) fallback.
 Collects ONU state and uplink traffic from Vsol GPON OLT.
 """
 import concurrent.futures
-import re, time, sqlite3, socket
+import re, time, socket
 import noc_config as cfg
 from noc_config import query_db, execute_db, get_db_connection
 
@@ -17,9 +17,8 @@ PAGER_RE = re.compile(
 
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 def init_olt_db():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
-    pk = "SERIAL" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    bigint = "BIGINT" if db_type == 'postgres' else "INTEGER"
+    pk = "SERIAL"
+    bigint = "BIGINT"
     real = "REAL"
     
     execute_db(OLT_DB, f'''CREATE TABLE IF NOT EXISTS olt_profiles (
@@ -41,13 +40,9 @@ def init_olt_db():
 
     # Allow the same OLT IP to be stored more than once when the connection
     # ports differ. Older installs created a unique constraint on ip only.
-    if db_type == 'postgres':
-        execute_db(OLT_DB, "ALTER TABLE olt_profiles DROP CONSTRAINT IF EXISTS olt_profiles_ip_key")
-        execute_db(OLT_DB, "DROP INDEX IF EXISTS olt_profiles_ip_key")
-        execute_db(OLT_DB, "CREATE UNIQUE INDEX IF NOT EXISTS uq_olt_profiles_ip_ports ON olt_profiles (ip, ssh_port, telnet_port)")
-    else:
-        execute_db(OLT_DB, "DROP INDEX IF EXISTS olt_profiles_ip_key")
-        execute_db(OLT_DB, "CREATE UNIQUE INDEX IF NOT EXISTS uq_olt_profiles_ip_ports ON olt_profiles (ip, ssh_port, telnet_port)")
+    execute_db(OLT_DB, "ALTER TABLE olt_profiles DROP CONSTRAINT IF EXISTS olt_profiles_ip_key")
+    execute_db(OLT_DB, "DROP INDEX IF EXISTS olt_profiles_ip_key")
+    execute_db(OLT_DB, "CREATE UNIQUE INDEX IF NOT EXISTS uq_olt_profiles_ip_ports ON olt_profiles (ip, ssh_port, telnet_port)")
     
     execute_db(OLT_DB, f'''CREATE TABLE IF NOT EXISTS onu_data (
         id          {pk},
@@ -132,16 +127,11 @@ def init_olt_db():
     )''')
 
     # Add indexes
-    if db_type == 'postgres':
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_poll ON onu_data (poll_time DESC)")
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_olt ON onu_data (olt_ip)")
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_uplink_stats_poll ON uplink_stats (poll_time DESC)")
-    else:
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_poll ON onu_data (poll_time)")
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_olt ON onu_data (olt_ip)")
-        execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_uplink_stats_poll ON uplink_stats (poll_time)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_poll ON onu_data (poll_time DESC)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_data_olt ON onu_data (olt_ip)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_uplink_stats_poll ON uplink_stats (poll_time DESC)")
 
-    print(f"OLT DB ({db_type}) ready.")
+    print(f"OLT DB (postgres) ready.")
 
 
 init_olt_db()

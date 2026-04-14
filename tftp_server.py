@@ -7,7 +7,7 @@ Key insight from debug: Vsol OLT sends ALL packets from same source port (49803)
 to port 69 only. All ACKs must be sent back on the MAIN socket to that source port.
 No separate session socket needed.
 """
-import socket, os, struct, threading, time, sqlite3
+import socket, os, struct, threading, time
 import noc_config as cfg
 from noc_config import execute_db, query_db
 
@@ -23,8 +23,7 @@ OP_ERROR = 5
 
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 def init_tftp_db():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
-    pk = "SERIAL" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    pk = "SERIAL"
     execute_db(TFTP_DB, f'''CREATE TABLE IF NOT EXISTS tftp_files (
         id          {pk},
         timestamp   TEXT,

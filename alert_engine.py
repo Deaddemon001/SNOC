@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.2 - Alert Engine
+SimpleNOC v0.5.6.0 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
@@ -16,8 +16,7 @@ ALERT_DB = cfg.AUTH_DB  # reuse auth.db for alert rules
 
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 def init_alert_db():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
-    pk = "SERIAL" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    pk = "SERIAL"
     
     execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS email_config (
         id       INTEGER PRIMARY KEY,
@@ -70,8 +69,8 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.5.2'
-        execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,?,?)", (default_subject, default_body))
+        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.0'
+        execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
         id         {pk},
@@ -95,7 +94,7 @@ def init_alert_db():
     if not rows or rows[0]['count'] == 0:
         execute_db(ALERT_DB, "INSERT INTO telegram_config (id, bot_token, chat_id, enabled) VALUES (1,'','',0)")
     
-    print(f"Alert DB ({db_type}) ready.")
+    print("Alert DB (postgres) ready.")
 
 
 init_alert_db()
@@ -166,7 +165,7 @@ def get_email_template():
 
 
 def save_email_template(subject, body):
-    execute_db(ALERT_DB, "UPDATE email_template SET subject=?, body=? WHERE id=1",
+    execute_db(ALERT_DB, "UPDATE email_template SET subject=%s, body=%s WHERE id=1",
                  (subject, body))
 
 
@@ -272,11 +271,11 @@ def process_alert(hostname, message, timestamp):
         # Log the alert
         execute_db(ALERT_DB, """INSERT INTO alert_log
             (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
-            VALUES (?,?,?,?,?,?,?,?)""",
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
             (now, rule['id'], rule['name'], hostname,
              message, rule['to_email'], 1 if sent else 0, error))
         execute_db(ALERT_DB, """UPDATE alert_rules SET
-            hit_count=hit_count+1, last_hit=? WHERE id=?""",
+            hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
             (now, rule['id']))
 
         if sent:
@@ -321,9 +320,9 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
         execute_db(ALERT_DB, """INSERT INTO alert_log
             (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
-            VALUES (?,?,?,?,?,?,?,?)""",
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
             (now, rule['id'], rule['name'], display_host,
              message, rule.get('to_email', ''), 1 if sent else 0, error))
         execute_db(ALERT_DB, """UPDATE alert_rules SET
-            hit_count=hit_count+1, last_hit=? WHERE id=?""",
+            hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
             (now, rule['id']))

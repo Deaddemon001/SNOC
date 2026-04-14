@@ -1,9 +1,20 @@
-﻿# SimpleNOC — Changelog
+# SimpleNOC — Changelog
+
+---
+
+## v0.5.5.3 — Pure PostgreSQL & Storage Optimization
+**Release date:** 2026-04-14
+
+### Added
+- Enforcement of a 150MB storage limit for Syslog via automatic PostgreSQL table truncation.
+
+### Changed
+- **Complete removal of SQLite**: The application now runs exclusively on PostgreSQL, removing all legacy fallback logic and `.db` file dependencies.
+- Updated all backend services (`syslog_server`, `trap_receiver`, `tftp_server`, `alert_engine`, `olt_connector`) to use PostgreSQL-native SQL syntax and connection handling.
 
 ---
 
 ## v0.5.5.2 — User Access, Alerting, Settings, Logs/ONT
-**Release date:** 2026-04-07
 
 ### Added
 - User creation and editing from the **Users** tab.

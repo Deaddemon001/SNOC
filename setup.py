@@ -1,5 +1,5 @@
 """
-Simple NOC v0.5.5.2 - Setup & Installer
+Simple NOC v0.5.6.0 - Setup & Installer
 Run as Administrator: python setup.py
 """
 import subprocess, sys, os, time, shutil, ctypes, re, tempfile
@@ -66,7 +66,7 @@ BANNER = r"""
   ___) | | | | | | | |_) | |  __/ | |\  | |_| | |___
  |____/|_|_| |_| |_| .__/|_|\___| |_| \_|\___/ \____|
                     |_|
-         v0.5.5.2 - Network Operations Center
+         v0.5.6.0 - Network Operations Center
 """
 
 def is_admin():

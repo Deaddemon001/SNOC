@@ -1394,7 +1394,7 @@ def test_email():
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
     sent, err = send_email(to,
         '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.5.2\nEmail alerts are working correctly.')
+        'This is a test alert from SNOC v0.5.6.0\nEmail alerts are working correctly.')
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -2256,7 +2256,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print("  SimpleNOC v0.5.5.2  –  Starting servers")
+    print("  SimpleNOC v0.5.6.0  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

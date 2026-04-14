@@ -119,8 +119,7 @@ def parse_syslog(data, source_ip):
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 def init_db(path=None):
     if path is None: path = DB_PATH
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
-    pk = "SERIAL" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    pk = "SERIAL"
     
     # Ensure tables exist
     execute_db(path, f'''CREATE TABLE IF NOT EXISTS syslog (
@@ -142,54 +141,19 @@ def init_db(path=None):
         created_at   TEXT)''')
 
     # Add indexes for performance
-    if db_type == 'postgres':
-        execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_timestamp ON syslog (timestamp DESC)")
-        execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_olt ON syslog (olt_hostname)")
-        execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_tag ON syslog (event_tag)")
-    else:
-        execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_timestamp ON syslog (timestamp)")
-        execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_olt ON syslog (olt_hostname)")
+    execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_timestamp ON syslog (timestamp DESC)")
+    execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_olt ON syslog (olt_hostname)")
+    execute_db(path, "CREATE INDEX IF NOT EXISTS idx_syslog_tag ON syslog (event_tag)")
 
 
-def rotate_db():
-    """
-    Checks if active SQLite syslog DB exceeds 200MB and archives it.
-    Returns path of archived DB if rotation occurred, else None.
-    """
-    try:
-        import os
-        if not os.path.exists(DB_PATH): return None
-        
-        size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
-        if size_mb < 200: return None
-        
-        print(f"Syslog DB size {size_mb:.1f}MB exceeds 200MB limit. Rotating...")
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        rotated_path = DB_PATH.replace(".db", f"_{timestamp}.db")
-        
-        # Renaissance the file
-        try:
-            os.rename(DB_PATH, rotated_path)
-            init_db(DB_PATH) # Create fresh DB
-            return rotated_path
-        except Exception as re:
-            print(f"File rename failed: {re}. If DB is locked, rotation will retry.")
-            return None
-    except Exception as e:
-        print(f"Rotation check error: {e}")
-        return None
-
-
-# ── DB WRITER ─────────────────────────────────────────────────────────────────
 # ── DB WRITER ─────────────────────────────────────────────────────────────────
 def db_writer():
-    db_type = getattr(cfg, 'DB_TYPE', 'sqlite')
     conn = get_db_connection(DB_PATH)
     if not conn:
         print("CRITICAL: Syslog DB writer could not connect to database.")
         return
 
-    print(f"Syslog DB writer ({db_type}) started.")
+    print("Syslog DB writer (postgres) started.")
     
     last_rotate_check = time.time()
     last_prune_check  = time.time()
@@ -198,16 +162,21 @@ def db_writer():
         try:
             now_ts = time.time()
             
-            # SQLite Rotation (every 60s)
-            if db_type == 'sqlite' and now_ts - last_rotate_check > 60:
-                if rotate_db(): # If rotated, we need to reconnect
-                    conn.close()
-                    conn = get_db_connection(DB_PATH)
-                    if not conn: break
+            # Size Check (every 60s)
+            if now_ts - last_rotate_check > 60:
+                try:
+                    size_rows = query_db(DB_PATH, "SELECT pg_total_relation_size('syslog') AS size_bytes")
+                    if size_rows and size_rows[0].get('size_bytes') is not None:
+                        size_mb = size_rows[0]['size_bytes'] / (1024 * 1024)
+                        if size_mb >= 150:
+                            print(f"Syslog table size {size_mb:.1f}MB exceeds 150MB limit. Truncating table...")
+                            execute_db(DB_PATH, "TRUNCATE TABLE syslog")
+                except Exception as e:
+                    print(f"Postgres size check error: {e}")
                 last_rotate_check = now_ts
 
             # PostgreSQL Pruning (every 1 hour)
-            if db_type == 'postgres' and now_ts - last_prune_check > 3600:
+            if now_ts - last_prune_check > 3600:
                 retention_days = getattr(cfg, "SYSLOG_RETENTION_DAYS", 7)
                 if retention_days > 0:
                     cutoff = (datetime.datetime.now() - datetime.timedelta(days=retention_days)).isoformat()
@@ -228,10 +197,9 @@ def db_writer():
                 sql = """INSERT INTO syslog
                     (timestamp,source_ip,olt_hostname,olt_id,facility,severity,severity_num,
                      hostname,process,message,event_tag,onu_pon,onu_id,onu_sn,raw)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
-                if db_type == 'postgres': sql = sql.replace('?', '%s')
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
                 
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(sql, (p['timestamp'], p['source_ip'], p['olt_hostname'], p['olt_id'],
                          p['facility'], p['severity'], p['severity_num'],
                          p['hostname'], p['process'], p['message'], p['event_tag'],
@@ -241,18 +209,12 @@ def db_writer():
             elif t == 'device':
                 _, src, hostname, olt_id = task
                 now = datetime.datetime.now().isoformat()
-                if db_type == 'postgres':
-                    sql = """INSERT INTO syslog_devices (olt_hostname,source_ip,olt_id,name,last_seen,status)
-                             VALUES (%s,%s,%s,%s,%s,'receiving') ON CONFLICT(olt_hostname) DO UPDATE SET
-                             source_ip=EXCLUDED.source_ip, last_seen=EXCLUDED.last_seen,
-                             status='receiving', olt_id=EXCLUDED.olt_id"""
-                else:
-                    sql = """INSERT INTO syslog_devices (olt_hostname,source_ip,olt_id,name,last_seen,status)
-                             VALUES (?,?,?,?,?,'receiving') ON CONFLICT(olt_hostname) DO UPDATE SET
-                             source_ip=excluded.source_ip, last_seen=excluded.last_seen,
-                             status='receiving', olt_id=excluded.olt_id"""
+                sql = """INSERT INTO syslog_devices (olt_hostname,source_ip,olt_id,name,last_seen,status)
+                         VALUES (%s,%s,%s,%s,%s,'receiving') ON CONFLICT(olt_hostname) DO UPDATE SET
+                         source_ip=EXCLUDED.source_ip, last_seen=EXCLUDED.last_seen,
+                         status='receiving', olt_id=EXCLUDED.olt_id"""
                 
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(sql, (hostname, src, olt_id, olt_id, now))
                 conn.commit()
 
@@ -261,13 +223,10 @@ def db_writer():
                 standby_threshold = (now_dt - datetime.timedelta(seconds=OFFLINE_S)).isoformat()
                 offline_threshold = (now_dt - datetime.timedelta(hours=1)).isoformat()
                 
-                q1 = "UPDATE syslog_devices SET status='offline' WHERE last_seen < ? AND status != 'offline'"
-                q2 = "UPDATE syslog_devices SET status='standby' WHERE last_seen >= ? AND last_seen < ? AND status IN ('receiving','online')"
+                q1 = "UPDATE syslog_devices SET status='offline' WHERE last_seen < %s AND status != 'offline'"
+                q2 = "UPDATE syslog_devices SET status='standby' WHERE last_seen >= %s AND last_seen < %s AND status IN ('receiving','online')"
                 
-                if db_type == 'postgres':
-                    q1 = q1.replace('?', '%s'); q2 = q2.replace('?', '%s')
-                
-                with conn.cursor() if db_type == 'postgres' else conn as cur:
+                with conn.cursor() as cur:
                     cur.execute(q1, (offline_threshold,))
                     cur.execute(q2, (offline_threshold, standby_threshold))
                 conn.commit()

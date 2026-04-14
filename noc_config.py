@@ -86,7 +86,7 @@ BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 
 API_PORT = 5000
 HTTPS_PORT = 5443
-HTTP_REDIRECT = True
+HTTP_REDIRECT = False
 
 SSL_CERT = ""
 SSL_KEY = ""

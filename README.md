@@ -1,8 +1,8 @@
-# SimpleNOC v0.5.5.2
+# SimpleNOC v0.5.5.3
 
 SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.5.2.
+This repository contains the full desktop/server application used by SNOC v0.5.5.3
 
 ## What the App Does
 
@@ -103,10 +103,12 @@ SimpleNOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.5.5.2 Highlights
+## Current v0.5.6.0 Highlights
 
 This version includes:
 
+- **Full PostgreSQL Architecture**: All SQLite fallbacks and configurations have been removed.
+- **Syslog Storage Optimization**: Automatic 150MB table truncation to maintain high performance.
 - User creation and editing with role selection
 - Per-user tab permissions
 - Global tab visibility controls
@@ -166,7 +168,7 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-SimpleNOC v0.5.5.2 is PostgreSQL-based.
+SimpleNOC v0.5.6.0 is purely PostgreSQL-based.
 
 Default app DB values:
 
@@ -274,7 +276,7 @@ Planned next-step items:
 
 ## License / Project Status
 
-This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.5.2.
+This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.0.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes
