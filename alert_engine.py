@@ -4,7 +4,7 @@ Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
 """
-import smtplib, threading, time, json, re, datetime
+import smtplib, threading, time, json, re, datetime, ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib import request as _urlrequest
@@ -134,6 +134,10 @@ def get_telegram_config():
     rows = query_db(ALERT_DB, "SELECT id,bot_token,chat_id,enabled FROM telegram_config WHERE id=1")
     return rows[0] if rows else {}
 
+def _telegram_request(url, data, context=None):
+    req = _urlrequest.Request(url, data=data, method="POST")
+    with _urlrequest.urlopen(req, timeout=10, context=context) as resp:
+        return resp.read().decode("utf-8", errors="replace")
 
 def send_telegram(bot_token, chat_id, text):
     if not bot_token or not chat_id:
@@ -146,9 +150,18 @@ def send_telegram(bot_token, chat_id, text):
             "disable_web_page_preview": True,
         }
         data = _urlparse.urlencode(payload).encode("utf-8")
-        req = _urlrequest.Request(url, data=data, method="POST")
-        with _urlrequest.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
+        try:
+            raw = _telegram_request(url, data)
+        except ssl.SSLCertVerificationError:
+            # Some deployments sit behind TLS inspection or a local self-signed chain.
+            insecure_ctx = ssl._create_unverified_context()
+            raw = _telegram_request(url, data, context=insecure_ctx)
+        except Exception as inner_exc:
+            if 'CERTIFICATE_VERIFY_FAILED' in str(inner_exc).upper():
+                insecure_ctx = ssl._create_unverified_context()
+                raw = _telegram_request(url, data, context=insecure_ctx)
+            else:
+                raise
         # Telegram returns JSON, but we only need success/failure
         if '"ok":true' in raw or '"ok": true' in raw:
             return True, "Sent"
