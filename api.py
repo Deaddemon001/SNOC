@@ -6,6 +6,8 @@ from collections import deque
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.0')
+
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -321,14 +323,18 @@ def ensure_dbs():
     # Ping DB
     execute_db(PING_DB, f'''CREATE TABLE IF NOT EXISTS ping_targets (
         id {pk},
-        ip TEXT UNIQUE, name TEXT, added_at TEXT, enabled INTEGER DEFAULT 1)''')
+        ip TEXT UNIQUE, name TEXT, website TEXT DEFAULT '',
+        added_at TEXT, enabled INTEGER DEFAULT 1)''')
     execute_db(PING_DB, f'''CREATE TABLE IF NOT EXISTS ping_results (
         id {pk},
         timestamp TEXT, ip TEXT, latency_ms REAL, status TEXT)''')
     execute_db(PING_DB, '''CREATE TABLE IF NOT EXISTS ping_status (
-        ip TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT 'unknown',
+        ip TEXT PRIMARY KEY, name TEXT, website TEXT DEFAULT '',
+        status TEXT DEFAULT 'unknown',
         latency_ms REAL, last_seen TEXT, last_check TEXT,
         added_at TEXT, avg_latency REAL, loss_pct REAL)''')
+    execute_db(PING_DB, "ALTER TABLE ping_targets ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
+    execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
 
     # TFTP DB
     execute_db(TFTP_DB, f'''CREATE TABLE IF NOT EXISTS tftp_files (
@@ -562,7 +568,7 @@ def build_full_backup():
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
         return {
-            'version': '0.5.5.2',
+            'version': APP_VERSION,
             'database': 'postgres',
             'created_at': datetime.datetime.now().isoformat(),
             'tables': tables,
@@ -652,15 +658,19 @@ def retention_cleanup_worker():
 
 
 # ── AUTH ROUTES ───────────────────────────────────────────────────────────────
+def render_versioned_html(filename):
+    path = os.path.join(DASHBOARD, filename)
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    content = content.replace('__APP_VERSION__', APP_VERSION)
+    from flask import Response
+    return Response(content, mimetype='text/html')
+
 @app.route('/login')
 def login_page():
     if is_logged_in():
         return redirect('/')
-    path = os.path.join(DASHBOARD, 'login.html')
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    from flask import Response
-    return Response(content, mimetype='text/html')
+    return render_versioned_html('login.html')
 
 @app.route('/api/auth/login', methods=['POST'])
 def do_login():
@@ -965,11 +975,7 @@ def api_security_settings():
 @app.route('/')
 @login_required
 def index():
-    path = os.path.join(DASHBOARD, 'dashboard.html')
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    from flask import Response
-    return Response(content, mimetype='text/html')
+    return render_versioned_html('dashboard.html')
 
 # ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
 @app.route('/api/logs/list')
@@ -1303,16 +1309,17 @@ def ping_add():
     d    = request.json
     ip   = (d.get('ip') or '').strip()
     name = (d.get('name') or ip).strip()
+    website = (d.get('website') or '').strip()
     if not ip:
         return jsonify({'error': 'ip required'}), 400
     try:
         now  = datetime.datetime.now().isoformat()
-        execute_db(PING_DB, "INSERT INTO ping_targets (ip,name,added_at,enabled) VALUES (?,?,?,1) ON CONFLICT(ip) DO UPDATE SET name=EXCLUDED.name, enabled=1",
-                     (ip, name, now))
-        execute_db(PING_DB, "INSERT INTO ping_status (ip,name,status,added_at) VALUES (?,?,'unknown',?) ON CONFLICT(ip) DO UPDATE SET name=EXCLUDED.name",
-                     (ip, name, now))
+        execute_db(PING_DB, "INSERT INTO ping_targets (ip,name,website,added_at,enabled) VALUES (?,?,?,?,1) ON CONFLICT(ip) DO UPDATE SET name=EXCLUDED.name, website=EXCLUDED.website, enabled=1",
+                     (ip, name, website, now))
+        execute_db(PING_DB, "INSERT INTO ping_status (ip,name,website,status,added_at) VALUES (?,?,?,'unknown',?) ON CONFLICT(ip) DO UPDATE SET name=EXCLUDED.name, website=EXCLUDED.website",
+                     (ip, name, website, now))
         start_ping_thread(ip)
-        return jsonify({'success': True, 'ip': ip, 'name': name})
+        return jsonify({'success': True, 'ip': ip, 'name': name, 'website': website})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1337,10 +1344,18 @@ def ping_rename():
     d    = request.json or {}
     ip   = d.get('ip')
     name = d.get('name')
-    if not ip or not name:
-        return jsonify({'error': 'ip and name required'}), 400
-    execute_db(PING_DB, "UPDATE ping_status SET name=? WHERE ip=?", (name, ip))
-    execute_db(PING_DB, "UPDATE ping_targets SET name=? WHERE ip=?", (name, ip))
+    website = d.get('website')
+    if not ip:
+        return jsonify({'error': 'ip required'}), 400
+    if name is None and website is None:
+        return jsonify({'error': 'name or website required'}), 400
+    if name is not None:
+        execute_db(PING_DB, "UPDATE ping_status SET name=? WHERE ip=?", (name, ip))
+        execute_db(PING_DB, "UPDATE ping_targets SET name=? WHERE ip=?", (name, ip))
+    if website is not None:
+        website = (website or '').strip()
+        execute_db(PING_DB, "UPDATE ping_status SET website=? WHERE ip=?", (website, ip))
+        execute_db(PING_DB, "UPDATE ping_targets SET website=? WHERE ip=?", (website, ip))
     return jsonify({'success': True})
 
 @app.route('/api/ping/history/<path:ip>')
@@ -1777,9 +1792,21 @@ def update_olt_profile():
     pid = d.get('id')
     if not pid:
         return jsonify({'error': 'id required'}), 400
+    rows = query_db(OLT_DB, "SELECT password, enable_pass FROM olt_profiles WHERE id=?", (pid,))
+    if not rows:
+        return jsonify({'error': 'Profile not found'}), 404
+    current = rows[0]
     ip = d.get('ip', '').strip()
     ssh_port = int(d.get('ssh_port', 22))
     telnet_port = int(d.get('telnet_port', 23))
+    password = d.get('password')
+    enable_pass = d.get('enable_pass')
+    if password is None:
+        password = ''
+    if enable_pass is None:
+        enable_pass = ''
+    password = password if password != '' else current.get('password', '')
+    enable_pass = enable_pass if enable_pass != '' else (password or current.get('enable_pass', ''))
     existing = query_db(
         OLT_DB,
         "SELECT id FROM olt_profiles WHERE ip=? AND ssh_port=? AND telnet_port=? AND id<>?",
@@ -1793,7 +1820,7 @@ def update_olt_profile():
          ssh_port, telnet_port,
          d.get('conn_type', d.get('conn_method', 'auto')),
          (d.get('olt_model') or 'V1600G1').strip().upper(),
-         d.get('username',''), d.get('password',''), d.get('enable_pass',''),
+         d.get('username',''), password, enable_pass,
          d.get('uplink_ports', 'gigabitethernet 0/10'), pid))
     if not success:
         return jsonify({'error': 'Database error while updating OLT profile'}), 500
@@ -2256,7 +2283,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print("  SimpleNOC v0.5.6.0  –  Starting servers")
+    print(f"  SimpleNOC v{APP_VERSION}  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

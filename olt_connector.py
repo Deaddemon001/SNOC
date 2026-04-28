@@ -160,6 +160,17 @@ def clean_output(text):
     text = _re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', text)
     return text
 
+def extract_hostname(text, fallback=''):
+    cleaned = clean_output(text or '')
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = re.match(r'^([A-Za-z0-9._-]+)(?:\([^)]*\))?[>#]\s*$', stripped)
+        if m:
+            return m.group(1)
+    return fallback
+
 def _has_prompt(text, prompts=None):
     prompts = prompts or DEFAULT_PROMPTS
     lines = [line.strip().lower() for line in clean_output(text).splitlines() if line.strip()]
@@ -1008,6 +1019,7 @@ def poll_olt(profile, progress_callback=None):
     if error or not outputs:
         _save_session(ip, name, duration, 0, 0, method, 'failed', error or 'No output')
         return {'success': False, 'error': error or 'No output', 'method': method}
+    name = extract_hostname('\n'.join(outputs.values()), name) or name
 
     _progress(progress_callback, 'Getting ONU info', f'Connected via {method}')
     onus = parse_onu_info(outputs.get('show onu info', ''))
@@ -1077,6 +1089,7 @@ def poll_onu_only(profile, progress_callback=None):
     if error or not outputs:
         _save_session(ip, name, duration, 0, 0, method, 'failed', error or 'No output')
         return {'success': False, 'error': error or 'No output', 'method': method}
+    name = extract_hostname('\n'.join(outputs.values()), name) or name
 
     _progress(progress_callback, 'Getting ONU info', f'Connected via {method}')
     onus = parse_onu_info(outputs.get('show onu info', ''))

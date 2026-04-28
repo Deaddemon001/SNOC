@@ -1,4 +1,4 @@
--- SimpleNOC v0.5.5.1 - PostgreSQL Initialization Script
+-- SimpleNOC v0.5.6.0 - PostgreSQL Initialization Script
 -- Usage: psql -U postgres -f init_postgres.sql
 
 -- 1. Create the database

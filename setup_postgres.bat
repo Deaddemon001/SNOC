@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title SimpleNOC v0.5.5.1 - PostgreSQL Setup
+title SimpleNOC v0.5.6.0 - PostgreSQL Setup
 color 0B
 echo.
 echo  ==========================================
-echo   Simple NOC v0.5.5.1 - PostgreSQL DB Setup
+echo   Simple NOC v0.5.6.0 - PostgreSQL DB Setup
 echo  ==========================================
 echo.
 echo  This script creates:
