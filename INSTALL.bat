@@ -1,9 +1,9 @@
 @echo off
-title SimpleNOC v0.5.5.1 - Installer
+title SimpleNOC v0.5.6.0 - Installer
 color 0B
 echo.
 echo  ==========================================
-echo   Simple NOC v0.5.5.1 - Installation
+echo   Simple NOC v0.5.6.0 - Installation
 echo  ==========================================
 echo.
 

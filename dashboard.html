@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SNOC v0.5.5.2</title>
+  <title>SNOC v__APP_VERSION__</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1041,7 +1041,7 @@
 <body>
   <header>
     <div class="logo">
-      <h1>SNOC</h1><span>v0.5.5.2 &mdash; Network Operations Center</span>
+      <h1>SNOC</h1><span>v__APP_VERSION__ &mdash; Network Operations Center</span>
     </div>
     <div class="hright">
       <div class="live">
@@ -1410,6 +1410,7 @@
                     <th>Status</th>
                     <th>Optical (dBm)</th>
                     <th>Distance (m)</th>
+                    <th>Hostname</th>
                     <th>OLT IP</th>
                     <th>PON</th>
                     <th>ONU ID</th>
@@ -1417,7 +1418,7 @@
                 </thead>
                 <tbody id="ontTable">
                   <tr>
-                    <td colspan="7">
+                    <td colspan="8">
                       <div class="empty">Enter a serial number and click Search.</div>
                     </td>
                   </tr>
@@ -1466,6 +1467,8 @@
               placeholder="e.g. 192.168.1.1" /></div>
           <div><label class="flabel">LABEL (optional)</label><input id="pingNameInput" class="finp" style="width:180px"
               placeholder="e.g. Core Router" /></div>
+          <div><label class="flabel">WEBSITE</label><input id="pingWebsiteInput" class="finp" style="width:240px"
+              placeholder="e.g. https://192.168.1.1" /></div>
           <button class="rb" id="pingAddBtn" style="padding:8px 20px;font-size:13px" onclick="addPingTarget()">+
             ADD</button>
         </div>
@@ -1488,12 +1491,14 @@
                 <th style="width:65px;text-align:right">Cur</th>
                 <th style="width:55px;text-align:right">PL%</th>
                 <th style="width:150px">Latency</th>
-                <th style="width:80px;text-align:center">Actions</th>
+                <th style="width:110px">Last Seen</th>
+                <th style="width:110px;text-align:center">Website</th>
+                <th style="width:110px;text-align:center">Actions</th>
               </tr>
             </thead>
             <tbody id="pingTableBody">
               <tr>
-                <td colspan="10">
+                <td colspan="12">
                   <div class="empty">No targets added yet.</div>
                 </td>
               </tr>
@@ -1719,6 +1724,7 @@
           <span id="oltConfigArrow" style="color:var(--accent);font-size:14px;transition:transform 0.2s">?</span>
         </div>
         <div class="pb" id="oltConfigBody" style="display:grid;gap:10px">
+          <input id="oltEditId" type="hidden" value="" />
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
             <div><label class="flabel">OLT NAME</label><input id="oltName" class="finp"
                 placeholder="e.g. BSNL_OLAPATI" /></div>
@@ -1752,7 +1758,10 @@
                 placeholder="gigabitethernet 0/10" value="gigabitethernet 0/10" /></div>
           </div>
           <div id="oltProfileMsg" class="smsg"></div>
-          <button class="rb" style="padding:9px" onclick="addOltProfile()">+ Add OLT Profile</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button id="oltProfileSaveBtn" class="rb" style="padding:9px" onclick="saveOltProfile()">+ Add OLT Profile</button>
+            <button id="oltProfileCancelBtn" class="ubtn" style="padding:9px;display:none" onclick="cancelOltEdit()">Cancel Edit</button>
+          </div>
         </div>
       </div>
 
@@ -2753,7 +2762,7 @@
       document.getElementById('ontChartMeta').textContent = '—';
       document.getElementById('ontCount').textContent = '0 records';
       document.getElementById('ontTable').innerHTML =
-        '<tr><td colspan="7"><div class="empty">Enter a serial number and click Search.</div></td></tr>';
+        '<tr><td colspan="8"><div class="empty">Enter a serial number and click Search.</div></td></tr>';
       if (_ontChart) { _ontChart.destroy(); _ontChart = null; }
       showMsg('ontMsg', '', true, true);
       var el = document.getElementById('ontMsg');
@@ -2770,7 +2779,7 @@
         document.getElementById('ontCount').textContent = rows.length + ' records';
         if (!rows.length) {
           document.getElementById('ontTable').innerHTML =
-            '<tr><td colspan="7"><div class="empty">No history found. Poll the OLT first so SNOC can store snapshots.</div></td></tr>';
+            '<tr><td colspan="8"><div class="empty">No history found. Poll the OLT first so SNOC can store snapshots.</div></td></tr>';
           document.getElementById('ontChartMeta').textContent = 'No samples';
           if (_ontChart) { _ontChart.destroy(); _ontChart = null; }
           showMsg('ontMsg', 'No history found.', false, true);
@@ -2801,6 +2810,7 @@
           '<td><span style="color:' + stClr + ';font-weight:700">' + status + '</span></td>' +
           '<td class="mu">' + rx + '</td>' +
           '<td class="mu">' + dist + '</td>' +
+          '<td class="mu">' + (r.olt_name || '-') + '</td>' +
           '<td class="mu">' + (r.olt_ip || '—') + '</td>' +
           '<td class="mu">' + (r.pon_port || '—') + '</td>' +
           '<td class="mu">' + (r.onu_id || '—') + '</td>';
@@ -3226,7 +3236,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.5.2'
+      '  This is an automated alert from SimpleNOC v0.5.6.0'
     ].join('\n');
 
     function toggleEmailTemplate() {
@@ -3616,7 +3626,7 @@
         apiFetch('/api/auth/users').catch(function () { return []; })
       ]).then(function (results) {
         var backup = {
-          version: '0.5.5.2',
+          version: '__APP_VERSION__',
           created_at: new Date().toISOString(),
           email_config: results[0],
           alert_rules: results[1],
@@ -4222,6 +4232,14 @@
           return function () { openOnuModal(ip, name); };
         })(p.ip, p.name || p.ip);
 
+        var editBtn = document.createElement('button');
+        editBtn.className = 'ubtn';
+        editBtn.style.cssText = 'font-size:10px;padding:4px 9px;white-space:nowrap';
+        editBtn.textContent = 'Edit';
+        editBtn.onclick = (function (profile) {
+          return function () { beginOltEdit(profile); };
+        })(p);
+
         // Delete button
         var delBtn = document.createElement('button');
         delBtn.className = 'dbtn';
@@ -4233,10 +4251,57 @@
 
         tdAct.appendChild(onuBtn);
         tdAct.appendChild(viewBtn);
+        tdAct.appendChild(editBtn);
         tdAct.appendChild(delBtn);
         tr.appendChild(tdAct);
         tb.appendChild(tr);
       });
+    }
+
+    function resetOltProfileForm() {
+      document.getElementById('oltEditId').value = '';
+      document.getElementById('oltName').value = '';
+      document.getElementById('oltIp').value = '';
+      document.getElementById('oltSshPort').value = '22';
+      document.getElementById('oltTelnetPort').value = '23';
+      document.getElementById('oltConnMethod').value = 'auto';
+      document.getElementById('oltModel').value = 'V1600G1';
+      document.getElementById('oltUser').value = '';
+      document.getElementById('oltPass').value = '';
+      document.getElementById('oltEnablePass').value = '';
+      document.getElementById('oltUplinkPorts').value = 'gigabitethernet 0/10';
+      document.getElementById('oltProfileSaveBtn').textContent = '+ Add OLT Profile';
+      document.getElementById('oltProfileCancelBtn').style.display = 'none';
+    }
+
+    function beginOltEdit(profile) {
+      document.getElementById('oltEditId').value = profile.id || '';
+      document.getElementById('oltName').value = profile.name || '';
+      document.getElementById('oltIp').value = profile.ip || '';
+      document.getElementById('oltSshPort').value = profile.ssh_port || '22';
+      document.getElementById('oltTelnetPort').value = profile.telnet_port || '23';
+      document.getElementById('oltConnMethod').value = profile.conn_type || 'auto';
+      document.getElementById('oltModel').value = profile.olt_model || 'V1600G1';
+      document.getElementById('oltUser').value = profile.username || '';
+      document.getElementById('oltPass').value = '';
+      document.getElementById('oltEnablePass').value = '';
+      document.getElementById('oltUplinkPorts').value = profile.uplink_ports || 'gigabitethernet 0/10';
+      document.getElementById('oltProfileSaveBtn').textContent = 'Update OLT Profile';
+      document.getElementById('oltProfileCancelBtn').style.display = '';
+      var body = document.getElementById('oltConfigBody');
+      if (body) body.style.display = 'grid';
+      var arrow = document.getElementById('oltConfigArrow');
+      if (arrow) arrow.style.transform = 'rotate(180deg)';
+      showMsg('oltProfileMsg', 'Editing ' + (profile.name || profile.ip) + '. Leave password fields blank to keep existing values, or enter new ones before Update.', true, true);
+      var panel = document.getElementById('oltProfileConfigPanel');
+      if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function cancelOltEdit() {
+      resetOltProfileForm();
+      showMsg('oltProfileMsg', '', true, true);
+      var el = document.getElementById('oltProfileMsg');
+      if (el) el.style.display = 'none';
     }
 
     function buildOltSessionTable(sessions) {
@@ -4478,8 +4543,9 @@
       });
     }
 
-    function addOltProfile() {
+    function saveOltProfile() {
       var d = {
+        id: document.getElementById('oltEditId').value.trim(),
         name: document.getElementById('oltName').value.trim(),
         ip: document.getElementById('oltIp').value.trim(),
         ssh_port: document.getElementById('oltSshPort').value.trim() || '22',
@@ -4491,20 +4557,21 @@
         enable_pass: document.getElementById('oltEnablePass').value,
         uplink_ports: document.getElementById('oltUplinkPorts').value.trim() || 'gigabitethernet 0/10',
       };
-      if (!d.ip || !d.username || !d.password) {
+      if (!d.ip || !d.username) {
+        showMsg('oltProfileMsg', 'IP and username are required', false, true);
+        return;
+      }
+      var isEdit = !!d.id;
+      if (!isEdit && !d.password) {
         showMsg('oltProfileMsg', 'IP, username and password are required', false, true);
         return;
       }
-      if (!d.enable_pass) d.enable_pass = d.password;
-      apiPost('/api/olt/profiles/add', d).then(function (r) {
+      if (!d.enable_pass && d.password) d.enable_pass = d.password;
+      var endpoint = isEdit ? '/api/olt/profiles/update' : '/api/olt/profiles/add';
+      apiPost(endpoint, d).then(function (r) {
         if (r.success) {
-          showMsg('oltProfileMsg', 'OLT profile added!', true, false);
-          ['oltName', 'oltIp', 'oltUser', 'oltPass', 'oltEnablePass'].forEach(function (id) {
-            document.getElementById(id).value = '';
-          });
-          document.getElementById('oltUplinkPorts').value = 'gigabitethernet 0/10';
-          document.getElementById('oltConnMethod').value = 'auto';
-          document.getElementById('oltModel').value = 'V1600G1';
+          showMsg('oltProfileMsg', isEdit ? 'OLT profile updated!' : 'OLT profile added!', true, false);
+          resetOltProfileForm();
           loadOlt();
         } else {
           showMsg('oltProfileMsg', 'Error: ' + (r.error || 'Failed'), false, true);
@@ -5585,14 +5652,16 @@
       if (currentRole !== 'admin') { alert('Admin only'); return; }
       var ip = document.getElementById('pingIpInput').value.trim();
       var name = document.getElementById('pingNameInput').value.trim();
+      var website = document.getElementById('pingWebsiteInput').value.trim();
       if (!ip) { alert('Please enter an IP address'); return; }
       var btn = document.getElementById('pingAddBtn');
       btn.textContent = 'Adding...'; btn.disabled = true;
-      apiPost('/api/ping/add', { ip: ip, name: name })
+      apiPost('/api/ping/add', { ip: ip, name: name, website: website })
         .then(function (d) {
           if (d.success) {
             document.getElementById('pingIpInput').value = '';
             document.getElementById('pingNameInput').value = '';
+            document.getElementById('pingWebsiteInput').value = '';
             fetchPing();
           } else { alert('Error: ' + (d.error || 'unknown')); }
           btn.textContent = '+ ADD'; btn.disabled = false;
@@ -5636,6 +5705,20 @@
     function latStr(ms) {
       if (!ms) return '—';
       return parseFloat(ms).toFixed(1) + ' ms';
+    }
+
+    function normalizeLaunchUrl(url) {
+      var value = (url || '').trim();
+      if (!value) return '';
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) value = 'http://' + value;
+      return value;
+    }
+
+    function launchWebsite(url, evt) {
+      if (evt) evt.stopPropagation();
+      var target = normalizeLaunchUrl(url);
+      if (!target) return;
+      window.open(target, '_blank', 'noopener');
     }
 
     function buildPingRow(t, pingHistory) {
@@ -5795,6 +5878,21 @@
       }
       tr.appendChild(tdSeen);
 
+      var tdWebsite = document.createElement('td');
+      tdWebsite.style.textAlign = 'center';
+      tdWebsite.onclick = function (e) { e.stopPropagation(); };
+      if (t.website) {
+        var launchBtn = document.createElement('button');
+        launchBtn.className = 'rb';
+        launchBtn.style.cssText = 'font-size:9px;padding:3px 8px';
+        launchBtn.textContent = 'Launch';
+        launchBtn.onclick = function (e) { launchWebsite(t.website, e); };
+        tdWebsite.appendChild(launchBtn);
+      } else {
+        tdWebsite.innerHTML = '<span class="mu" style="font-size:10px">-</span>';
+      }
+      tr.appendChild(tdWebsite);
+
       // Actions: rename inline + delete
       var tdAct = document.createElement('td');
       tdAct.style.textAlign = 'center';
@@ -5809,14 +5907,15 @@
       var renBtn = document.createElement('button');
       renBtn.className = 'rb';
       renBtn.style.cssText = 'font-size:9px;padding:3px 7px;margin-right:4px';
-      renBtn.textContent = 'Rename';
+      renBtn.textContent = 'Edit';
       renBtn.onclick = function (e) {
         e.stopPropagation();
         var newName = prompt('Rename "' + nm + '":', nm);
-        if (newName && newName.trim()) {
-          apiPost('/api/ping/rename', { ip: t.ip, name: newName.trim() })
-            .then(function () { fetchPing(); });
-        }
+        if (newName === null) return;
+        var newWebsite = prompt('Website URL for ' + t.ip + ':', t.website || '');
+        if (newWebsite === null) return;
+        apiPost('/api/ping/rename', { ip: t.ip, name: (newName || '').trim(), website: (newWebsite || '').trim() })
+          .then(function () { fetchPing(); });
       };
 
       var delBtn = document.createElement('button');
@@ -5845,6 +5944,7 @@
         var pingAddBtn = document.getElementById('pingAddBtn');
         var pingIpInput = document.getElementById('pingIpInput');
         var pingNameInput = document.getElementById('pingNameInput');
+        var pingWebsiteInput = document.getElementById('pingWebsiteInput');
         var canManagePing = currentRole === 'admin';
         if (pingAddBtn) {
           pingAddBtn.disabled = !canManagePing;
@@ -5852,6 +5952,7 @@
         }
         if (pingIpInput) pingIpInput.disabled = !canManagePing;
         if (pingNameInput) pingNameInput.disabled = !canManagePing;
+        if (pingWebsiteInput) pingWebsiteInput.disabled = !canManagePing;
         document.getElementById('pingOnline').textContent = targets.filter(function (t) { return t.status === 'online'; }).length;
         document.getElementById('pingOffline').textContent = targets.filter(function (t) { return t.status === 'offline'; }).length;
         document.getElementById('pingHighLat').textContent = targets.filter(function (t) { return t.latency_ms && t.latency_ms > 100; }).length;
@@ -5865,7 +5966,7 @@
         if (!targets.length) {
           var tr = document.createElement('tr');
           var td = document.createElement('td');
-          td.colSpan = 10;
+          td.colSpan = 12;
           td.innerHTML = '<div class="empty">No targets added yet. Add an IP above.</div>';
           tr.appendChild(td);
           tbody.appendChild(tr);
@@ -6088,3 +6189,4 @@
 </body>
 
 </html>
+
