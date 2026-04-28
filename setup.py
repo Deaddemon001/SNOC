@@ -1,11 +1,12 @@
 """
-Simple NOC v0.5.6.0 - Setup & Installer
+Simple NOC Setup & Installer
 Run as Administrator: python setup.py
 """
 import subprocess, sys, os, time, shutil, ctypes, re, tempfile
+import noc_config as cfg
 
 APP_NAME    = "SimpleNOC"
-APP_VERSION = "0.5.5.2"
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.0")
 INSTALL_DIR = r"C:\SimpleNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
@@ -59,14 +60,14 @@ REQUIRED_PACKAGES = [
     "psycopg2-binary",
 ]
 
-BANNER = r"""
+BANNER = rf"""
   ____  _                 _        _   _  ___   ____
  / ___|(_)_ __ ___  _ __ | | ___  | \ | |/ _ \ / ___|
  \___ \| | '_ ` _ \| '_ \| |/ _ \ |  \| | | | | |
   ___) | | | | | | | |_) | |  __/ | |\  | |_| | |___
  |____/|_|_| |_| |_| .__/|_|\___| |_| \_|\___/ \____|
                     |_|
-         v0.5.6.0 - Network Operations Center
+         v{APP_VERSION} - Network Operations Center
 """
 
 def is_admin():

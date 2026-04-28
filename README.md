@@ -1,8 +1,8 @@
-# SimpleNOC v0.5.5.3
+# SimpleNOC v0.5.6.0
 
 SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.5.3
+This repository contains the full desktop/server application used by SNOC v0.5.6.0
 
 ## What the App Does
 

@@ -1,8 +1,26 @@
-# SimpleNOC — Changelog
+# SimpleNOC - Changelog
 
 ---
 
-## v0.5.5.3 — Pure PostgreSQL & Storage Optimization
+## v0.5.6.0 - Version Centralization, Ping Website Launch, OLT Profile Editing
+**Release date:** 2026-04-28
+
+### Added
+- Website URL field for Ping Monitor targets.
+- Launch button in Ping Monitor to open the configured website in a new browser tab.
+- Edit action for existing OLT profiles so passwords, ports, and connection settings can be updated without recreating the profile.
+
+### Changed
+- Centralized the application version into a shared `APP_VERSION` setting used by `api.py`, `launcher.pyw`, `setup.py`, and the served dashboard/login pages.
+- Backup metadata version now follows the centralized app version automatically.
+- Dashboard and login HTML version labels are now injected by the API at render time.
+
+### Fixed
+- OLT profile updates now preserve the existing stored password and enable password if those fields are left blank during edit.
+
+---
+
+## v0.5.5.3 - Pure PostgreSQL & Storage Optimization
 **Release date:** 2026-04-14
 
 ### Added
@@ -14,7 +32,7 @@
 
 ---
 
-## v0.5.5.2 — User Access, Alerting, Settings, Logs/ONT
+## v0.5.5.2 - User Access, Alerting, Settings, Logs/ONT
 
 ### Added
 - User creation and editing from the **Users** tab.
@@ -47,7 +65,7 @@
 
 ---
 
-## v0.5.5.1 — UI / Appearance
+## v0.5.5.1 - UI / Appearance
 **Pre-release:** 2026-04-04
 
 ### Added
@@ -62,7 +80,7 @@
 
 ---
 
-## v0.5.5 — OLT, ONU, Syslog, and TFTP Expansion
+## v0.5.5 - OLT, ONU, Syslog, and TFTP Expansion
 **Released:** 2026-03-25 to 2026-03-28
 
 ### Major Work
@@ -77,7 +95,7 @@
 
 ---
 
-## v0.5.4 — TFTP Server and Dashboard Improvements
+## v0.5.4 - TFTP Server and Dashboard Improvements
 **Released:** 2026-03-23
 
 ### Major Work
@@ -89,7 +107,7 @@
 
 ---
 
-## v0.5.3 — Draggable Tabs and Backup/Restore
+## v0.5.3 - Draggable Tabs and Backup/Restore
 **Released:** 2026-03-22
 
 ### Major Work
@@ -100,7 +118,7 @@
 
 ---
 
-## v0.5.2.1 — Remote Access Fix
+## v0.5.2.1 - Remote Access Fix
 **Released:** 2026-03-22
 
 ### Fixed

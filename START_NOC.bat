@@ -1,9 +1,9 @@
 @echo off
-title SimpleNOC v0.5.5.1
+title SimpleNOC v0.5.6.0
 color 0B
 echo.
 echo  ==========================================
-echo   SimpleNOC v0.5.5.1 - Starting Services
+echo   SimpleNOC v0.5.6.0 - Starting Services
 echo  ==========================================
 echo.
 
