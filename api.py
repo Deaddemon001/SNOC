@@ -1,7 +1,67 @@
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
-import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys
+import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64
 from collections import deque
+
+# ── BACKUP ENCRYPTION (AES-256-GCM) ──────────────────────────────────────────
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives import hashes as _crypto_hashes
+    _CRYPTO_AVAILABLE = True
+except ImportError:
+    _CRYPTO_AVAILABLE = False
+
+_BACKUP_SALT      = b"SimpleNOC-Backup-v1"
+_ENCRYPTED_MARKER = "ENC:"
+
+def _derive_backup_key():
+    """Derive a 32-byte AES key from the PostgreSQL password (machine-specific secret)."""
+    if not _CRYPTO_AVAILABLE:
+        return None
+    import noc_config as _cfg_inner
+    secret = _cfg_inner.POSTGRES_CONFIG.get("password", "").encode("utf-8")
+    kdf = PBKDF2HMAC(
+        algorithm=_crypto_hashes.SHA256(),
+        length=32,
+        salt=_BACKUP_SALT,
+        iterations=200_000,
+    )
+    return kdf.derive(secret)
+
+def _encrypt_field(plaintext: str) -> str:
+    """Encrypt a single string field. Returns 'ENC:<base64(nonce+ciphertext)>'."""
+    if not plaintext or not _CRYPTO_AVAILABLE:
+        return plaintext
+    try:
+        key = _derive_backup_key()
+        aesgcm = AESGCM(key)
+        nonce  = os.urandom(12)
+        ct     = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
+        return _ENCRYPTED_MARKER + base64.b64encode(nonce + ct).decode("ascii")
+    except Exception:
+        return plaintext  # fallback: return as-is rather than crash
+
+def _decrypt_field(ciphertext: str) -> str:
+    """Decrypt a field produced by _encrypt_field(). Pass-through if not encrypted."""
+    if not ciphertext or not ciphertext.startswith(_ENCRYPTED_MARKER):
+        return ciphertext  # backward-compat: old unencrypted backups
+    if not _CRYPTO_AVAILABLE:
+        raise RuntimeError(
+            "The 'cryptography' package is required to decrypt this backup. "
+            "Run: pip install cryptography"
+        )
+    try:
+        key  = _derive_backup_key()
+        raw  = base64.b64decode(ciphertext[len(_ENCRYPTED_MARKER):])
+        nonce, ct = raw[:12], raw[12:]
+        aesgcm = AESGCM(key)
+        return aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+    except Exception:
+        raise ValueError(
+            "Decryption failed. This backup was likely created on a different machine "
+            "or with a different PostgreSQL password."
+        )
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
@@ -375,6 +435,14 @@ FULL_BACKUP_TABLES = [
     'olt_poll_jobs',
 ]
 
+# Fields that contain sensitive credentials and must be encrypted in backup files.
+# Format: { table_name: [column, ...] }
+SENSITIVE_BACKUP_FIELDS = {
+    'olt_profiles':    ['password', 'enable_pass'],
+    'email_config':    ['smtp_pass'],
+    'telegram_config': ['bot_token'],
+}
+
 def _fetch_one(sql, params=()):
     rows = query_db(AUTH_DB, sql, params)
     return rows[0] if rows else None
@@ -555,11 +623,20 @@ def build_full_backup():
         raise RuntimeError("Unable to connect to PostgreSQL")
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
+
+        # Encrypt sensitive credential fields before writing to the JSON file
+        for table, fields in SENSITIVE_BACKUP_FIELDS.items():
+            for row in tables.get(table, []):
+                for field in fields:
+                    if row.get(field):
+                        row[field] = _encrypt_field(str(row[field]))
+
         return {
-            'version': APP_VERSION,
-            'database': 'postgres',
+            'version':    APP_VERSION,
+            'database':   'postgres',
             'created_at': datetime.datetime.now().isoformat(),
-            'tables': tables,
+            'encrypted':  _CRYPTO_AVAILABLE,
+            'tables':     tables,
         }
     finally:
         conn.close()
@@ -569,6 +646,19 @@ def restore_full_backup(backup_payload):
     tables = backup_payload.get('tables')
     if not isinstance(tables, dict):
         raise ValueError("Backup file does not contain a valid tables section.")
+
+    # Decrypt sensitive credential fields before inserting into the database
+    for table, fields in SENSITIVE_BACKUP_FIELDS.items():
+        for row in tables.get(table, []):
+            for field in fields:
+                if row.get(field):
+                    try:
+                        row[field] = _decrypt_field(str(row[field]))
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"Failed to decrypt '{field}' in table '{table}'. "
+                            f"{exc}"
+                        ) from exc
 
     conn = get_db_connection()
     if not conn:

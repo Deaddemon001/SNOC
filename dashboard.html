@@ -2328,19 +2328,26 @@
         <div class="pb" style="display:grid;gap:14px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div style="background:rgba(0,229,255,0.04);border:1px solid var(--border);border-radius:6px;padding:14px">
-              <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:6px">
-                BACKUP</div>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'Share Tech Mono',monospace">
-                Downloads a JSON backup containing settings, OLT profiles, alert rules, ping targets, and user accounts. Historical data (logs, traps, and results) is NOT included.
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent)">BACKUP</div>
+                <span style="font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;border-radius:3px;background:rgba(57,255,20,0.12);color:var(--accent3);border:1px solid rgba(57,255,20,0.3)">&#128274; ENCRYPTED</span>
               </div>
-              <button class="rb" style="width:100%;padding:9px;font-size:12px" onclick="downloadBackup()">Download
-                Backup</button>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'Share Tech Mono',monospace">
+                Downloads a JSON backup of settings, OLT profiles, alert rules, ping targets, and user accounts.
+                Sensitive passwords (OLT, SMTP, Telegram) are <strong style="color:var(--accent3)">AES-256 encrypted</strong> and cannot be read in plain text.
+                Historical data (logs, traps, results) is NOT included.
+              </div>
+              <button class="rb" style="width:100%;padding:9px;font-size:12px" onclick="downloadBackup()">Download Backup</button>
             </div>
             <div style="background:rgba(255,107,53,0.04);border:1px solid var(--border);border-radius:6px;padding:14px">
-              <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent2);margin-bottom:6px">
-                RESTORE</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent2)">RESTORE</div>
+                <span style="font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;border-radius:3px;background:rgba(255,107,53,0.12);color:var(--accent2);border:1px solid rgba(255,107,53,0.3)">&#9888; SAME INSTANCE ONLY</span>
+              </div>
               <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'Share Tech Mono',monospace">
-                Select a backup JSON file to restore. Configuration settings will be replaced, but historical logs will remain untouched.</div>
+                Select a backup JSON file to restore. Configuration settings will be replaced, historical logs remain untouched.
+                <span style="color:var(--warn)">Encrypted backups can only be restored on the same SimpleNOC instance (same PostgreSQL password).</span>
+              </div>
               <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="restoreBackup(event)" />
               <button class="rb"
                 style="width:100%;padding:9px;font-size:12px;border-color:var(--accent2);color:var(--accent2)"
@@ -3644,7 +3651,7 @@
             var summary = Object.keys(restored).sort().map(function (table) {
               return table + ': ' + restored[table] + ' rows restored';
             }).join('\n');
-            showMsg('backupMsg', 'Restore complete!\n' + summary, true, true);
+            showMsg('backupMsg', '\u2705 Restore complete!\n' + summary, true, true);
             var el = document.getElementById('backupMsg');
             if (el) { el.style.whiteSpace = 'pre'; el.style.fontFamily = 'monospace'; }
             loadAlerts();
@@ -3652,7 +3659,17 @@
             loadTftp();
             loadUsers();
           }).catch(function (err) {
-            showMsg('backupMsg', 'Restore error: ' + err.message, false, true);
+            var msg = err.message || 'Unknown error';
+            // Provide a clear hint when decryption fails
+            if (msg.indexOf('Decryption failed') !== -1 || msg.indexOf('decrypt') !== -1) {
+              msg = '\u26a0\ufe0f Decryption error: This backup was created on a different SimpleNOC ' +
+                'instance or with a different PostgreSQL password. Restore cannot proceed.\n\nDetail: ' + msg;
+            } else {
+              msg = '\u274c Restore error: ' + msg;
+            }
+            showMsg('backupMsg', msg, false, true);
+            var el = document.getElementById('backupMsg');
+            if (el) { el.style.whiteSpace = 'pre-wrap'; el.style.fontFamily = 'monospace'; }
           });
         } catch (err) {
           showMsg('backupMsg', 'Failed to parse backup file: ' + err.message, false, true);
