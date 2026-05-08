@@ -9,7 +9,7 @@ from tkinter import messagebox
 
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 PYTHON      = sys.executable
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.0")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.1")
 DASHBOARD_URL = (
     f"https://localhost:{cfg.HTTPS_PORT}"
     if getattr(cfg, "HTTPS_PORT", 0)

@@ -6,7 +6,7 @@ from collections import deque
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.0')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.1')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -195,7 +195,7 @@ def hash_password(password, salt=None):
 
 def verify_password(password, stored_hash, salt):
     hashed, _ = hash_password(password, salt)
-    return hashed == stored_hash
+    return secrets.compare_digest(hashed, stored_hash)
 
 
 def _normalize_role(value):
@@ -366,24 +366,12 @@ FULL_BACKUP_TABLES = [
     'noc_settings',
     'email_config',
     'email_template',
+    'telegram_config',
     'alert_rules',
-    'alert_log',
-    'traps',
-    'devices',
-    'events',
-    'syslog',
-    'syslog_devices',
     'mac_mapping',
     'ping_targets',
-    'ping_results',
-    'ping_status',
     'tftp_config',
-    'tftp_files',
     'olt_profiles',
-    'onu_data',
-    'onu_history',
-    'uplink_stats',
-    'olt_poll_sessions',
     'olt_poll_jobs',
 ]
 
@@ -672,21 +660,53 @@ def login_page():
         return redirect('/')
     return render_versioned_html('login.html')
 
+
+def log_user_auth(username, event_type, ip_address, status):
+    import os, datetime
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        log_path = os.path.join(LOGS_DIR, 'user_auth.log')
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_path, 'a') as f:
+            f.write(f"[{now}] User: {username} | IP: {ip_address} | Event: {event_type} | Status: {status}\n")
+    except Exception:
+        pass
+
+_login_attempts = {}
+
 @app.route('/api/auth/login', methods=['POST'])
 def do_login():
+    import time as _time
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
+    ip = request.remote_addr
+    now = _time.time()
+
+    if ip in _login_attempts:
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < 300]
+        if len(_login_attempts[ip]) >= 5:
+            log_user_auth(username, 'LOGIN', ip, 'FAILED - Rate limited')
+            return jsonify({'success': False, 'error': 'Too many failed attempts. Please try again in 5 minutes.'}), 429
 
     if not username or not password:
         return jsonify({'success': False, 'error': 'Username and password required'}), 400
 
     user = _get_user_record(username)
     if not user:
+        log_user_auth(username, 'LOGIN', ip, 'FAILED - Invalid username')
+        _login_attempts.setdefault(ip, []).append(now)
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
 
     if not verify_password(password, user['password'], user['salt']):
+        log_user_auth(username, 'LOGIN', ip, 'FAILED - Invalid password')
+        _login_attempts.setdefault(ip, []).append(now)
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+    if ip in _login_attempts:
+        del _login_attempts[ip]
+
+    log_user_auth(username, 'LOGIN', ip, 'SUCCESS')
 
     # Update last login
     execute_db(AUTH_DB, "UPDATE users SET last_login=? WHERE username=?",
@@ -710,6 +730,9 @@ def do_login():
 
 @app.route('/api/auth/logout', methods=['POST'])
 def do_logout():
+    username = session.get('username', 'unknown')
+    ip = request.remote_addr
+    log_user_auth(username, 'LOGOUT', ip, 'SUCCESS')
     session.clear()
     return jsonify({'success': True})
 
@@ -1270,6 +1293,8 @@ def ping_db_writer():
                     current_name = current_rows[0].get('name') or ip
                     if current_status == 'offline' and prev_status != 'offline':
                         process_ping_alert(current_name, ip, current_status, now)
+                    elif current_status == 'online' and prev_status == 'offline':
+                        process_ping_alert(current_name, ip, current_status, now)
         except __import__('queue').Empty:
             continue
         except Exception as e:
@@ -1409,7 +1434,7 @@ def test_email():
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
     sent, err = send_email(to,
         '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.6.0\nEmail alerts are working correctly.')
+        'This is a test alert from SNOC v0.5.6.1\nEmail alerts are working correctly.')
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')

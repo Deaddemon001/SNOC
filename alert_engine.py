@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.6.0 - Alert Engine
+SimpleNOC v0.5.6.1 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
@@ -69,7 +69,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.0'
+        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.1'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -296,7 +296,7 @@ def process_alert(hostname, message, timestamp):
         else:
             print(f"[ALERT] Failed: {rule['name']} → {error}")
 def process_ping_alert(hostname, source_ip, status, timestamp):
-    if status != 'offline':
+    if status not in ('offline', 'online'):
         return
 
     rules = get_rules()
@@ -311,12 +311,18 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         return
 
     display_host = hostname or source_ip
-    message = f"Ping monitor detected {source_ip} as offline"
+    if status == 'offline':
+        message = f"Ping monitor detected {source_ip} as offline"
+        severity = 'critical'
+    else:
+        message = f"Ping monitor detected {source_ip} is reachable again"
+        severity = 'info'
+
     for rule in rules:
         if not match_rule(rule, display_host, message, 'ping'):
             continue
 
-        subject, body = build_alert_email(rule, display_host, source_ip, message, timestamp, 'critical')
+        subject, body = build_alert_email(rule, display_host, source_ip, message, timestamp, severity)
         sent = False
         error = ""
         notify_via = rule.get('notify_via') or 'both'

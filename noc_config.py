@@ -5,7 +5,7 @@ All scripts read from this file - restart SNOC after any change.
 """
 import os
 
-APP_VERSION = "0.5.6.0"
+APP_VERSION = "0.5.6.1"
 
 try:
     import psycopg2

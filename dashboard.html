@@ -2331,7 +2331,7 @@
               <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:6px">
                 BACKUP</div>
               <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'Share Tech Mono',monospace">
-                Downloads a JSON backup containing the data and configuration used by the SNMP, Syslog, Ping, TFTP, Alerts, OLT, Uplink and Users tabs.
+                Downloads a JSON backup containing settings, OLT profiles, alert rules, ping targets, and user accounts. Historical data (logs, traps, and results) is NOT included.
               </div>
               <button class="rb" style="width:100%;padding:9px;font-size:12px" onclick="downloadBackup()">Download
                 Backup</button>
@@ -2340,7 +2340,7 @@
               <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--accent2);margin-bottom:6px">
                 RESTORE</div>
               <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:'Share Tech Mono',monospace">
-                Select a backup JSON file to restore. Existing PostgreSQL data will be replaced.</div>
+                Select a backup JSON file to restore. Configuration settings will be replaced, but historical logs will remain untouched.</div>
               <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="restoreBackup(event)" />
               <button class="rb"
                 style="width:100%;padding:9px;font-size:12px;border-color:var(--accent2);color:var(--accent2)"
@@ -3615,116 +3615,6 @@
         });
       } catch (e) { }
     }
-
-    // ── BACKUP & RESTORE ──────────────────────────────────────────────────────────
-    function downloadBackup() {
-      showMsg('backupMsg', 'Preparing backup...', true, true);
-      Promise.all([
-        apiFetch('/api/alerts/email_config'),
-        apiFetch('/api/alerts/rules'),
-        apiFetch('/api/ping/targets'),
-        apiFetch('/api/auth/users').catch(function () { return []; })
-      ]).then(function (results) {
-        var backup = {
-          version: '__APP_VERSION__',
-          created_at: new Date().toISOString(),
-          email_config: results[0],
-          alert_rules: results[1],
-          ping_targets: results[2],
-          users: results[3]
-        };
-        // Remove sensitive data warning
-        delete backup.email_config.smtp_pass;
-
-        var blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'SimpleNOC_backup_' + new Date().toISOString().slice(0, 10) + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showMsg('backupMsg', 'Backup downloaded! Note: SMTP password is excluded for security — re-enter after restore.', true, true);
-      }).catch(function (e) {
-        showMsg('backupMsg', 'Backup failed: ' + e.message, false, true);
-      });
-    }
-
-    function restoreBackup(event) {
-      var file = event.target.files[0];
-      if (!file) return;
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        try {
-          var backup = JSON.parse(e.target.result);
-          if (!backup.version) { showMsg('backupMsg', 'Invalid backup file.', false, true); return; }
-
-          showMsg('backupMsg', 'Restoring... please wait.', true, true);
-
-          var tasks = [];
-
-          // Restore email config (without password)
-          if (backup.email_config) {
-            tasks.push(apiPost('/api/alerts/email_config', backup.email_config));
-          }
-
-          // Restore alert rules — delete existing first then re-add
-          if (backup.alert_rules && backup.alert_rules.length) {
-            tasks.push(
-              apiFetch('/api/alerts/rules').then(function (existing) {
-                var delTasks = existing.map(function (r) {
-                  return apiPost('/api/alerts/rules/delete', { id: r.id });
-                });
-                return Promise.all(delTasks);
-              }).then(function () {
-                return Promise.all(backup.alert_rules.map(function (r) {
-                  return apiPost('/api/alerts/rules/add', {
-                    name: r.name,
-                    source_type: r.source_type || 'syslog',
-                    host_match: r.host_match,
-                    exclude_hosts: r.exclude_hosts || '',
-                    text_match: r.text_match,
-                    to_email: r.to_email,
-                    notify_via: r.notify_via || 'both'
-                  });
-                }));
-              })
-            );
-          }
-
-          // Restore ping targets — add if not already present
-          if (backup.ping_targets && backup.ping_targets.length) {
-            tasks.push(
-              Promise.all(backup.ping_targets.map(function (t) {
-                return apiPost('/api/ping/add', { ip: t.ip, name: t.name }).catch(function () { });
-              }))
-            );
-          }
-
-          Promise.all(tasks).then(function () {
-            showMsg('backupMsg',
-              'Restore complete!\n' +
-              'Email config: restored (re-enter SMTP password)\n' +
-              'Alert rules : ' + (backup.alert_rules ? backup.alert_rules.length : 0) + ' rules restored\n' +
-              'Ping targets: ' + (backup.ping_targets ? backup.ping_targets.length : 0) + ' targets restored',
-              true, true);
-            var el = document.getElementById('backupMsg');
-            if (el) { el.style.whiteSpace = 'pre'; el.style.fontFamily = 'monospace'; }
-            loadAlerts();
-            fetchPing();
-          }).catch(function (err) {
-            showMsg('backupMsg', 'Restore error: ' + err.message, false, true);
-          });
-
-        } catch (err) {
-          showMsg('backupMsg', 'Failed to parse backup file: ' + err.message, false, true);
-        }
-      };
-      reader.readAsText(file);
-      event.target.value = '';
-    }
-
 
     // ── TFTP FUNCTIONS ────────────────────────────────────────────────────────────
     function downloadBackup() {

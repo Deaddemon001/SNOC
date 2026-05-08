@@ -6,7 +6,7 @@ import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 import noc_config as cfg
 
 APP_NAME    = "SimpleNOC"
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.0")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.1")
 INSTALL_DIR = r"C:\SimpleNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
