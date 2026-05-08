@@ -2,6 +2,21 @@
 
 ---
 
+## v0.5.6.1 - Backup System Optimization & Stability
+**Release date:** 2026-05-08
+
+### Changed
+- **Optimized Backup System**: Redesigned the backup engine to focus on operational configuration (settings, profiles, alert rules, users, ping targets).
+- **Historical Data Exclusion**: High-volume historical data (syslog, traps, ping results) is now excluded from full backups to prevent memory-related application crashes and ensure stability.
+- **Improved UI Clarity**: Updated the dashboard's Backup & Restore section with clearer descriptions regarding what is included in the backup snapshots.
+- **Code Cleanup**: Removed redundant frontend backup/restore functions and unified the workflow for better reliability.
+
+### Fixed
+- Added missing `telegram_config` to the configuration backup set.
+- Resolved application crashes during backup generation for systems with large event histories.
+
+---
+
 ## v0.5.6.0 - Version Centralization, Ping Website Launch, OLT Profile Editing
 **Release date:** 2026-04-28
 
