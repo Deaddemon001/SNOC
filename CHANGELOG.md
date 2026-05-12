@@ -2,6 +2,21 @@
 
 ---
 
+## v0.5.6.2 - Reliability & Performance Hotfix
+**Release date:** 2026-05-12
+
+### Added
+- **Database Indexing**: Implemented high-performance indexes on `timestamp` columns for `syslog`, `traps`, `events`, and `alert_log` tables to accelerate dashboard queries and background cleanup tasks.
+
+### Changed
+- **Threaded API Server**: Enabled multi-threading in the Flask/Werkzeug backend to prevent slow database operations or long-running requests from blocking the dashboard UI.
+- **Improved Retention Stability**: Optimized the hourly retention worker to utilize new indexes, reducing table locking time and preventing dashboard hangs on high-volume systems.
+
+### Fixed
+- **SQL Syntax Error**: Resolved a PostgreSQL compatibility issue in the Syslog severity report (`GROUP BY` clause fix).
+
+---
+
 ## v0.5.6.1 - Backup System Optimization & Stability
 **Release date:** 2026-05-08
 

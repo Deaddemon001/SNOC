@@ -66,7 +66,7 @@ def _decrypt_field(ciphertext: str) -> str:
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.1')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.2')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -368,6 +368,8 @@ def ensure_dbs():
         alarm_type TEXT, alarm_name TEXT, severity TEXT,
         onu_id TEXT, pon_slot TEXT, alarm_port TEXT,
         description TEXT, status TEXT)""")
+    execute_db(TRAP_DB, "CREATE INDEX IF NOT EXISTS idx_traps_timestamp ON traps (timestamp DESC)")
+    execute_db(TRAP_DB, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp DESC)")
 
     # Syslog DB
     execute_db(SYSLOG_DB, f'''CREATE TABLE IF NOT EXISTS syslog (
@@ -376,6 +378,9 @@ def ensure_dbs():
         facility TEXT, severity TEXT, severity_num INTEGER,
         hostname TEXT, process TEXT, message TEXT, event_tag TEXT,
         onu_pon TEXT, onu_id TEXT, onu_sn TEXT, raw TEXT)''')
+    execute_db(SYSLOG_DB, "CREATE INDEX IF NOT EXISTS idx_syslog_timestamp ON syslog (timestamp DESC)")
+    execute_db(SYSLOG_DB, "CREATE INDEX IF NOT EXISTS idx_syslog_tag ON syslog (event_tag)")
+
     execute_db(SYSLOG_DB, '''CREATE TABLE IF NOT EXISTS syslog_devices (
         olt_hostname TEXT PRIMARY KEY, source_ip TEXT, olt_id TEXT,
         name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown')''')
@@ -1271,7 +1276,7 @@ def syslog_summary():
 @login_required
 def syslog_severity():
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT severity,COUNT(*) as count FROM syslog GROUP BY severity ORDER BY severity_num"))
+        "SELECT severity,severity_num,COUNT(*) as count FROM syslog GROUP BY severity,severity_num ORDER BY severity_num"))
 
 # ── ONU HISTORY ───────────────────────────────────────────────────────────────
 @app.route('/api/onu/history')
@@ -2364,7 +2369,7 @@ if __name__ == '__main__':
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
-                srv = make_server("0.0.0.0", http_port, target_app)
+                srv = make_server("0.0.0.0", http_port, target_app, threaded=True)
                 print(label)
                 srv.serve_forever()
                 return
@@ -2384,7 +2389,7 @@ if __name__ == '__main__':
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
-                srv = make_server("0.0.0.0", https_port, app, ssl_context=ssl_ctx)
+                srv = make_server("0.0.0.0", https_port, app, ssl_context=ssl_ctx, threaded=True)
                 print(f"[HTTPS] Dashboard https://localhost:{https_port}")
                 srv.serve_forever()
                 return

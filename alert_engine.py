@@ -83,6 +83,7 @@ def init_alert_db():
         sent       INTEGER DEFAULT 0,
         error      TEXT DEFAULT ''
     )''')
+    execute_db(ALERT_DB, "CREATE INDEX IF NOT EXISTS idx_alert_log_timestamp ON alert_log (timestamp DESC)")
 
     execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS telegram_config (
         id        INTEGER PRIMARY KEY,

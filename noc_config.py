@@ -1,11 +1,11 @@
 """
-SNOC v0.5.6.1 - Central Configuration
+SimpleNOC v0.5.6.2 - Central Configuration
 Edit this file to change ports and paths.
 All scripts read from this file - restart SNOC after any change.
 """
 import os
 
-APP_VERSION = "0.5.6.1"
+APP_VERSION = "0.5.6.2"
 
 try:
     import psycopg2
