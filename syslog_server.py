@@ -247,10 +247,21 @@ def offline_checker():
         time.sleep(30)
         write_queue.put(('offline',))
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 def start():
     init_db()
     threading.Thread(target=db_writer,       daemon=True).start()
     threading.Thread(target=offline_checker,  daemon=True).start()
+    threading.Thread(target=heartbeat_worker, args=("Syslog Server",), daemon=True).start()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

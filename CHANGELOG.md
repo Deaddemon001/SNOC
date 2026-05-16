@@ -2,6 +2,24 @@
 
 ---
 
+## v0.5.6.3 - Self-Healing & UI Resilience
+**Release date:** 2026-05-16
+
+### Added
+- **Auto-Restart System**: The Launcher now monitors API responsiveness. If the API hangs for more than 30 seconds, it is automatically restarted to ensure maximum uptime.
+- **Service Heartbeats**: All background services now log a "Healthy" heartbeat every 5 minutes for easier troubleshooting and uptime tracking.
+- **Log Analysis Utility**: Added `check_downtime.py` to allow administrators to audit logs for historical gaps and service interruptions.
+
+### Changed
+- **Dashboard Fault Tolerance**: Implemented a 10-second timeout on all API calls in the dashboard.
+- **Resilient UI Loading**: Dashboard components now load independently. A slow query in one module (e.g. Syslog) will no longer prevent other modules (Traps, Ping, etc.) from updating.
+- **Optimized Monitoring**: Increased launcher polling interval to 5 seconds to reduce background overhead.
+
+### Fixed
+- **Trap Receiver Stability**: Fixed a missing import in the SNMP Trap Receiver that caused service crashes upon receiving certain Vsol trap types.
+
+---
+
 ## v0.5.6.2 - Reliability & Performance Hotfix
 **Release date:** 2026-05-12
 

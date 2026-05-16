@@ -10,6 +10,7 @@ from pysnmp.entity.rfc3413 import ntfrcv
 import re, socket, datetime, threading, queue, time
 import noc_config as cfg
 from noc_config import execute_db, query_db, get_db_connection
+from vsol_mib import translate_trap, get_olt_mac, mac_to_olt_id, is_heartbeat
 
 DB_PATH    = cfg.TRAP_DB
 SNMP_PORT  = cfg.SNMP_PORT
@@ -116,6 +117,16 @@ def offline_checker():
         threading.Event().wait(30)
         write_queue.put(('offline',))
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 # ── TRAP HANDLER ──────────────────────────────────────────────────────────────
 def trap_callback(snmpEngine, stateReference, contextEngineId, contextName, varBinds, cbCtx):
     _, addr = snmpEngine.message_dispatcher.get_transport_info(stateReference)
@@ -149,6 +160,7 @@ def start():
     init_db()
     threading.Thread(target=db_writer,      daemon=True).start()
     threading.Thread(target=offline_checker, daemon=True).start()
+    threading.Thread(target=heartbeat_worker, args=("SNMP Trap Receiver",), daemon=True).start()
 
     snmpEngine = engine.SnmpEngine()
     snmp_config.add_transport(snmpEngine, udp.DOMAIN_NAME,

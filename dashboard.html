@@ -2499,7 +2499,14 @@
     function apiFetch(url, opts) {
       opts = opts || {};
       opts.credentials = 'include';
+      
+      // Add 10s timeout
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
+      opts.signal = controller.signal;
+
       return fetch(API + url, opts).then(function (r) {
+        clearTimeout(timeoutId);
         if (r.status === 401) { window.location.href = '/login'; throw new Error('401'); }
         if (!r.ok) {
           return r.text().then(function (txt) {
@@ -2507,6 +2514,9 @@
           });
         }
         return r.json();
+      }).catch(function(err) {
+        clearTimeout(timeoutId);
+        throw err;
       });
     }
 
@@ -5898,14 +5908,14 @@
       var sysQ = currentSysOlt ? ('?olt_hostname=' + encodeURIComponent(currentSysOlt)) : '';
 
       Promise.all([
-        apiFetch('/api/traps'),
-        apiFetch('/api/traps/summary'),
-        apiFetch('/api/devices'),
-        apiFetch('/api/syslog' + sysQ),
-        apiFetch('/api/syslog/events' + sysQ),
-        apiFetch('/api/syslog/summary'),
-        apiFetch('/api/syslog/severity'),
-        apiFetch('/api/syslog/devices')
+        apiFetch('/api/traps').catch(function() { return []; }),
+        apiFetch('/api/traps/summary').catch(function() { return []; }),
+        apiFetch('/api/devices').catch(function() { return []; }),
+        apiFetch('/api/syslog' + sysQ).catch(function() { return []; }),
+        apiFetch('/api/syslog/events' + sysQ).catch(function() { return []; }),
+        apiFetch('/api/syslog/summary').catch(function() { return []; }),
+        apiFetch('/api/syslog/severity').catch(function() { return []; }),
+        apiFetch('/api/syslog/devices').catch(function() { return []; })
       ]).then(function (data) {
         var traps = data[0], summary = data[1], devices = data[2], syslog = data[3];
         var sysEvts = data[4], sysSumm = data[5], sysSev = data[6], sysDevices = data[7];

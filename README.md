@@ -1,8 +1,8 @@
-# SimpleNOC v0.5.6.2
+# SimpleNOC v0.5.6.3
 
 SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.6.2
+This repository contains the full desktop/server application used by SNOC v0.5.6.3
 
 ## What the App Does
 
@@ -103,17 +103,18 @@ SimpleNOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.5.6.2 Highlights
+## Current v0.5.6.3 Highlights
 
 This version includes:
 
-- **Threaded Backend Architecture**: Enabled multi-threading to ensure the dashboard remains responsive during heavy database load.
-- **Performance Optimized SQL**: Added missing indexes to high-volume tables (syslog, traps) to speed up both viewing and background cleanup.
-- **Fixed Syslog Reports**: Resolved PostgreSQL-specific SQL errors in the severity reporting module.
-- **Optimized Backup Engine**: Focuses on operational configuration to prevent crashes on high-volume systems.
-- **Historical Data Exclusion**: Syslog, traps, and ping results are excluded from snapshots for stability.
+- **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).
+- **Dashboard Resilience**: 10-second timeouts and independent module loading prevent full-page hangs.
+- **Service Heartbeats**: Background services log "Healthy" status every 5 minutes for troubleshooting.
+- **Downtime Audit Tool**: New utility to scan logs for downtime gaps.
+- **Threaded Backend Architecture**: Multi-threaded API to ensure UI responsiveness.
+- **Performance Optimized SQL**: High-performance indexes on syslog and trap tables.
 - **Full PostgreSQL Architecture**: Pure PostgreSQL implementation for all data modules.
-- **Syslog Storage Optimization**: Automatic 150MB table truncation to maintain high performance.
+- **Syslog Storage Optimization**: Automatic 150MB table truncation.
 - User creation and editing with role selection
 - Per-user tab permissions
 - Global tab visibility controls

@@ -66,7 +66,7 @@ def _decrypt_field(ciphertext: str) -> str:
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.2')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.3')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -739,6 +739,16 @@ def retention_cleanup_worker():
             print(f"[RETENTION] Cleanup error: {e}")
         time.sleep(3600)
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 
 # ── AUTH ROUTES ───────────────────────────────────────────────────────────────
 def render_versioned_html(filename):
@@ -1088,6 +1098,10 @@ def api_security_settings():
         return jsonify({'success': False, 'error': 'Database error'}), 500
     return jsonify({'success': True, 'session_timeout_minutes': m})
 
+
+@app.route('/api/health')
+def health_check():
+    return jsonify({'status': 'ok', 'version': APP_VERSION, 'timestamp': datetime.datetime.now().isoformat()})
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 @app.route('/')
@@ -2297,6 +2311,7 @@ def get_onu_summary():
 
 threading.Thread(target=olt_job_scheduler, daemon=True).start()
 threading.Thread(target=retention_cleanup_worker, daemon=True).start()
+threading.Thread(target=heartbeat_worker, args=("API and Dashboard",), daemon=True).start()
 
 
 if __name__ == '__main__':
