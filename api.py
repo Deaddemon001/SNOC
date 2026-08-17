@@ -75,7 +75,7 @@ app.config['SESSION_COOKIE_SECURE']   = False
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 CORS(app, supports_credentials=True)
 
-from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, process_ping_alert
+from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, get_discord_config, send_discord, process_ping_alert
 
 HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
@@ -383,7 +383,16 @@ def ensure_dbs():
 
     execute_db(SYSLOG_DB, '''CREATE TABLE IF NOT EXISTS syslog_devices (
         olt_hostname TEXT PRIMARY KEY, source_ip TEXT, olt_id TEXT,
-        name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown')''')
+        name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown',
+        olt_mac TEXT DEFAULT '',
+        authorized INTEGER DEFAULT 0)''')
+
+    try:
+        execute_db(SYSLOG_DB, "ALTER TABLE syslog_devices ADD COLUMN authorized INTEGER DEFAULT 0")
+        execute_db(SYSLOG_DB, "UPDATE syslog_devices SET authorized = 1")
+    except Exception:
+        pass
+
 
     # Ping DB
     execute_db(PING_DB, f'''CREATE TABLE IF NOT EXISTS ping_targets (
@@ -438,6 +447,7 @@ FULL_BACKUP_TABLES = [
     'tftp_config',
     'olt_profiles',
     'olt_poll_jobs',
+    'discord_config',
 ]
 
 # Fields that contain sensitive credentials and must be encrypted in backup files.
@@ -446,6 +456,7 @@ SENSITIVE_BACKUP_FIELDS = {
     'olt_profiles':    ['password', 'enable_pass'],
     'email_config':    ['smtp_pass'],
     'telegram_config': ['bot_token'],
+    'discord_config':  ['webhook_url'],
 }
 
 def _fetch_one(sql, params=()):
@@ -1233,9 +1244,9 @@ def all_syslog():
     h = request.args.get('olt_hostname')
     if h:
         return jsonify(query_db(SYSLOG_DB,
-            "SELECT * FROM syslog WHERE olt_hostname=? ORDER BY timestamp DESC LIMIT 200", (h,)))
+            "SELECT * FROM syslog WHERE olt_hostname=? AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) ORDER BY timestamp DESC LIMIT 200", (h,)))
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT * FROM syslog ORDER BY timestamp DESC LIMIT 200"))
+        "SELECT * FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) ORDER BY timestamp DESC LIMIT 200"))
 
 @app.route('/api/syslog/events')
 @login_required
@@ -1245,7 +1256,8 @@ def syslog_events():
         'UPLINK_UP','UPLINK_DOWN',
         'USER_LOGIN','USER_LOGOUT','LOGIN_FAILED',
         'OLT_COLD_START','OLT_WARM_START','OLT_REBOOT',
-        'CONFIG_CHANGE','CONFIG_SAVE')"""
+        'CONFIG_CHANGE','CONFIG_SAVE')
+        AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1)"""
     params = ()
     h = request.args.get('olt_hostname')
     if h:
@@ -1271,7 +1283,8 @@ def syslog_onu_events():
     # ONU-level events — kept separate
     sql = """SELECT * FROM syslog WHERE event_tag IN (
         'ONU_ONLINE','ONU_OFFLINE','ONU_DYING_GASP',
-        'ONU_REGISTER','ONU_DEREGISTER','ONU_BIP8_ERR','ONU_LOS')"""
+        'ONU_REGISTER','ONU_DEREGISTER','ONU_BIP8_ERR','ONU_LOS')
+        AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1)"""
     params = ()
     h = request.args.get('olt_hostname')
     if h:
@@ -1284,13 +1297,13 @@ def syslog_onu_events():
 @login_required
 def syslog_summary():
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT event_tag,COUNT(*) as count FROM syslog GROUP BY event_tag ORDER BY count DESC"))
+        "SELECT event_tag,COUNT(*) as count FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) GROUP BY event_tag ORDER BY count DESC"))
 
 @app.route('/api/syslog/severity')
 @login_required
 def syslog_severity():
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT severity,severity_num,COUNT(*) as count FROM syslog GROUP BY severity,severity_num ORDER BY severity_num"))
+        "SELECT severity,severity_num,COUNT(*) as count FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) GROUP BY severity,severity_num ORDER BY severity_num"))
 
 # ── ONU HISTORY ───────────────────────────────────────────────────────────────
 @app.route('/api/onu/history')
@@ -1320,6 +1333,39 @@ def rename_syslog_device():
         return jsonify({'error': 'olt_hostname and name required'}), 400
     execute_db(SYSLOG_DB,
         "UPDATE syslog_devices SET name=? WHERE olt_hostname=?", (d['name'], key))
+    return jsonify({'success': True})
+
+@app.route('/api/syslog/devices/authorize', methods=['POST'])
+@login_required
+def authorize_syslog_device():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    hostname = d.get('olt_hostname')
+    status = d.get('authorized')
+    if not hostname or status is None:
+        return jsonify({'error': 'olt_hostname and authorized status required'}), 400
+    try:
+        status_val = int(status)
+    except ValueError:
+        return jsonify({'error': 'Invalid authorized status'}), 400
+    execute_db(SYSLOG_DB,
+        "UPDATE syslog_devices SET authorized=? WHERE olt_hostname=?", (status_val, hostname))
+    return jsonify({'success': True})
+
+@app.route('/api/syslog/devices/delete', methods=['POST'])
+@login_required
+def delete_syslog_device():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    hostname = d.get('olt_hostname')
+    if not hostname:
+        return jsonify({'error': 'olt_hostname required'}), 400
+    # Delete from syslog_devices
+    execute_db(SYSLOG_DB, "DELETE FROM syslog_devices WHERE olt_hostname=?", (hostname,))
+    # Delete associated logs from syslog table
+    execute_db(SYSLOG_DB, "DELETE FROM syslog WHERE olt_hostname=?", (hostname,))
     return jsonify({'success': True})
 
 # ── PING ENGINE ───────────────────────────────────────────────────────────────
@@ -1621,6 +1667,55 @@ def test_telegram():
     sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
     return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
 
+@app.route('/api/alerts/discord_config', methods=['GET'])
+@login_required
+def get_discord_cfg():
+    d = get_discord_config() or {}
+    webhook = d.get('webhook_url', '') or ''
+    safe = webhook[:15] + '...' + webhook[-10:] if len(webhook) > 30 else webhook
+    return jsonify({
+        'webhook_url': safe if webhook else '',
+        'enabled': bool(d.get('enabled')),
+        'webhook_set': bool(webhook),
+    })
+
+
+@app.route('/api/alerts/discord_config', methods=['POST'])
+@login_required
+def save_discord_cfg():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    webhook_url = (d.get('webhook_url') or '').strip()
+    enabled = 1 if d.get('enabled') else 0
+
+    if '...' in webhook_url:
+        cur = get_discord_config() or {}
+        webhook_url = cur.get('webhook_url', '') or ''
+
+    execute_db(
+        AUTH_DB,
+        "UPDATE discord_config SET webhook_url=?, enabled=? WHERE id=1",
+        (webhook_url, enabled),
+    )
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/test_discord', methods=['POST'])
+@login_required
+def test_discord():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    cur = get_discord_config() or {}
+    if not cur.get('enabled'):
+        return jsonify({'success': False, 'error': 'Discord is DISABLED. Enable it and save config.'})
+    if not cur.get('webhook_url'):
+        return jsonify({'success': False, 'error': 'Webhook URL is empty. Save Discord config first.'})
+
+    text = f"[SNOC] Test Alert\nDiscord alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
+    sent, err = send_discord(cur.get('webhook_url', ''), text)
+    return jsonify({'success': sent, 'error': err if not sent else 'Discord message sent!'})
+
 @app.route('/api/alerts/rules', methods=['GET'])
 @login_required
 def get_alert_rules():
@@ -1657,6 +1752,33 @@ def delete_alert_rule():
     if not rule_id:
         return jsonify({'error': 'id required'}), 400
     execute_db(AUTH_DB, "DELETE FROM alert_rules WHERE id=?", (rule_id,))
+    return jsonify({'success': True})
+
+@app.route('/api/alerts/rules/edit', methods=['POST'])
+@login_required
+def edit_alert_rule():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    rule_id = d.get('id')
+    name = (d.get('name') or '').strip()
+    source_type = (d.get('source_type') or 'syslog').strip()
+    host_match = (d.get('host_match') or '').strip()
+    exclude_hosts = (d.get('exclude_hosts') or '').strip()
+    text_match = (d.get('text_match') or '').strip()
+    to_email = (d.get('to_email') or '').strip()
+    notify_via = (d.get('notify_via') or 'both').strip()
+
+    if not rule_id:
+        return jsonify({'error': 'id required'}), 400
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if source_type == 'syslog' and not text_match:
+        return jsonify({'error': 'text_match required for syslog alerts'}), 400
+
+    execute_db(AUTH_DB, """UPDATE alert_rules SET
+        name=?, source_type=?, host_match=?, exclude_hosts=?, text_match=?, to_email=?, notify_via=?
+        WHERE id=?""", (name, source_type, host_match, exclude_hosts, text_match, to_email, notify_via, rule_id))
     return jsonify({'success': True})
 
 @app.route('/api/alerts/rules/toggle', methods=['POST'])
@@ -1762,7 +1884,7 @@ def delete_mac_mapping():
 def tftp_syslog_devices():
     # Return syslog devices for hostname dropdown in MAC mapping
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT olt_hostname, name, source_ip FROM syslog_devices ORDER BY olt_hostname"))
+        "SELECT olt_hostname, name, source_ip FROM syslog_devices WHERE authorized=1 ORDER BY olt_hostname"))
 
 # ── BACKUP & RESTORE ──────────────────────────────────────────────────────────
 @app.route('/api/backup/download')

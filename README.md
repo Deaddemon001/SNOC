@@ -1,8 +1,8 @@
-# SimpleNOC v0.5.6.3
+# SimpleNOC v0.5.6.4
 
 SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.6.3
+This repository contains the full desktop/server application used by SNOC v0.5.6.4
 
 ## What the App Does
 
@@ -13,7 +13,7 @@ SimpleNOC is built around one main dashboard and several background services:
 - Syslog ingestion and device/event tracking
 - TFTP backup intake
 - Ping monitoring with online/offline state tracking
-- Alerting through email and Telegram
+- Alerting through email, Telegram, and Discord
 - OLT profile management and ONU/uplink polling
 - User login, role-based access, and tab-level permissions
 
@@ -73,6 +73,7 @@ SimpleNOC is built around one main dashboard and several background services:
 
 - SNMP trap receiver
 - Syslog receiver with event summaries
+- Syslog device registration with allow, deny, and delete options
 - Ping monitor with online/offline/high-latency view
 - TFTP backup receiver with file inventory
 - Log viewer for local service logs
@@ -90,7 +91,7 @@ SimpleNOC is built around one main dashboard and several background services:
 ### Alerts
 
 - SMTP email alerts
-- Telegram alerts
+- Telegram and Discord alerts
 - Alert templates
 - Syslog-based alert rules
 - Ping monitor offline alerts
@@ -103,9 +104,12 @@ SimpleNOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.5.6.3 Highlights
+## Current v0.5.6.4 Highlights
 
 This version includes:
+
+- **Discord Integration**: Alert rule notifications via Discord webhooks.
+- **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices.
 
 - **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).
 - **Dashboard Resilience**: 10-second timeouts and independent module loading prevent full-page hangs.

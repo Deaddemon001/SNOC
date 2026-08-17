@@ -2110,6 +2110,27 @@
             <div id="alTelegramMsg" class="smsg"></div>
           </div>
         </div>
+        <div class="panel">
+          <div class="ph">
+            <div class="pt">Discord Config</div>
+            <div class="pb2" id="alDiscordStatus">Not configured</div>
+          </div>
+          <div class="pb" style="display:grid;gap:10px">
+            <div>
+              <label class="flabel">WEBHOOK URL</label>
+              <input id="alDcWebhook" class="finp" placeholder="https://discord.com/api/webhooks/..." />
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+              <label
+                style="display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="alDcEnabled" /> ENABLED
+              </label>
+              <button class="rb" style="padding:8px 18px" onclick="saveDiscordConfig()">Save Config</button>
+              <button class="ubtn" style="padding:8px 14px" onclick="sendTestDiscord()">Send Test</button>
+            </div>
+            <div id="alDiscordMsg" class="smsg"></div>
+          </div>
+        </div>
         <div class="panel" style="padding:0">
           <div class="ph" onclick="toggleEmailTemplate()"
             style="cursor:pointer;user-select:none;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
@@ -2183,9 +2204,10 @@
                   placeholder="admin@yourdomain.com" /></div>
               <div><label class="flabel">NOTIFY VIA</label>
                 <select id="alNotifyVia" class="finp">
-                  <option value="both" selected>Both</option>
+                  <option value="both" selected>All Enabled</option>
                   <option value="email">Email</option>
                   <option value="telegram">Telegram</option>
+                  <option value="discord">Discord</option>
                 </select>
               </div>
             </div>
@@ -2454,6 +2476,38 @@
         <button class="ubtn" type="button" id="settingsTabsSaveBtn" style="display:none" onclick="saveVisibleTabSettings()">Save Tabs</button>
         <button class="ubtn" type="button" id="timeoutSaveBtn" style="display:none" onclick="saveSessionTimeout()">Save Timeout</button>
         <button class="rbtn" type="button" id="settingsSaveBtn" onclick="saveRetentionSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="editAlertModal" class="modal-overlay" onclick="if(event.target===this) this.classList.remove('show')">
+    <div class="modal-panel" role="dialog">
+      <h3>Edit Alert Rule</h3>
+      <div class="set-note">Update the notification method for this rule.</div>
+      <input type="hidden" id="editAlertId" />
+      <input type="hidden" id="editAlertName" />
+      <input type="hidden" id="editAlertSource" />
+      <input type="hidden" id="editAlertHost" />
+      <input type="hidden" id="editAlertExclude" />
+      <input type="hidden" id="editAlertText" />
+      
+      <div style="display:grid;gap:10px;margin-bottom:16px;">
+        <div><label class="flabel">NOTIFY VIA</label>
+          <select id="editAlertNotify" class="finp">
+            <option value="both">All Configured (Default)</option>
+            <option value="email">Email Only</option>
+            <option value="telegram">Telegram Only</option>
+            <option value="discord">Discord Only</option>
+          </select>
+        </div>
+        <div><label class="flabel">RECIPIENT EMAIL</label>
+          <input id="editAlertEmail" class="finp" placeholder="e.g. noc@isp.com" />
+        </div>
+      </div>
+      <div id="editAlertMsg" class="err" style="display:none; margin-bottom:10px;"></div>
+      <div class="modal-actions">
+        <button class="ubtn" type="button" onclick="document.getElementById('editAlertModal').classList.remove('show')">Cancel</button>
+        <button class="rbtn" type="button" onclick="saveEditAlertRule()">Save Rule</button>
       </div>
     </div>
   </div>
@@ -3342,6 +3396,20 @@
         }
       }).catch(function () { });
 
+      // Load Discord config
+      apiFetch('/api/alerts/discord_config').then(function (d) {
+        document.getElementById('alDcWebhook').value = d.webhook_url || '';
+        document.getElementById('alDcEnabled').checked = !!d.enabled;
+        var st = document.getElementById('alDiscordStatus');
+        if (d.enabled && (d.webhook_set || d.webhook_url)) {
+          st.textContent = 'Configured';
+          st.style.color = 'var(--accent3)';
+        } else {
+          st.textContent = (d.webhook_set || d.webhook_url) ? 'Disabled' : 'Not configured';
+          st.style.color = (d.webhook_set || d.webhook_url) ? 'var(--warn)' : 'var(--danger)';
+        }
+      }).catch(function () { });
+
       // Load stats
       apiFetch('/api/alerts/stats').then(function (d) {
         var active = (d.rules || []).filter(function (r) { return r.enabled; }).length;
@@ -3420,12 +3488,18 @@
         togBtn.style.cssText = 'font-size:10px;padding:3px 8px';
         togBtn.textContent = r.enabled ? 'Disable' : 'Enable';
         togBtn.onclick = (function (id) { return function () { toggleAlertRule(id); }; })(r.id);
+        var editBtn = document.createElement('button');
+        editBtn.className = 'ubtn';
+        editBtn.style.cssText = 'font-size:10px;padding:3px 8px;border-color:var(--accent2);color:var(--accent2)';
+        editBtn.textContent = 'Edit';
+        editBtn.onclick = (function (rule) { return function () { openEditAlertModal(rule); }; })(r);
         var delBtn = document.createElement('button');
         delBtn.className = 'dbtn';
         delBtn.style.cssText = 'font-size:10px;padding:3px 8px';
         delBtn.textContent = 'Del';
         delBtn.onclick = (function (id) { return function () { deleteAlertRule(id); }; })(r.id);
         tdBtn.appendChild(togBtn);
+        tdBtn.appendChild(editBtn);
         tdBtn.appendChild(delBtn);
         tr.appendChild(tdBtn);
         tb.appendChild(tr);
@@ -3514,6 +3588,28 @@
       });
     }
 
+    function saveDiscordConfig() {
+      var d = {
+        webhook_url: document.getElementById('alDcWebhook').value.trim(),
+        enabled: document.getElementById('alDcEnabled').checked
+      };
+      apiPost('/api/alerts/discord_config', d).then(function (r) {
+        showMsg('alDiscordMsg', r.success ? 'Discord config saved!' : (r.error || 'Failed'), !!r.success);
+        if (r.success) loadAlerts();
+      }).catch(function (e) {
+        showMsg('alDiscordMsg', 'Request failed: ' + e.message, false, true);
+      });
+    }
+
+    function sendTestDiscord() {
+      showMsg('alDiscordMsg', 'Sending test message...', true, true);
+      apiPost('/api/alerts/test_discord', {}).then(function (r) {
+        showMsg('alDiscordMsg', r.success ? String(r.error || 'Discord sent!') : ('ERROR: ' + r.error), !!r.success, true);
+      }).catch(function (e) {
+        showMsg('alDiscordMsg', 'Request failed: ' + e.message, false, true);
+      });
+    }
+
     function addAlertRule() {
       var name = document.getElementById('alRuleName').value.trim();
       var source_type = document.getElementById('alSourceType').value;
@@ -3568,6 +3664,48 @@
 
     function toggleAlertRule(id) {
       apiPost('/api/alerts/rules/toggle', { id: id }).then(function () { loadAlerts(); });
+    }
+
+    function openEditAlertModal(r) {
+      document.getElementById('editAlertId').value = r.id;
+      document.getElementById('editAlertName').value = r.name || '';
+      document.getElementById('editAlertSource').value = r.source_type || 'syslog';
+      document.getElementById('editAlertHost').value = r.host_match || '';
+      document.getElementById('editAlertExclude').value = r.exclude_hosts || '';
+      document.getElementById('editAlertText').value = r.text_match || '';
+      document.getElementById('editAlertNotify').value = r.notify_via || 'both';
+      document.getElementById('editAlertEmail').value = r.to_email || '';
+      document.getElementById('editAlertMsg').style.display = 'none';
+      document.getElementById('editAlertModal').classList.add('show');
+    }
+
+    function saveEditAlertRule() {
+      var d = {
+        id: document.getElementById('editAlertId').value,
+        name: document.getElementById('editAlertName').value,
+        source_type: document.getElementById('editAlertSource').value,
+        host_match: document.getElementById('editAlertHost').value,
+        exclude_hosts: document.getElementById('editAlertExclude').value,
+        text_match: document.getElementById('editAlertText').value,
+        notify_via: document.getElementById('editAlertNotify').value,
+        to_email: document.getElementById('editAlertEmail').value.trim()
+      };
+      
+      if ((d.notify_via === 'email' || d.notify_via === 'both') && !d.to_email) {
+        showMsg('editAlertMsg', 'Email is required when alerting via Email', false, true);
+        return;
+      }
+      
+      apiPost('/api/alerts/rules/edit', d).then(function (r) {
+        if (r.success) {
+          document.getElementById('editAlertModal').classList.remove('show');
+          loadAlerts();
+        } else {
+          showMsg('editAlertMsg', r.error || 'Failed', false, true);
+        }
+      }).catch(function (e) {
+        showMsg('editAlertMsg', e.message, false, true);
+      });
     }
 
 
@@ -5564,6 +5702,48 @@
         .then(function () { fetchAll(); });
     }
 
+    function setSyslogDeviceAuth(hostname, status) {
+      if (currentRole !== 'admin') {
+        alert('Admin only');
+        return;
+      }
+      var actionStr = status === 1 ? 'accept' : 'deny';
+      if (!confirm('Are you sure you want to ' + actionStr + ' syslog device ' + hostname + '?')) return;
+      apiPost('/api/syslog/devices/authorize', { olt_hostname: hostname, authorized: status })
+        .then(function (r) {
+          if (r.success) {
+            fetchAll();
+          } else {
+            alert('Error: ' + (r.error || 'Failed'));
+          }
+        }).catch(function (e) {
+          alert('Request failed: ' + e.message);
+        });
+    }
+
+    function deleteSyslogDevice(hostname) {
+      if (currentRole !== 'admin') {
+        alert('Admin only');
+        return;
+      }
+      if (!confirm('Are you sure you want to delete syslog device ' + hostname + ' and ALL of its stored syslog messages? This cannot be undone.')) return;
+      apiPost('/api/syslog/devices/delete', { olt_hostname: hostname })
+        .then(function (r) {
+          if (r.success) {
+            var sel = document.getElementById('sysFilter');
+            if (sel && sel.value === hostname) {
+              sel.value = '';
+              currentSysOlt = '';
+            }
+            fetchAll();
+          } else {
+            alert('Error: ' + (r.error || 'Failed'));
+          }
+        }).catch(function (e) {
+          alert('Request failed: ' + e.message);
+        });
+    }
+
     // ── PING ──────────────────────────────────────────────────────────────────────
     function addPingTarget() {
       if (currentRole !== 'admin') { alert('Admin only'); return; }
@@ -5968,6 +6148,7 @@
         var prev = sel.value;
         while (sel.options.length > 1) sel.remove(1);
         sysDevices.forEach(function (d) {
+          if (d.authorized !== 1) return; // Only show accepted devices in filter dropdown
           var nm = (d.name && d.name !== d.olt_hostname) ? d.name : d.olt_hostname;
           var opt = document.createElement('option');
           opt.value = d.olt_hostname; opt.textContent = nm;
@@ -5991,14 +6172,44 @@
             if (st === 'receiving') stDisplay = 'Receiving';
             if (st === 'standby') stDisplay = 'Standby';
             var cur = (d.name && d.name !== d.olt_hostname) ? d.name : '';
+
+            // Authorization status badge
+            var auth = d.authorized;
+            var authText = 'Pending';
+            var authClass = 'by'; // yellow badge
+            if (auth === 1) {
+              authText = 'Accepted';
+              authClass = 'bg'; // green badge
+            } else if (auth === 2) {
+              authText = 'Denied';
+              authClass = 'br'; // red badge
+            }
+
             dh += '<div class="oc ' + stClass + '">';
-            dh += '<div class="otop"><div><div class="oname">' + nm + '</div><div style="margin-top:3px">' + oltBadge(d.olt_hostname) + '</div></div>';
+            dh += '<div class="otop"><div><div class="oname">' + nm + '</div><div style="margin-top:3px">' + oltBadge(d.olt_hostname) + '<span class="b ' + authClass + '" style="margin-left:6px">' + authText + '</span></div></div>';
             dh += '<div class="pill ' + stClass + '">' + stDisplay + '</div></div>';
             dh += '<div class="om">Hostname: <span>' + (d.olt_hostname || '—') + '</span></div>';
             dh += '<div class="om">IP: <span>' + (d.source_ip || '—') + '</span></div>';
             dh += '<div class="om">Last seen: <span>' + seen + '</span></div>';
             dh += '<div class="rrow"><input class="ri" id="sinp_' + mid + '" placeholder="Set name..." value="' + cur + '"/>';
-            dh += '<button class="rb" data-host="' + d.olt_hostname + '" onclick="renameSyslogDevice(this.dataset.host)">Save</button></div></div>';
+            dh += '<button class="rb" data-host="' + d.olt_hostname + '" onclick="renameSyslogDevice(this.dataset.host)">Save</button></div>';
+
+            // Authorization actions + delete
+            dh += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">';
+            dh += '<div style="display:flex;gap:5px">';
+            if (currentRole === 'admin') {
+              if (auth !== 1) {
+                dh += '<button class="rb" style="background:rgba(57,255,20,0.1);border-color:var(--accent3);color:var(--accent3);padding:3px 8px;font-size:11px" onclick="setSyslogDeviceAuth(\'' + d.olt_hostname + '\', 1)">Accept</button>';
+              }
+              if (auth !== 2) {
+                dh += '<button class="rb" style="background:rgba(255,107,53,0.1);border-color:var(--accent2);color:var(--accent2);padding:3px 8px;font-size:11px" onclick="setSyslogDeviceAuth(\'' + d.olt_hostname + '\', 2)">Deny</button>';
+              }
+            }
+            dh += '</div>';
+            if (currentRole === 'admin') {
+              dh += '<button class="dbtn" style="padding:3px 8px;font-size:11px" onclick="deleteSyslogDevice(\'' + d.olt_hostname + '\')">Delete</button>';
+            }
+            dh += '</div></div>';
           });
           sdg.innerHTML = dh;
         }

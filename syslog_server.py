@@ -132,7 +132,15 @@ def init_db(path=None):
     execute_db(path, '''CREATE TABLE IF NOT EXISTS syslog_devices (
         olt_hostname TEXT PRIMARY KEY, source_ip TEXT, olt_id TEXT,
         name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown',
-        olt_mac TEXT DEFAULT '')''')
+        olt_mac TEXT DEFAULT '',
+        authorized INTEGER DEFAULT 0)''')
+
+    try:
+        execute_db(path, "ALTER TABLE syslog_devices ADD COLUMN authorized INTEGER DEFAULT 0")
+        execute_db(path, "UPDATE syslog_devices SET authorized = 1")
+    except Exception:
+        pass
+
 
     execute_db(path, '''CREATE TABLE IF NOT EXISTS mac_mapping (
         olt_mac      TEXT PRIMARY KEY,

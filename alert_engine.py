@@ -95,6 +95,15 @@ def init_alert_db():
     if not rows or rows[0]['count'] == 0:
         execute_db(ALERT_DB, "INSERT INTO telegram_config (id, bot_token, chat_id, enabled) VALUES (1,'','',0)")
     
+    execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS discord_config (
+        id        INTEGER PRIMARY KEY,
+        webhook_url TEXT DEFAULT '',
+        enabled   INTEGER DEFAULT 0
+    )''')
+    rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM discord_config")
+    if not rows or rows[0]['count'] == 0:
+        execute_db(ALERT_DB, "INSERT INTO discord_config (id, webhook_url, enabled) VALUES (1,'',0)")
+    
     print("Alert DB (postgres) ready.")
 
 
@@ -167,6 +176,40 @@ def send_telegram(bot_token, chat_id, text):
         if '"ok":true' in raw or '"ok": true' in raw:
             return True, "Sent"
         return False, raw[:200]
+    except Exception as e:
+        return False, str(e)
+
+# ── DISCORD SENDER ────────────────────────────────────────────────────────────
+def get_discord_config():
+    rows = query_db(ALERT_DB, "SELECT id,webhook_url,enabled FROM discord_config WHERE id=1")
+    return rows[0] if rows else {}
+
+def _discord_request(url, data, context=None):
+    req = _urlrequest.Request(url, data=data, method="POST")
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('User-Agent', 'SimpleNOC/0.5')
+    with _urlrequest.urlopen(req, timeout=10, context=context) as resp:
+        return resp.read().decode("utf-8", errors="replace"), resp.getcode()
+
+def send_discord(webhook_url, text):
+    if not webhook_url:
+        return False, "Discord not configured"
+    try:
+        payload = {"content": text}
+        data = json.dumps(payload).encode("utf-8")
+        try:
+            raw, code = _discord_request(webhook_url, data)
+        except ssl.SSLCertVerificationError:
+            insecure_ctx = ssl._create_unverified_context()
+            raw, code = _discord_request(webhook_url, data, context=insecure_ctx)
+        except Exception as inner_exc:
+            if 'CERTIFICATE_VERIFY_FAILED' in str(inner_exc).upper():
+                insecure_ctx = ssl._create_unverified_context()
+                raw, code = _discord_request(webhook_url, data, context=insecure_ctx)
+            else:
+                raise
+        # Discord typically returns 204 No Content or 200 OK on success
+        return True, "Sent"
     except Exception as e:
         return False, str(e)
 
@@ -257,9 +300,11 @@ def process_alert(hostname, message, timestamp):
 
     ec = get_email_config()
     tc = get_telegram_config()
+    dc = get_discord_config()
     email_enabled = bool(ec.get('enabled'))
     tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
-    if not email_enabled and not tg_enabled:
+    discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
+    if not email_enabled and not tg_enabled and not discord_enabled:
         return
 
     for rule in rules:
@@ -280,6 +325,14 @@ def process_alert(hostname, message, timestamp):
             if not tg_sent and not error:
                 error = tg_err
             sent = sent or tg_sent
+
+        if discord_enabled and notify_via in ('discord', 'both'):
+            discord_text = subject + "\n\n" + body
+            discord_sent, discord_err = send_discord(dc.get('webhook_url', ''), discord_text)
+            if not discord_sent and not error:
+                error = discord_err
+            sent = sent or discord_sent
+            
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
 
         # Log the alert
@@ -306,9 +359,11 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
 
     ec = get_email_config()
     tc = get_telegram_config()
+    dc = get_discord_config()
     email_enabled = bool(ec.get('enabled'))
     tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
-    if not email_enabled and not tg_enabled:
+    discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
+    if not email_enabled and not tg_enabled and not discord_enabled:
         return
 
     display_host = hostname or source_ip
@@ -336,6 +391,13 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
             if not tg_sent and not error:
                 error = tg_err
             sent = sent or tg_sent
+
+        if discord_enabled and notify_via in ('discord', 'both'):
+            discord_text = subject + "\n\n" + body
+            discord_sent, discord_err = send_discord(dc.get('webhook_url', ''), discord_text)
+            if not discord_sent and not error:
+                error = discord_err
+            sent = sent or discord_sent
 
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
         execute_db(ALERT_DB, """INSERT INTO alert_log

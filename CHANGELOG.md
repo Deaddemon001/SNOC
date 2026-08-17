@@ -2,6 +2,15 @@
 
 ---
 
+## v0.5.6.4 - Discord Alerts & Syslog Registration
+**Release date:** 2026-06-22
+
+### Added
+- **Discord Integration**: Added Discord webhooks as a notification channel for Alert Rules. Users can now broadcast syslog and ping monitor alerts to Email, Telegram, and Discord simultaneously.
+- **Syslog Device Registration**: Added allow, deny, and delete actions for registered Syslog devices. Unregistered or denied devices will have their syslog messages ignored to prevent log flooding.
+
+---
+
 ## v0.5.6.3 - Self-Healing & UI Resilience
 **Release date:** 2026-05-16
 
