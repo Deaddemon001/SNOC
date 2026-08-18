@@ -1,4 +1,4 @@
-﻿# Smart NOC v0.5.6.4
+# Smart NOC v0.5.6.4
 
 Smart NOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
@@ -108,12 +108,13 @@ Smart NOC is built around one main dashboard and several background services:
 
 - **Direct Multi-Channel Alert Dispatch**: Syslog and ping monitoring alerts are evaluated and dispatched unconditionally to all configured and rule-selected channels (**Discord Webhooks**, **SMTP Email**, and **Telegram**) without user binding lookup bottlenecks.
 - **Color-Coded Visual Status Indicators**: Alerts sent across Discord, Telegram, and Email feature instant status indicators for fast visual understanding:
-  - ðŸ”´ **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** incidents (loss-of-signal, link down, host unreachable) with red dots, red badges, and `#dc3545` Discord sidebar embeds.
-  - ðŸŸ¢ **Green Indication**: Sent for **UP / ONLINE / RESTORED** incidents (service recovery, host reachable, link restored) with green dots, green badges, and `#28a745` Discord sidebar embeds.
-  - ðŸŸ¡ **Yellow Indication**: Sent for **WARNING / DEGRADED** states (latency spikes, configuration changes).
+  - 🔴 **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** incidents (loss-of-signal, link down, host unreachable, PON port down) with red dots, red badges, and `#dc3545` Discord sidebar embeds.
+  - 🟢 **Green Indication**: Sent for **UP / ONLINE / RESTORED** incidents (service recovery, host reachable, link restored, PON port up) with green dots, green badges, and `#28a745` Discord sidebar embeds.
+  - 🟡 **Yellow Indication**: Sent for **WARNING / DEGRADED** states (latency spikes, configuration changes).
 - **Discord Rich Embeds & Webhooks**: Structured Discord embeds with color-coded sidebars (Red for DOWN, Green for UP), formatted parameter fields, and timestamp footers.
 - **Multipart HTML Email Alerts**: Responsive HTML email templates with prominent color-coded status badges, structured details tables, and message highlight boxes alongside plain-text fallbacks.
-- **Telegram Alerts**: Formatted Telegram notifications with bold headers and unicode visual status dots (ðŸ”´ for DOWN, ðŸŸ¢ for UP).
+- **Telegram Alerts**: Formatted Telegram notifications with bold headers and unicode visual status dots (🔴 for DOWN, 🟢 for UP).
+- **Word-Boundary Regex Matching & Compound Tag Handling**: Accurately differentiates UP and DOWN events even when compound phrases like `Updown` or `Port_Updown` appear in OLT syslog headers.
 - **Alert Rules Engine**: Syslog-based alert rules, ping offline alert rules, host matching, and excluded-host filters.
 
 ### Settings and Runtime Control
@@ -127,11 +128,13 @@ Smart NOC is built around one main dashboard and several background services:
 
 This version includes:
 
+- **App Rebranding to Smart NOC**: Complete branding unification across all web views, daemons, task scheduler scripts, and installation packages.
 - **Direct Multi-Channel Alert Engine**: Global direct delivery to Discord, Email, and Telegram for all matched Syslog rules and Ping state transitions with full cross-platform encoding compatibility.
 - **System Health Dashboard**: Dedicated primary monitoring dashboard tab with live PC resource graphs (CPU, RAM, Disk, Network) and 24/7 uptime tracking.
 - **Diagnostic Engine**: "Does it need a restart?" automated health analyzer with 1-click remediation actions.
 - **24/7 Power Controls**: In-app restart and shutdown capabilities in Dashboard and Settings with automated reconnection timers.
-- **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (ðŸ”´ Red for DOWN / ðŸŸ¢ Green for UP / ðŸŸ¡ Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
+- **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (🔴 Red for DOWN / 🟢 Green for UP / 🟡 Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
+- **Word-Boundary Regex Status Detection**: Whole-word regex parsing and compound tag stripping preventing false-positive DOWN alerts on PON port UP messages.
 - **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices to prevent log flooding.
 - **Admin Tab Visibility Guarantee**: Permanent access to all 11 tabs for administrators with resilient tab persistence.
 - **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).

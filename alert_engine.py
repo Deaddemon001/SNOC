@@ -103,10 +103,10 @@ def detect_status_indicator(status='', message='', severity=''):
     based on status, message content, and severity.
     """
     status_str = (status or '').strip().lower()
-    msg_str = (message or '').strip().lower()
+    msg_str = (message or '').strip()
     sev_str = (severity or '').strip().lower()
 
-    # Direct status check
+    # Direct status check (e.g. from ping monitor)
     if status_str in ('online', 'reachable', 'up', 'linkup', 'recovered', 'normal', 'restored', 'cleared'):
         return {
             'dot': '🟢',
@@ -128,24 +128,54 @@ def detect_status_indicator(status='', message='', severity=''):
             'is_healthy': False,
         }
 
-    # Keyword analysis on message and severity
-    red_keywords = ['offline', 'down', 'unreachable', 'linkdown', 'link down', 'critical', 'los', 'loss of signal', 'dying gasp', 'fail', 'failed', 'power down', 'disconnected']
-    green_keywords = ['online', 'linkup', 'link up', 'reachable', 'recovered', 'normal', 'restored', 'cleared', 'success', 'power on', 'connected', 'up']
+    # Keyword analysis on message with whole-word regex
+    # First, strip compound tag phrases like "Updown" or "Up/Down" so "Updown" doesn't falsely match "down"
+    clean_msg = re.sub(r'up[\s/_-]?down', '', msg_str, flags=re.IGNORECASE)
 
-    if any(k in msg_str for k in red_keywords) or sev_str in ('critical', 'alert', 'emergency'):
+    has_down = bool(re.search(
+        r'\b(down|offline|unreachable|linkdown|critical|los|loss of signal|dying gasp|fail|failed|power down|disconnected)\b',
+        clean_msg, re.IGNORECASE
+    )) or sev_str in ('critical', 'alert', 'emergency')
+
+    has_up = bool(re.search(
+        r'\b(up|online|reachable|linkup|link up|recovered|normal|restored|cleared|success|power on|connected)\b',
+        clean_msg, re.IGNORECASE
+    ))
+
+    if has_down and not has_up:
         return {
             'dot': '🔴',
-            'status': 'DOWN' if 'down' in msg_str else ('OFFLINE' if 'offline' in msg_str else 'CRITICAL'),
+            'status': 'DOWN' if re.search(r'\bdown\b', clean_msg, re.I) else ('OFFLINE' if 'offline' in clean_msg.lower() else 'CRITICAL'),
             'color_hex': '#dc3545',
             'color_int': 0xDC3545,
             'badge_bg': '#f8d7da',
             'badge_color': '#721c24',
             'is_healthy': False,
         }
-    elif any(k in msg_str for k in green_keywords) or sev_str in ('info', 'notice'):
+    elif has_up and not has_down:
         return {
             'dot': '🟢',
-            'status': 'UP' if 'up' in msg_str else ('ONLINE' if 'online' in msg_str else 'NORMAL'),
+            'status': 'UP' if re.search(r'\bup\b', clean_msg, re.I) else ('ONLINE' if 'online' in clean_msg.lower() else 'NORMAL'),
+            'color_hex': '#28a745',
+            'color_int': 0x28A745,
+            'badge_bg': '#d4edda',
+            'badge_color': '#155724',
+            'is_healthy': True,
+        }
+    elif has_down:
+        return {
+            'dot': '🔴',
+            'status': 'DOWN',
+            'color_hex': '#dc3545',
+            'color_int': 0xDC3545,
+            'badge_bg': '#f8d7da',
+            'badge_color': '#721c24',
+            'is_healthy': False,
+        }
+    elif has_up:
+        return {
+            'dot': '🟢',
+            'status': 'UP',
             'color_hex': '#28a745',
             'color_int': 0x28A745,
             'badge_bg': '#d4edda',

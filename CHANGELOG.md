@@ -1,25 +1,27 @@
-# SimpleNOC - Changelog
+# Smart NOC - Changelog
 
 ---
 
-## v0.5.6.4 - System Health Dashboard, 24x7 Power Controls & Discord Alerts
+## v0.5.6.4 - System Health Dashboard, 24x7 Power Controls, Discord Alerts & App Rebranding
 **Release date:** 2026-06-22
 
 ### Added
+- **Application Rebranding to Smart NOC**:
+  - Rebranded the platform from **SimpleNOC / SNOC** to **Smart NOC** across all UI headers, logo assets, login templates, daemons, service wrappers, and documentation.
 - **System Health & Diagnostics Dashboard**:
   - Introduced a primary **Dashboard** tab with a continuous diagnostic engine analyzing database connectivity, process liveness, port changes, memory thresholds, and continuous uptime milestones.
   - Added an automated "Does it need a restart?" verdict banner with actionable 1-click targeted recovery prompts.
-  - 5 Real-Time KPI stat cards: App vs System CPU %, SimpleNOC Process RSS vs System RAM Total, Free Disk Space vs App Storage breakdown, Live Network I/O throughput (RX/TX KB/s), and 24/7 continuous uptime counter with active PID and threads.
+  - 5 Real-Time KPI stat cards: App vs System CPU %, Smart NOC Process RSS vs System RAM Total, Free Disk Space vs App Storage breakdown, Live Network I/O throughput (RX/TX KB/s), and 24/7 continuous uptime counter with active PID and threads.
   - 4 Interactive Chart.js graphs & pie charts: CPU & RAM historical trend line chart, system RAM allocation doughnut chart, application storage distribution doughnut chart, and real-time network throughput line chart.
   - Background Services Status Matrix monitoring API, SNMP, Syslog, TFTP, and PostgreSQL processes with real-time status badges, PIDs, memory usage, CPU load, uptime, heartbeats, and per-service restart triggers.
 - **In-App Power Controls (Restart & Shutdown)**:
   - Added `POST /api/system/restart`, `POST /api/system/shutdown`, and `POST /api/system/service_action` endpoints.
-  - Added in-app **Restart SimpleNOC** and **Shutdown SimpleNOC** controls in both the Dashboard hero banner and Settings modal for headless 24/7 server management without terminal access.
+  - Added in-app **Restart Smart NOC** and **Shutdown Smart NOC** controls in both the Dashboard hero banner and Settings modal for headless 24/7 server management without terminal access.
   - Integrated a 6-second auto-reconnection countdown banner with health polling during application restarts.
 - **Visual Alert Status Indicators (Color-Coded for Easy Understanding)**:
   - When alerts are dispatched across Discord, Telegram, Email, and other notification apps, incidents are instantly color-coded for fast recognition:
-    - 🔴 **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** states (loss of signal, unreachable targets, host down, link down, uplink down) with red status dots, red badges, and `#dc3545` color-coded Discord sidebar embeds.
-    - 🟢 **Green Indication**: Sent for **UP / ONLINE / RESTORED** states (service recovery, host reachable, link restored, ping restored) with green status dots, green badges, and `#28a745` color-coded Discord sidebar embeds.
+    - 🔴 **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** states (loss of signal, unreachable targets, host down, link down, uplink down, PON port down) with red status dots, red badges, and `#dc3545` color-coded Discord sidebar embeds.
+    - 🟢 **Green Indication**: Sent for **UP / ONLINE / RESTORED** states (service recovery, host reachable, link restored, ping restored, PON port up) with green status dots, green badges, and `#28a745` color-coded Discord sidebar embeds.
     - 🟡 **Yellow Indication**: Sent for **WARNING / DEGRADED** states (high latency, config changes, user logins/logouts).
 - **Discord Rich Embeds**: Discord webhook notifications render structured embeds with color-coded sidebars (Red for DOWN, Green for UP), formatted field tables, and timestamp footers.
 - **Multipart HTML Email Alerts**: Email alerts deliver responsive HTML templates with prominent color-coded status badges (Red for DOWN, Green for UP), structured details tables, and message highlight boxes alongside plain-text fallbacks.
@@ -27,7 +29,10 @@
 - **Discord Integration**: Added Discord webhooks as a notification channel for Alert Rules. Users can broadcast syslog and ping monitor alerts to Email, Telegram, and Discord simultaneously.
 - **Syslog Device Registration**: Added allow, deny, and delete actions for registered Syslog devices. Unregistered or denied devices will have their syslog messages ignored to prevent log flooding.
 
-### Changed
+### Changed & Fixed
+- **Whole-Word Regex Status Detection & Tag Stripping**:
+  - Replaced naive substring checking in `alert_engine.py` with regex word boundaries (`\bup\b`, `\bdown\b`).
+  - Added automated stripping of compound tags (`Updown`, `Up/Down`, `PORT_UPDOWN`) prior to status analysis, eliminating false-positive RED DOWN indicators on PON port UP syslog messages.
 - **Direct Multi-Channel Alert Dispatch**:
   - Removed user assignment and binding lookup constraints from the alert engine (`alert_engine.py`). All triggered syslog events and ping state changes are now delivered directly to configured notification channels (**Discord**, **Email**, and **Telegram**) according to rule configuration.
   - Eliminated duplicate function declarations and runtime resolution dependencies that previously hindered notification dispatch.
