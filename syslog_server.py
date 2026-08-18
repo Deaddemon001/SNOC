@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.1 - Syslog Server
+SimpleNOC v0.5.6.4 - Syslog Server
 Listens on UDP port defined in noc_config.py (default 514)
 Change SYSLOG_PORT in noc_config.py to use a custom port
 """

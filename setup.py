@@ -6,7 +6,7 @@ import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 import noc_config as cfg
 
 APP_NAME    = "SimpleNOC"
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.1")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.4")
 INSTALL_DIR = r"C:\SimpleNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
@@ -15,6 +15,7 @@ SERVICES = [
     ("SimpleNOC-Syslog", "syslog_server.py", "Syslog Server"),
 ]
 TASK_NAMES = [name for name, _, _ in SERVICES]
+
 def find_real_python():
     """Find real Python — skip Windows Store stub"""
     import os
@@ -58,6 +59,7 @@ REQUIRED_PACKAGES = [
     "pysnmp",
     "paramiko",
     "psycopg2-binary",
+    "psutil",
 ]
 
 BANNER = rf"""

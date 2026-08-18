@@ -60,11 +60,27 @@ SimpleNOC is built around one main dashboard and several background services:
 
 ## Core Features
 
-### Dashboard and Access
+### System Health & PC Resource Dashboard
 
-- Login-protected dashboard
+- Real-time diagnostic engine evaluating database status, heartbeats, memory usage, and port changes
+- Automated "Does it need a restart?" verdict banner with 1-click targeted remediation
+- 5 Live KPI cards: CPU processing power, RAM usage, storage space, network throughput, and 24/7 uptime counter
+- 4 Visual Chart.js charts: CPU & RAM historical trends, system RAM allocation, application storage breakdown, and network I/O rate
+- Background Services Matrix monitoring API, SNMP, Syslog, TFTP, and PostgreSQL with individual restart controls
+
+### 24x7 Power Controls & Application Lifecycle
+
+- In-app **Restart SimpleNOC** and **Shutdown SimpleNOC** from Dashboard and Settings
+- Individual background daemon restarts (SNMP, Syslog, TFTP, API)
+- 6-second auto-reconnection countdown with health polling during restarts
+- Admin-gated lifecycle management without requiring host terminal access
+
+### Access & User Management
+
+- Login-protected dashboard with session timeout control
 - Admin and read-only user roles
-- Per-user visible tab permissions
+- Admin accounts retain unconditional access to all 11 product tabs
+- Per-user visible tab permissions for non-admin viewers
 - Global tab enable/disable controls from Settings
 - Password change flow
 - Backup and restore of operational configuration
@@ -90,12 +106,14 @@ SimpleNOC is built around one main dashboard and several background services:
 
 ### Alerts
 
-- SMTP email alerts
-- Telegram and Discord alerts
-- Alert templates
-- Syslog-based alert rules
-- Ping monitor offline alerts
-- Host match and excluded-host filters in rules
+- **Color-Coded Visual Status Indicators**: Alerts sent across Discord, Telegram, and Email feature instant status indicators for fast visual understanding:
+  - 🔴 **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** incidents (loss-of-signal, link down, host unreachable) with red dots, red badges, and `#dc3545` Discord sidebar embeds.
+  - 🟢 **Green Indication**: Sent for **UP / ONLINE / RESTORED** incidents (service recovery, host reachable, link restored) with green dots, green badges, and `#28a745` Discord sidebar embeds.
+  - 🟡 **Yellow Indication**: Sent for **WARNING / DEGRADED** states (latency spikes, configuration changes).
+- **Discord Rich Embeds & Webhooks**: Structured Discord embeds with color-coded sidebars (Red for DOWN, Green for UP), formatted parameter fields, and timestamp footers.
+- **Multipart HTML Email Alerts**: Responsive HTML email templates with prominent color-coded status badges, structured details tables, and message highlight boxes alongside plain-text fallbacks.
+- **Telegram Alerts**: Formatted Telegram notifications with bold headers and unicode visual status dots (🔴 for DOWN, 🟢 for UP).
+- **Alert Rules Engine**: Syslog-based alert rules, ping offline alert rules, host matching, and excluded-host filters.
 
 ### Settings and Runtime Control
 
@@ -108,25 +126,19 @@ SimpleNOC is built around one main dashboard and several background services:
 
 This version includes:
 
-- **Discord Integration**: Alert rule notifications via Discord webhooks.
-- **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices.
-
+- **System Health Dashboard**: Dedicated primary monitoring dashboard tab with live PC resource graphs (CPU, RAM, Disk, Network) and 24/7 uptime tracking.
+- **Diagnostic Engine**: "Does it need a restart?" automated health analyzer with 1-click remediation actions.
+- **24/7 Power Controls**: In-app restart and shutdown capabilities in Dashboard and Settings with automated reconnection timers.
+- **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (🔴 Red for DOWN / 🟢 Green for UP / 🟡 Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
+- **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices to prevent log flooding.
+- **Admin Tab Visibility Guarantee**: Permanent access to all 11 tabs for administrators with resilient tab persistence.
 - **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).
 - **Dashboard Resilience**: 10-second timeouts and independent module loading prevent full-page hangs.
 - **Service Heartbeats**: Background services log "Healthy" status every 5 minutes for troubleshooting.
-- **Downtime Audit Tool**: New utility to scan logs for downtime gaps.
+- **Downtime Audit Tool**: Scan logs for historical downtime gaps (`check_downtime.py`).
 - **Threaded Backend Architecture**: Multi-threaded API to ensure UI responsiveness.
 - **Performance Optimized SQL**: High-performance indexes on syslog and trap tables.
 - **Full PostgreSQL Architecture**: Pure PostgreSQL implementation for all data modules.
-- **Syslog Storage Optimization**: Automatic 150MB table truncation.
-- User creation and editing with role selection
-- Per-user tab permissions
-- Global tab visibility controls
-- Read-only-safe Ping Monitor behavior
-- Ping offline alert rules
-- Alert host exclusion support
-- Telegram alert support
-- Session timeout setting
 
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -176,7 +188,7 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-SimpleNOC v0.5.6.1 is purely PostgreSQL-based.
+SimpleNOC v0.5.6.4 is purely PostgreSQL-based.
 
 Default app DB values:
 
@@ -284,7 +296,7 @@ Planned next-step items:
 
 ## License / Project Status
 
-This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.1.
+This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.4.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes
@@ -323,7 +335,7 @@ User management notes:
 
 ## Configuration
 
-The main configuration file is [noc_config.py](/E:/codex/SimpleNOCv0.5.5/noc_config.py).
+The main configuration file is [noc_config.py](noc_config.py).
 
 Key settings include:
 

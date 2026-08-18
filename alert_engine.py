@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.6.1 - Alert Engine
+SimpleNOC v0.5.6.4 - Alert Engine
 Monitors syslog messages and sends email alerts based on rules.
 Rules: if Host = X AND message contains Y → send email
 Same logic as Visual Syslog Server alert rules.
@@ -69,7 +69,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.1'
+        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.4'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
