@@ -2145,10 +2145,12 @@
               <div
                 style="font-size:10px;color:var(--muted);font-family:monospace;background:rgba(0,0,0,0.25);padding:10px 12px;border-radius:4px;line-height:2">
                 <span style="color:var(--accent);font-weight:700;letter-spacing:1px">AVAILABLE VARIABLES</span><br>
-                <span style="color:var(--accent2)">{rule_name}</span> &nbsp; Rule name &nbsp;&nbsp;
+                <span style="color:var(--accent2)">{status_dot}</span> &nbsp; Status Dot (🟢/🔴) &nbsp;&nbsp;
+                <span style="color:var(--accent2)">{status}</span> &nbsp; Status (ONLINE/OFFLINE/UP/DOWN) &nbsp;&nbsp;
+                <span style="color:var(--accent2)">{rule_name}</span> &nbsp; Rule name<br>
                 <span style="color:var(--accent2)">{olt_host}</span> &nbsp; OLT hostname &nbsp;&nbsp;
-                <span style="color:var(--accent2)">{source_ip}</span> &nbsp; Source IP<br>
-                <span style="color:var(--accent2)">{time}</span> &nbsp; Timestamp &nbsp;&nbsp;
+                <span style="color:var(--accent2)">{source_ip}</span> &nbsp; Source IP &nbsp;&nbsp;
+                <span style="color:var(--accent2)">{time}</span> &nbsp; Timestamp<br>
                 <span style="color:var(--accent2)">{message}</span> &nbsp; Full syslog message &nbsp;&nbsp;
                 <span style="color:var(--accent2)">{severity}</span> &nbsp; Severity<br>
                 <span style="color:var(--accent2)">{host_match}</span> &nbsp; Rule host filter &nbsp;&nbsp;
@@ -2156,7 +2158,7 @@
               </div>
               <div>
                 <label class="flabel">EMAIL SUBJECT</label>
-                <input id="alTplSubject" class="finp" placeholder="[SimpleNOC Alert] {rule_name} - {olt_host}" />
+                <input id="alTplSubject" class="finp" placeholder="{status_dot} [SimpleNOC Alert] {rule_name} - {olt_host}" />
               </div>
               <div>
                 <label class="flabel">EMAIL BODY</label>
@@ -2299,22 +2301,39 @@
         <div class="panel" id="addUserPanel" style="display:none">
           <div class="ph">
             <div class="pt">Add New User</div>
-            <div class="pb2">Admin only</div>
+            <div class="pb2">Admin only — fill in email and assign OLT/Ping sites for targeted alerts</div>
           </div>
           <div class="pb" style="display:grid;gap:12px">
-            <div><label class="flabel">USERNAME</label><input id="nuUsername" class="finp" placeholder="New username" />
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><label class="flabel">USERNAME</label><input id="nuUsername" class="finp" placeholder="New username" /></div>
+              <div><label class="flabel">EMAIL ADDRESS</label><input id="nuEmail" class="finp" placeholder="user@example.com" type="email" /></div>
             </div>
-            <div><label class="flabel">PASSWORD</label><input id="nuPassword" type="password" class="finp"
-                placeholder="Password (min 6 chars)" /></div>
-            <div><label class="flabel">ROLE</label>
-              <select id="nuRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
-                <option value="viewer">Read-only</option>
-                <option value="admin">Admin (full access)</option>
-              </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><label class="flabel">PASSWORD</label><input id="nuPassword" type="password" class="finp" placeholder="Password (min 6 chars)" /></div>
+              <div><label class="flabel">ROLE</label>
+                <select id="nuRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
+                  <option value="viewer">Read-only</option>
+                  <option value="admin">Admin (full access)</option>
+                </select>
+              </div>
             </div>
             <div>
               <label class="flabel">VISIBLE TABS</label>
-              <div id="nuVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+              <div id="nuVisibleTabs" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label class="flabel">&#128276; ASSIGNED OLTs <span style="font-size:9px;color:var(--muted);font-weight:normal">(receives syslog alerts for these)</span></label>
+                <div id="nuOltTargets" style="max-height:130px;overflow-y:auto;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:5px;padding:8px;display:grid;gap:5px">
+                  <span style="font-size:11px;color:var(--muted)">Loading OLTs...</span>
+                </div>
+              </div>
+              <div>
+                <label class="flabel">&#128276; ASSIGNED PING SITES <span style="font-size:9px;color:var(--muted);font-weight:normal">(receives ping alerts for these)</span></label>
+                <div id="nuPingTargets" style="max-height:130px;overflow-y:auto;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:5px;padding:8px;display:grid;gap:5px">
+                  <span style="font-size:11px;color:var(--muted)">Loading targets...</span>
+                </div>
+              </div>
             </div>
             <div id="nuMsg" class="smsg"></div>
             <button class="rb" style="padding:9px;font-size:13px" onclick="addUser()">Add User</button>
@@ -2323,19 +2342,39 @@
         <div class="panel" id="editUserPanel" style="display:none">
           <div class="ph">
             <div class="pt">Edit User</div>
-            <div class="pb2">Update role and visible tabs</div>
+            <div class="pb2">Update role, email, visible tabs and site assignments</div>
           </div>
           <div class="pb" style="display:grid;gap:12px">
-            <div><label class="flabel">USERNAME</label><input id="euUsername" class="finp" readonly /></div>
-            <div><label class="flabel">ROLE</label>
-              <select id="euRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
-                <option value="viewer">Read-only</option>
-                <option value="admin">Admin (full access)</option>
-              </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><label class="flabel">USERNAME</label><input id="euUsername" class="finp" readonly /></div>
+              <div><label class="flabel">EMAIL ADDRESS</label><input id="euEmail" class="finp" placeholder="user@example.com" type="email" /></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><label class="flabel">NEW PASSWORD <span style="font-size:9px;color:var(--muted);font-weight:normal">(leave blank to keep existing)</span></label><input id="euPassword" type="password" class="finp" placeholder="Leave blank to keep" /></div>
+              <div><label class="flabel">ROLE</label>
+                <select id="euRole" class="fsel" style="width:100%;padding:8px 10px;margin-top:0">
+                  <option value="viewer">Read-only</option>
+                  <option value="admin">Admin (full access)</option>
+                </select>
+              </div>
             </div>
             <div>
               <label class="flabel">VISIBLE TABS</label>
-              <div id="euVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+              <div id="euVisibleTabs" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label class="flabel">&#128276; ASSIGNED OLTs</label>
+                <div id="euOltTargets" style="max-height:130px;overflow-y:auto;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:5px;padding:8px;display:grid;gap:5px">
+                  <span style="font-size:11px;color:var(--muted)">Loading OLTs...</span>
+                </div>
+              </div>
+              <div>
+                <label class="flabel">&#128276; ASSIGNED PING SITES</label>
+                <div id="euPingTargets" style="max-height:130px;overflow-y:auto;background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:5px;padding:8px;display:grid;gap:5px">
+                  <span style="font-size:11px;color:var(--muted)">Loading targets...</span>
+                </div>
+              </div>
             </div>
             <div id="euMsg" class="smsg"></div>
             <button class="rb" style="padding:9px;font-size:13px" onclick="saveUserEdit()">Save User</button>
@@ -2392,6 +2431,8 @@
                 <th>#</th>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Email</th>
+                <th>Assigned Sites</th>
                 <th>Visible Tabs</th>
                 <th>Created</th>
                 <th>Last Login</th>
@@ -2400,7 +2441,7 @@
             </thead>
             <tbody id="userTable">
               <tr>
-                <td colspan="7">
+                <td colspan="9">
                   <div class="empty">No users.</div>
                 </td>
               </tr>
@@ -2563,8 +2604,15 @@
         clearTimeout(timeoutId);
         if (r.status === 401) { window.location.href = '/login'; throw new Error('401'); }
         if (!r.ok) {
-          return r.text().then(function (txt) {
-            throw new Error('HTTP ' + r.status + ' on ' + url + ': ' + txt.substring(0, 100));
+          // Try to parse JSON error body first (preserves backend error messages)
+          return r.json().then(function(errJson) {
+            var errMsg = (errJson && errJson.error) ? errJson.error : ('HTTP ' + r.status + ' on ' + url);
+            var errObj = new Error(errMsg);
+            errObj.backendError = errMsg;
+            throw errObj;
+          }).catch(function(jsonErr) {
+            if (jsonErr.backendError) throw jsonErr;
+            throw new Error('HTTP ' + r.status + ' on ' + url);
           });
         }
         return r.json();
@@ -2706,7 +2754,7 @@
       document.querySelectorAll('.tc').forEach(function (el) { el.classList.remove('active'); });
       var el = document.getElementById('tab-' + t);
       if (el) el.classList.add('active');
-      if (t === 'users') loadUsers();
+      if (t === 'users') { loadUsers(); loadAvailableTargets(); }
       if (t === 'alerts') loadAlerts();
       if (t === 'tftp') { loadTftp(); loadMacMapping(); }
       if (t === 'olt' || t === 'uplink') loadOlt();
@@ -2722,7 +2770,7 @@
       if (t === 'alerts') loadAlerts();
       else if (t === 'tftp') { loadTftp(); loadMacMapping(); }
       else if (t === 'olt' || t === 'uplink') loadOlt();
-      else if (t === 'users') loadUsers();
+      else if (t === 'users') { loadUsers(); loadAvailableTargets(); }
       else if (t === 'logs') loadLogsTab();
       else if (t === 'ont') { /* keep last results */ }
     }
@@ -3285,11 +3333,12 @@
     // ── ALERT FUNCTIONS ───────────────────────────────────────────────────────────
 
     // ── EMAIL TEMPLATE FUNCTIONS ──────────────────────────────────────────────────
-    var DEFAULT_SUBJECT = '[SimpleNOC Alert] {rule_name} - {olt_host}';
+    var DEFAULT_SUBJECT = '{status_dot} [SimpleNOC Alert] {rule_name} - {olt_host}';
     var DEFAULT_BODY = [
-      'SimpleNOC Alert Notification',
+      '{status_dot} SimpleNOC Alert Notification',
       '====================================================',
       '',
+      '  Status    : {status}',
       '  Rule      : {rule_name}',
       '  OLT Host  : {olt_host}',
       '  Source IP : {source_ip}',
@@ -3307,7 +3356,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.6.0'
+      '  This is an automated alert from SimpleNOC v0.5.6.4'
     ].join('\n');
 
     function toggleEmailTemplate() {
@@ -5580,24 +5629,92 @@
         });
     }
 
+    // ── AVAILABLE TARGETS (OLT + Ping) ───────────────────────────────────────
+    var _availableTargets = { olts: [], ping: [] };
+
+    function loadAvailableTargets() {
+      apiFetch('/api/auth/available_targets').then(function(data) {
+        // API returns {olts:[{name,host}], ping_targets:[{name,ip}]}
+        // Normalize to flat string arrays for the checkbox renderer
+        var oltNames  = (data.olts || []).map(function(o) { return o.name || o.host || o; });
+        var pingNames = (data.ping_targets || data.ping || []).map(function(p) { return p.name || p.ip || p; });
+        _availableTargets = { olts: oltNames, ping: pingNames };
+        _renderTargetChecks('nuOltTargets',  oltNames, [], 'olt');
+        _renderTargetChecks('nuPingTargets', pingNames, [], 'ping');
+      }).catch(function() {});
+    }
+
+    function _renderTargetChecks(containerId, items, selected, kind) {
+      var el = document.getElementById(containerId);
+      if (!el) return;
+      if (!items || !items.length) {
+        el.innerHTML = '<span style="font-size:11px;color:var(--muted)">No ' + (kind === 'olt' ? 'OLTs' : 'Ping targets') + ' configured yet.</span>';
+        return;
+      }
+      var allSelected = selected.indexOf('*') !== -1;
+      var html = '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;padding:3px 0;color:var(--accent);border-bottom:1px solid var(--border);margin-bottom:4px">';
+      html += '<input type="checkbox" data-kind="' + kind + '" data-val="*" ' + (allSelected ? 'checked' : '') + ' onchange="_onAllTargetCheck(this,\'' + containerId + '\')"> <b>All (wildcard)</b></label>';
+      items.forEach(function(item) {
+        var checked = allSelected || selected.indexOf(item) !== -1;
+        html += '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;padding:2px 0">';
+        html += '<input type="checkbox" data-kind="' + kind + '" data-val="' + item + '" ' + (checked ? 'checked' : '') + '> ' + item + '</label>';
+      });
+      el.innerHTML = html;
+    }
+
+    function _onAllTargetCheck(cb, containerId) {
+      var el = document.getElementById(containerId);
+      if (!el) return;
+      var checks = el.querySelectorAll('input[type=checkbox]:not([data-val="*"])');
+      checks.forEach(function(c) { c.checked = cb.checked; });
+    }
+
+    function _getCheckedTargets(containerId) {
+      var el = document.getElementById(containerId);
+      if (!el) return [];
+      var allCb = el.querySelector('input[data-val="*"]');
+      if (allCb && allCb.checked) return ['*'];
+      var vals = [];
+      el.querySelectorAll('input[type=checkbox]:not([data-val="*"])').forEach(function(c) {
+        if (c.checked) vals.push(c.dataset.val);
+      });
+      return vals;
+    }
+
     function addUser() {
       var username = document.getElementById('nuUsername').value.trim();
       var password = document.getElementById('nuPassword').value;
-      var role = document.getElementById('nuRole').value;
-      var visibleTabs = getUserTabSelections('nuVisibleTabs', role);
-      if (!username || !password) { showMsg('nuMsg', 'All fields required', false); return; }
-      apiPost('/api/auth/users/add', { username: username, password: password, role: role, visible_tabs: visibleTabs })
-        .then(function (d) {
-      if (d.success) {
-        showMsg('nuMsg', 'User created: ' + username, true);
-        document.getElementById('nuUsername').value = '';
-        document.getElementById('nuPassword').value = '';
-        document.getElementById('nuRole').value = 'viewer';
-        setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
-        syncUserTabAvailability('nuVisibleTabs', 'viewer');
-        loadUsers();
-      } else { showMsg('nuMsg', d.error || 'Failed', false); }
-        });
+      var email    = (document.getElementById('nuEmail').value || '').trim();
+      var role     = document.getElementById('nuRole').value;
+      var visibleTabs       = getUserTabSelections('nuVisibleTabs', role);
+      var assignedOlts      = _getCheckedTargets('nuOltTargets');
+      var assignedPing      = _getCheckedTargets('nuPingTargets');
+      if (!username || !password) { showMsg('nuMsg', 'Username and password are required.', false); return; }
+      if (password.length < 6)    { showMsg('nuMsg', 'Password must be at least 6 characters.', false); return; }
+      apiPost('/api/auth/users/add', {
+        username: username,
+        password: password,
+        email: email,
+        role: role,
+        visible_tabs: visibleTabs,
+        assigned_olts: assignedOlts,
+        assigned_ping_targets: assignedPing
+      }).then(function(d) {
+        if (d.success) {
+          showMsg('nuMsg', '\u2714 User created: ' + username, true);
+          document.getElementById('nuUsername').value = '';
+          document.getElementById('nuPassword').value = '';
+          document.getElementById('nuEmail').value = '';
+          document.getElementById('nuRole').value = 'viewer';
+          setUserTabSelections('nuVisibleTabs', getDefaultTabsForRole('viewer'));
+          syncUserTabAvailability('nuVisibleTabs', 'viewer');
+          _renderTargetChecks('nuOltTargets',  _availableTargets.olts, [], 'olt');
+          _renderTargetChecks('nuPingTargets', _availableTargets.ping, [], 'ping');
+          loadUsers();
+        } else { showMsg('nuMsg', d.error || 'Failed', false); }
+      }).catch(function(e) {
+        showMsg('nuMsg', e.message || 'Server error — check console.', false);
+      });
     }
 
     function startEditUser(encodedUser) {
@@ -5609,23 +5726,41 @@
       editingUsername = user.username || '';
       document.getElementById('euUsername').value = editingUsername;
       document.getElementById('euRole').value = user.role || 'viewer';
+      document.getElementById('euEmail').value = user.email || '';
+      document.getElementById('euPassword').value = '';
       setUserTabSelections('euVisibleTabs', user.visible_tabs || getDefaultTabsForRole(user.role || 'viewer'));
       syncUserTabAvailability('euVisibleTabs', user.role || 'viewer');
-      showMsg('euMsg', 'Editing ' + editingUsername, true, true);
+      // Populate site assignment checkboxes with saved selections
+      var savedOlts = Array.isArray(user.assigned_olts) ? user.assigned_olts : [];
+      var savedPing = Array.isArray(user.assigned_ping_targets) ? user.assigned_ping_targets : [];
+      _renderTargetChecks('euOltTargets',  _availableTargets.olts, savedOlts, 'olt');
+      _renderTargetChecks('euPingTargets', _availableTargets.ping, savedPing, 'ping');
+      showMsg('euMsg', '\u270F\uFE0F Editing ' + editingUsername, true, true);
+      // Scroll form into view
+      var panel = document.getElementById('editUserPanel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function saveUserEdit() {
       if (currentRole !== 'admin') return;
-      var username = document.getElementById('euUsername').value.trim();
-      var role = document.getElementById('euRole').value;
-      var visibleTabs = getUserTabSelections('euVisibleTabs', role);
+      var username    = document.getElementById('euUsername').value.trim();
+      var role        = document.getElementById('euRole').value;
+      var email       = (document.getElementById('euEmail').value || '').trim();
+      var newPassword = (document.getElementById('euPassword').value || '').trim();
+      var visibleTabs       = getUserTabSelections('euVisibleTabs', role);
+      var assignedOlts      = _getCheckedTargets('euOltTargets');
+      var assignedPing      = _getCheckedTargets('euPingTargets');
       if (!username) { showMsg('euMsg', 'Select a user to edit first.', false, true); return; }
-      apiPost('/api/auth/users/edit', { username: username, role: role, visible_tabs: visibleTabs }).then(function (d) {
+      if (newPassword && newPassword.length < 6) { showMsg('euMsg', 'New password must be at least 6 characters.', false, true); return; }
+      var payload = { username: username, role: role, email: email, visible_tabs: visibleTabs,
+                      assigned_olts: assignedOlts, assigned_ping_targets: assignedPing };
+      if (newPassword) payload.new_password = newPassword;
+      apiPost('/api/auth/users/edit', payload).then(function(d) {
         if (d.success) {
-          showMsg('euMsg', 'User updated: ' + username, true, true);
+          showMsg('euMsg', '\u2714 User updated: ' + username, true, true);
           if (username === currentUsername) {
             currentRole = d.role;
-            currentVisibleTabs = (d.visible_tabs || currentVisibleTabs).filter(function (tab) {
+            currentVisibleTabs = (d.visible_tabs || currentVisibleTabs).filter(function(tab) {
               return globalVisibleTabs.indexOf(tab) !== -1 || tab === 'users' || tab === 'logs';
             });
             document.getElementById('currentRole').textContent = roleLabel(currentRole);
@@ -5635,9 +5770,9 @@
         } else {
           showMsg('euMsg', d.error || 'Failed', false, true);
         }
-      }).catch(function (e) {
+      }).catch(function(e) {
         if (e.message === '401') return;
-        showMsg('euMsg', e.message || 'Failed', false, true);
+        showMsg('euMsg', e.message || 'Server error', false, true);
       });
     }
 
@@ -5650,7 +5785,7 @@
       apiFetch('/api/auth/users').then(function (users) {
         document.getElementById('userCount').textContent = users.length + ' users';
         if (!users.length) {
-          document.getElementById('userTable').innerHTML = '<tr><td colspan="7"><div class="empty">No users.</div></td></tr>';
+          document.getElementById('userTable').innerHTML = '<tr><td colspan="9"><div class="empty">No users.</div></td></tr>';
           return;
         }
         var html = '';
@@ -5659,9 +5794,30 @@
           var roleCls = u.role === 'admin' ? 'bo' : 'bx';
           var tabs = Array.isArray(u.visible_tabs) ? u.visible_tabs : [];
           var tabsLabel = tabs.length ? tabs.join(', ') : 'default';
-          var payload = encodeURIComponent(JSON.stringify({ username: u.username, role: u.role, visible_tabs: tabs }));
-          var created = u.created_at ? new Date(u.created_at).toLocaleDateString() : '—';
-          var lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : 'Never';
+          // Build assigned sites badges
+          var oltList  = Array.isArray(u.assigned_olts)          ? u.assigned_olts          : [];
+          var pingList = Array.isArray(u.assigned_ping_targets)  ? u.assigned_ping_targets  : [];
+          var sitesBadges = '';
+          if (oltList.indexOf('*') !== -1) {
+            sitesBadges += '<span class="b bc" style="font-size:9px;margin:1px">ALL OLTs</span>';
+          } else {
+            oltList.forEach(function(o) { sitesBadges += '<span class="b bc" style="font-size:9px;margin:1px">' + o + '</span>'; });
+          }
+          if (pingList.indexOf('*') !== -1) {
+            sitesBadges += '<span class="b bx" style="font-size:9px;margin:1px">ALL PING</span>';
+          } else {
+            pingList.forEach(function(p) { sitesBadges += '<span class="b bx" style="font-size:9px;margin:1px">' + p + '</span>'; });
+          }
+          if (!sitesBadges) sitesBadges = '<span style="font-size:11px;color:var(--muted)">None</span>';
+          var emailDisp = u.email ? ('<span style="font-size:11px">' + u.email + '</span>') : '<span style="color:var(--muted);font-size:11px">—</span>';
+          var payload = encodeURIComponent(JSON.stringify({
+            username: u.username, role: u.role, email: u.email || '',
+            visible_tabs: tabs,
+            assigned_olts: oltList,
+            assigned_ping_targets: pingList
+          }));
+          var created   = u.created_at  ? new Date(u.created_at).toLocaleDateString()  : '—';
+          var lastLogin = u.last_login   ? new Date(u.last_login).toLocaleString()      : 'Never';
           var editBtn = '<button class="dbtn" data-user="' + payload + '" onclick="startEditUser(this.dataset.user)">Edit</button>';
           var meTag = isMe ? ' <span class="b bc" style="font-size:9px">YOU</span>' : '';
           var delBtn = isMe ? '—' : ('<button class="dbtn" data-uname="' + u.username + '" onclick="deleteUser(this.dataset.uname)">Delete</button>');
@@ -5669,6 +5825,8 @@
           html += '<td class="mu">' + u.id + '</td>';
           html += '<td style="color:var(--accent3)">' + u.username + meTag + '</td>';
           html += '<td><span class="b ' + roleCls + '">' + roleLabel(u.role) + '</span></td>';
+          html += '<td>' + emailDisp + '</td>';
+          html += '<td style="white-space:normal">' + sitesBadges + '</td>';
           html += '<td class="mu">' + tabsLabel + '</td>';
           html += '<td class="mu">' + created + '</td>';
           html += '<td class="mu">' + lastLogin + '</td>';

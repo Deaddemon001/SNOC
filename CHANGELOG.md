@@ -6,6 +6,13 @@
 **Release date:** 2026-06-22
 
 ### Added
+- **Visual Alert Status Indicators**: Alerts dispatched to Discord, Email, and Telegram now dynamically feature visual status indicators:
+  - 🟢 **Green Dot** for online, reachable, restored, and up states.
+  - 🔴 **Red Dot** for offline, unreachable, loss-of-signal, and down states.
+  - 🟡 **Yellow Dot** for warning / degraded states.
+- **Discord Rich Embeds**: Discord webhook notifications now render formatted embeds with color-coded sidebars (`#28a745` / `#dc3545`), formatted field tables, and timestamp footers.
+- **Multipart HTML Email Alerts**: Email alerts now deliver responsive HTML formatting with styled status badges, structured details tables, and message highlight boxes alongside plain-text fallbacks.
+- **Telegram HTML Formatting**: Telegram notifications now send formatted bold headers with unicode status dots.
 - **Discord Integration**: Added Discord webhooks as a notification channel for Alert Rules. Users can now broadcast syslog and ping monitor alerts to Email, Telegram, and Discord simultaneously.
 - **Syslog Device Registration**: Added allow, deny, and delete actions for registered Syslog devices. Unregistered or denied devices will have their syslog messages ignored to prevent log flooding.
 

@@ -326,6 +326,22 @@ def init_auth_db():
         updated_at TEXT
     )''')
     execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN visible_tabs TEXT DEFAULT ''")
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN assigned_olts TEXT DEFAULT '[]'")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN assigned_ping_targets TEXT DEFAULT '[]'")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN notify_via TEXT DEFAULT 'email'")
+    except Exception:
+        pass
     execute_db(
         AUTH_DB,
         "UPDATE users SET visible_tabs=? WHERE COALESCE(visible_tabs, '')=''",
@@ -341,14 +357,27 @@ def init_auth_db():
     if not rows or rows[0]['count'] == 0:
         hashed, salt = hash_password('admin123')
         execute_db(AUTH_DB,
-            "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
-            ('admin', hashed, salt, 'admin', json.dumps(ALL_VISIBLE_TABS), datetime.datetime.now().isoformat()))
+            "INSERT INTO users (username,password,salt,email,role,visible_tabs,assigned_olts,assigned_ping_targets,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            ('admin', hashed, salt, '', 'admin', json.dumps(ALL_VISIBLE_TABS), json.dumps([]), json.dumps([]), datetime.datetime.now().isoformat()))
         print("Default admin created: username=admin password=admin123")
         print("IMPORTANT: Change the password after first login!")
 
 
 
 init_auth_db()
+
+def _normalize_json_list(value):
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        return [x.strip() for x in value.split(',') if x.strip()]
+    return []
 
 # ── ENSURE OTHER DBS ──────────────────────────────────────────────────────────
 def ensure_dbs():
@@ -561,6 +590,10 @@ def _get_user_record(username):
         return None
     user = dict(users[0])
     user['visible_tabs'] = _normalize_visible_tabs(user.get('visible_tabs'), user.get('role', 'viewer'))
+    user['email'] = user.get('email') or ''
+    user['assigned_olts'] = _normalize_json_list(user.get('assigned_olts'))
+    user['assigned_ping_targets'] = _normalize_json_list(user.get('assigned_ping_targets'))
+    user['notify_via'] = user.get('notify_via') or 'email'
     return user
 
 
@@ -892,9 +925,13 @@ def list_users():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
     rows = query_db(AUTH_DB,
-        "SELECT id,username,role,visible_tabs,created_at,last_login FROM users ORDER BY id")
+        "SELECT id,username,email,role,visible_tabs,assigned_olts,assigned_ping_targets,notify_via,created_at,last_login FROM users ORDER BY id")
     for row in rows:
         row['visible_tabs'] = _normalize_visible_tabs(row.get('visible_tabs'), row.get('role', 'viewer'))
+        row['email'] = row.get('email') or ''
+        row['assigned_olts'] = _normalize_json_list(row.get('assigned_olts'))
+        row['assigned_ping_targets'] = _normalize_json_list(row.get('assigned_ping_targets'))
+        row['notify_via'] = row.get('notify_via') or 'email'
     return jsonify(rows)
 
 @app.route('/api/auth/users/add', methods=['POST'])
@@ -905,19 +942,38 @@ def add_user():
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
+    email    = (data.get('email') or '').strip()
     role     = _normalize_role(data.get('role', 'viewer'))
     if not username or len(password) < 6:
         return jsonify({'error': 'Username required, password min 6 chars'}), 400
-    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
     
+    # Check if user already exists
+    existing = query_db(AUTH_DB, "SELECT id FROM users WHERE username=?", (username,))
+    if existing:
+        return jsonify({'error': f"User '{username}' already exists."}), 409
+
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
+    assigned_olts = _normalize_json_list(data.get('assigned_olts', []))
+    assigned_ping_targets = _normalize_json_list(data.get('assigned_ping_targets', []))
+    notify_via = (data.get('notify_via') or 'email').strip()
+
     hashed, salt = hash_password(password)
     success = execute_db(AUTH_DB,
-        "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
-        (username, hashed, salt, role, json.dumps(visible_tabs), datetime.datetime.now().isoformat()))
+        "INSERT INTO users (username,password,salt,email,role,visible_tabs,assigned_olts,assigned_ping_targets,notify_via,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (username, hashed, salt, email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, datetime.datetime.now().isoformat()))
     if success:
-        return jsonify({'success': True, 'username': username, 'visible_tabs': visible_tabs})
+        return jsonify({
+            'success': True,
+            'username': username,
+            'email': email,
+            'role': role,
+            'visible_tabs': visible_tabs,
+            'assigned_olts': assigned_olts,
+            'assigned_ping_targets': assigned_ping_targets,
+            'notify_via': notify_via
+        })
     else:
-        return jsonify({'error': 'Username already exists or database error'}), 409
+        return jsonify({'error': 'Database error creating user. Please try again.'}), 500
 
 
 @app.route('/api/auth/users/edit', methods=['POST'])
@@ -927,7 +983,9 @@ def edit_user():
         return jsonify({'error': 'Admin only'}), 403
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()
-    role = _normalize_role(data.get('role', 'viewer'))
+    email    = (data.get('email') or '').strip()
+    role     = _normalize_role(data.get('role', 'viewer'))
+    new_pass = data.get('new_password') or data.get('password') or ''
     if not username:
         return jsonify({'error': 'Username required'}), 400
     if username == session.get('username') and role != 'admin':
@@ -938,16 +996,40 @@ def edit_user():
         return jsonify({'error': 'User not found'}), 404
 
     visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', existing.get('visible_tabs', [])), role)
-    success = execute_db(
-        AUTH_DB,
-        "UPDATE users SET role=?, visible_tabs=? WHERE username=?",
-        (role, json.dumps(visible_tabs), username)
-    )
+    assigned_olts = _normalize_json_list(data.get('assigned_olts', existing.get('assigned_olts', [])))
+    assigned_ping_targets = _normalize_json_list(data.get('assigned_ping_targets', existing.get('assigned_ping_targets', [])))
+    notify_via = (data.get('notify_via') or existing.get('notify_via') or 'email').strip()
+
+    if new_pass:
+        if len(new_pass) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        hashed, salt = hash_password(new_pass)
+        success = execute_db(
+            AUTH_DB,
+            "UPDATE users SET email=?, role=?, visible_tabs=?, assigned_olts=?, assigned_ping_targets=?, notify_via=?, password=?, salt=? WHERE username=?",
+            (email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, hashed, salt, username)
+        )
+    else:
+        success = execute_db(
+            AUTH_DB,
+            "UPDATE users SET email=?, role=?, visible_tabs=?, assigned_olts=?, assigned_ping_targets=?, notify_via=? WHERE username=?",
+            (email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, username)
+        )
+
     if not success:
-        return jsonify({'error': 'Database error'}), 500
+        return jsonify({'error': 'Database error updating user'}), 500
     if username == session.get('username'):
         session['role'] = role
-    return jsonify({'success': True, 'username': username, 'role': role, 'visible_tabs': visible_tabs})
+    return jsonify({
+        'success': True,
+        'username': username,
+        'email': email,
+        'role': role,
+        'visible_tabs': visible_tabs,
+        'assigned_olts': assigned_olts,
+        'assigned_ping_targets': assigned_ping_targets,
+        'notify_via': notify_via
+    })
 
 
 @app.route('/api/auth/users/delete', methods=['POST'])
@@ -960,6 +1042,46 @@ def delete_user():
         return jsonify({'error': 'Cannot delete yourself'}), 400
     execute_db(AUTH_DB, "DELETE FROM users WHERE username=?", (username,))
     return jsonify({'success': True})
+
+
+@app.route('/api/auth/available_targets')
+@login_required
+def available_targets():
+    # Fetch configured OLT profiles and syslog devices
+    olts = []
+    seen_olts = set()
+    try:
+        olt_rows = query_db(OLT_DB, "SELECT name, host FROM olt_profiles ORDER BY name")
+        for r in olt_rows:
+            name = r.get('name') or r.get('host')
+            if name and name not in seen_olts:
+                olts.append({'name': name, 'host': r.get('host', '')})
+                seen_olts.add(name)
+    except Exception:
+        pass
+    try:
+        syslog_devs = query_db(SYSLOG_DB, "SELECT DISTINCT olt_hostname FROM syslog_devices WHERE olt_hostname IS NOT NULL AND olt_hostname != ''")
+        for r in syslog_devs:
+            name = r.get('olt_hostname')
+            if name and name not in seen_olts:
+                olts.append({'name': name, 'host': ''})
+                seen_olts.add(name)
+    except Exception:
+        pass
+
+    # Fetch Ping targets
+    ping_targets_list = []
+    try:
+        p_rows = query_db(PING_DB, "SELECT ip, name FROM ping_targets WHERE enabled=1 ORDER BY name, ip")
+        for r in p_rows:
+            ping_targets_list.append({'name': r.get('name') or r.get('ip'), 'ip': r.get('ip')})
+    except Exception:
+        pass
+
+    return jsonify({
+        'olts': olts,
+        'ping_targets': ping_targets_list
+    })
 
 
 @app.route('/api/settings/retention', methods=['GET', 'POST'], strict_slashes=False)
@@ -1587,9 +1709,24 @@ def test_email():
         return jsonify({'success': False, 'error': 'SMTP password is empty. Save email config first.'})
     if not ec.get('enabled'):
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
-    sent, err = send_email(to,
-        '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.6.1\nEmail alerts are working correctly.')
+    
+    from alert_engine import generate_html_email
+    status_info = {
+        'dot': '🟢',
+        'status': 'ONLINE / TEST',
+        'color_hex': '#28a745',
+        'badge_bg': '#d4edda',
+        'badge_color': '#155724',
+        'is_healthy': True,
+    }
+    now_str = datetime.datetime.now().isoformat()
+    html_body = generate_html_email(
+        'Test Alert Rule', 'SimpleNOC Server', '127.0.0.1', now_str,
+        'This is a test alert from SimpleNOC. Email alerts and status dot indicators are working correctly.',
+        'info', status_info
+    )
+    plain_body = f"🟢 SimpleNOC Test Alert\nStatus: ONLINE\nTime: {now_str}\nMessage: Email alerts and status dot indicators are working correctly."
+    sent, err = send_email(to, '🟢 [SNOC] Test Alert - System Online', plain_body, html_body=html_body)
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -1663,7 +1800,7 @@ def test_telegram():
     if not cur.get('chat_id'):
         return jsonify({'success': False, 'error': 'Chat ID is empty. Save Telegram config first.'})
 
-    text = f"[SNOC] Test Alert\nTelegram alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
+    text = f"<b>🟢 [ONLINE] SimpleNOC Test Alert</b>\n\nTelegram notifications and status indicators are working correctly.\n<b>Time:</b> {datetime.datetime.now().isoformat()}"
     sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
     return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
 
@@ -1712,8 +1849,19 @@ def test_discord():
     if not cur.get('webhook_url'):
         return jsonify({'success': False, 'error': 'Webhook URL is empty. Save Discord config first.'})
 
-    text = f"[SNOC] Test Alert\nDiscord alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
-    sent, err = send_discord(cur.get('webhook_url', ''), text)
+    now_str = datetime.datetime.now().isoformat()
+    embed = {
+        "title": "🟢 [ONLINE] SimpleNOC Test Alert",
+        "description": "Discord webhook notifications and visual status indicators are working correctly.",
+        "color": 0x28A745,
+        "fields": [
+            {"name": "Status", "value": "🟢 ONLINE / HEALTHY", "inline": True},
+            {"name": "Severity", "value": "INFO", "inline": True},
+            {"name": "Timestamp", "value": now_str, "inline": True}
+        ],
+        "footer": {"text": "SimpleNOC Network Operations Center"}
+    }
+    sent, err = send_discord(cur.get('webhook_url', ''), "", embed=embed)
     return jsonify({'success': sent, 'error': err if not sent else 'Discord message sent!'})
 
 @app.route('/api/alerts/rules', methods=['GET'])
