@@ -1,5 +1,5 @@
 """
-SimpleNOC Launcher
+Smart NOC Launcher
 Double-click to start all services. Close window to quit.
 """
 import subprocess, sys, os, threading, time, webbrowser, json, urllib.request, ssl
@@ -29,7 +29,8 @@ processes = {}
 def remove_conflicting_tasks():
     """Remove any scheduled tasks that cause CMD windows to flash"""
     try:
-        for task in ["SimpleNOC-API", "SimpleNOC-SNMP", "SimpleNOC-Syslog"]:
+        for task in ["SmartNOC-API", "SmartNOC-SNMP", "SmartNOC-Syslog",
+                     "SimpleNOC-API", "SimpleNOC-SNMP", "SimpleNOC-Syslog"]:
             subprocess.run(
                 ['schtasks', '/Delete', '/TN', task, '/F'],
                 capture_output=True,
@@ -90,7 +91,7 @@ def stop_all():
 class NOCApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("SimpleNOC v" + APP_VERSION)
+        self.root.title("Smart NOC v" + APP_VERSION)
         self.root.geometry("380x420")
         self.root.resizable(False, False)
         self.root.configure(bg="#0a1520")
@@ -99,7 +100,7 @@ class NOCApp:
         self.consecutive_hangs = {}
 
         # Header
-        tk.Label(self.root, text="Simple NOC",
+        tk.Label(self.root, text="Smart NOC",
                  font=("Courier New", 18, "bold"),
                  fg="#00e5ff", bg="#0a1520").pack(pady=(18, 0))
         tk.Label(self.root, text="v" + APP_VERSION + " - Network Operations Center",
@@ -259,8 +260,8 @@ class NOCApp:
 
     def on_quit(self):
         result = messagebox.askyesno(
-            "Quit SimpleNOC",
-            "Stop all services and quit SimpleNOC?",
+            "Quit Smart NOC",
+            "Stop all services and quit Smart NOC?",
             icon="warning"
         )
         if result:

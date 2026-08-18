@@ -1,8 +1,7 @@
 """
-SimpleNOC v0.5.6.4 - Alert Engine
-Monitors syslog messages and sends email alerts based on rules.
-Rules: if Host = X AND message contains Y → send email
-Same logic as Visual Syslog Server alert rules.
+Smart NOC v0.5.6.4 - Alert Engine
+Monitors syslog messages and ping state changes, then sends email, Discord, and Telegram alerts based on rules.
+Rules: if Host = X AND message contains Y -> send alert via configured channels.
 """
 import smtplib, threading, time, json, re, datetime, ssl
 from email.mime.text import MIMEText
@@ -14,7 +13,7 @@ from noc_config import execute_db, query_db, get_db_connection
 
 ALERT_DB = cfg.AUTH_DB  # reuse auth.db for alert rules
 
-# ── DATABASE ──────────────────────────────────────────────────────────────────
+# ── DATABASE INITIALIZATION ───────────────────────────────────────────────────
 def init_alert_db():
     pk = "SERIAL"
     
@@ -47,18 +46,6 @@ def init_alert_db():
         hit_count     INTEGER DEFAULT 0,
         last_hit      TEXT
     )''')
-    try:
-        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN notify_via TEXT DEFAULT 'both'")
-    except Exception:
-        pass
-    try:
-        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN source_type TEXT DEFAULT 'syslog'")
-    except Exception:
-        pass
-    try:
-        execute_db(ALERT_DB, "ALTER TABLE alert_rules ADD COLUMN exclude_hosts TEXT DEFAULT ''")
-    except Exception:
-        pass
 
     execute_db(ALERT_DB, '''CREATE TABLE IF NOT EXISTS email_template (
         id      INTEGER PRIMARY KEY,
@@ -68,8 +55,8 @@ def init_alert_db():
     
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
-        default_subject = '[SimpleNOC Alert] {rule_name} - {olt_host}'
-        default_body = 'SimpleNOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.4'
+        default_subject = '[Smart NOC Alert] {rule_name} - {olt_host}'
+        default_body = 'Smart NOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -104,7 +91,7 @@ def init_alert_db():
     if not rows or rows[0]['count'] == 0:
         execute_db(ALERT_DB, "INSERT INTO discord_config (id, webhook_url, enabled) VALUES (1,'',0)")
     
-    print("Alert DB (postgres) ready.")
+    print("Alert DB ready.")
 
 
 init_alert_db()
@@ -207,7 +194,7 @@ def generate_html_email(rule_name, host, source_ip, time_str, message, severity,
 <body>
 <div class="card">
   <div class="header">
-    <div class="title">{dot} SimpleNOC Alert</div>
+    <div class="title">{dot} Smart NOC Alert</div>
     <div class="badge">{dot} {status_label}</div>
   </div>
   <div class="body">
@@ -221,7 +208,7 @@ def generate_html_email(rule_name, host, source_ip, time_str, message, severity,
     </table>
   </div>
   <div class="footer">
-    Sent automatically by <strong>SimpleNOC</strong> Alert Engine
+    Sent automatically by <strong>Smart NOC</strong> Alert Engine
   </div>
 </div>
 </body>
@@ -265,15 +252,18 @@ def send_email(to_addr, subject, body, cfg_override=None, html_body=None):
     except Exception as e:
         return False, str(e)
 
+
 # ── TELEGRAM SENDER ───────────────────────────────────────────────────────────
 def get_telegram_config():
     rows = query_db(ALERT_DB, "SELECT id,bot_token,chat_id,enabled FROM telegram_config WHERE id=1")
     return rows[0] if rows else {}
 
+
 def _telegram_request(url, data, context=None):
     req = _urlrequest.Request(url, data=data, method="POST")
     with _urlrequest.urlopen(req, timeout=10, context=context) as resp:
         return resp.read().decode("utf-8", errors="replace")
+
 
 def send_telegram(bot_token, chat_id, text, parse_mode="HTML"):
     if not bot_token or not chat_id:
@@ -305,17 +295,20 @@ def send_telegram(bot_token, chat_id, text, parse_mode="HTML"):
     except Exception as e:
         return False, str(e)
 
+
 # ── DISCORD SENDER ────────────────────────────────────────────────────────────
 def get_discord_config():
     rows = query_db(ALERT_DB, "SELECT id,webhook_url,enabled FROM discord_config WHERE id=1")
     return rows[0] if rows else {}
 
+
 def _discord_request(url, data, context=None):
     req = _urlrequest.Request(url, data=data, method="POST")
     req.add_header('Content-Type', 'application/json')
-    req.add_header('User-Agent', 'SimpleNOC/0.5')
+    req.add_header('User-Agent', 'SmartNOC/0.5')
     with _urlrequest.urlopen(req, timeout=10, context=context) as resp:
         return resp.read().decode("utf-8", errors="replace"), resp.getcode()
+
 
 def send_discord(webhook_url, text, embed=None):
     if not webhook_url:
@@ -345,12 +338,13 @@ def send_discord(webhook_url, text, embed=None):
     except Exception as e:
         return False, str(e)
 
+
 # ── EMAIL TEMPLATE ───────────────────────────────────────────────────────────
 def get_email_template():
     rows = query_db(ALERT_DB, "SELECT subject, body FROM email_template WHERE id=1")
     if rows:
         return rows[0]['subject'], rows[0]['body']
-    return '{status_dot} [SimpleNOC Alert] {rule_name} - {olt_host}', '{status_dot} SimpleNOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by SNOC v0.5.6.4'
+    return '{status_dot} [Smart NOC Alert] {rule_name} - {olt_host}', '{status_dot} Smart NOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
 
 
 def save_email_template(subject, body):
@@ -363,6 +357,7 @@ def render_template(tpl, vars_dict):
     for k, v in vars_dict.items():
         result = result.replace('{' + k + '}', str(v))
     return result
+
 
 # ── RULE MATCHING ─────────────────────────────────────────────────────────────
 def get_rules():
@@ -407,6 +402,7 @@ def match_rule(rule, hostname, message, source_type='syslog'):
 
     return True
 
+
 def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity='', status=''):
     """
     Builds customized subject, plain body, HTML email body, Discord embed, and Telegram text
@@ -448,12 +444,12 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
             {"name": "Severity", "value": (severity or 'N/A').upper(), "inline": True},
             {"name": "Timestamp", "value": timestamp, "inline": True},
         ],
-        "footer": {"text": "SimpleNOC Network Operations Center"}
+        "footer": {"text": "Smart NOC Network Operations Center"}
     }
 
     # Telegram Formatted Text
     tg_text = (
-        f"<b>{dot} [{status_label}] SimpleNOC Alert</b>\n\n"
+        f"<b>{dot} [{status_label}] Smart NOC Alert</b>\n\n"
         f"<b>Rule:</b> {rule['name']}\n"
         f"<b>Host:</b> <code>{hostname}</code>\n"
         f"<b>Severity:</b> {severity or 'N/A'}\n"
@@ -463,110 +459,25 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
 
     return subject, plain_body, html_body, discord_embed, tg_text
 
+
 def build_alert_email(rule, hostname, source_ip, message, timestamp, severity=''):
     subject, plain_body, html_body, _, _ = build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity)
     return subject, plain_body
 
-# ── USER-SPECIFIC RECIPIENT RESOLUTION ────────────────────────────────────────
-def get_users_for_target(target_name, target_ip='', source_type='syslog'):
+
+def _should_send_channel(notify_via, channel):
     """
-    Returns a list of user dicts (email, notify_via) for users assigned to monitor
-    this OLT (source_type='syslog') or Ping site (source_type='ping').
-    Users without email AND without a channel preference are excluded.
+    Checks if a channel (email, telegram, discord) is selected by notify_via.
+    'both' and 'all' mean all configured channels.
     """
-    t_name = (target_name or '').strip().lower()
-    t_ip   = (target_ip or '').strip().lower()
-    if not t_name and not t_ip:
-        return []
-
-    col = 'assigned_olts' if source_type == 'syslog' else 'assigned_ping_targets'
-    try:
-        rows = query_db(ALERT_DB,
-            f"SELECT email, notify_via, {col} as targets FROM users")
-        matched = []
-        seen_emails = set()
-        for u in rows:
-            raw = u.get('targets') or '[]'
-            targets = []
-            if isinstance(raw, list):
-                targets = [str(x).strip().lower() for x in raw]
-            elif isinstance(raw, str):
-                try:
-                    parsed = json.loads(raw)
-                    targets = [str(x).strip().lower() for x in parsed] if isinstance(parsed, list) else []
-                except Exception:
-                    targets = [x.strip().lower() for x in raw.split(',') if x.strip()]
-
-            is_matched = ('*' in targets or 'all' in targets)
-            if not is_matched:
-                for tgt in targets:
-                    if tgt and (tgt == t_name or tgt in t_name or
-                                (t_ip and (tgt == t_ip or tgt in t_ip))):
-                        is_matched = True
-                        break
-
-            if is_matched:
-                email = (u.get('email') or '').strip()
-                key = email or id(u)
-                if key not in seen_emails:
-                    seen_emails.add(key)
-                    matched.append({
-                        'email': email,
-                        'notify_via': (u.get('notify_via') or 'email').strip()
-                    })
-        return matched
-    except Exception as e:
-        print(f"[ALERT] Error resolving users for target: {e}")
-        return []
-
-
-def _wants_channel(notify_via, channel):
-    """Returns True if the user's notify_via preference includes the given channel."""
-    nv = (notify_via or 'email').lower()
-    if nv in ('all', 'both'):
+    nv = (notify_via or 'both').strip().lower()
+    if nv in ('both', 'all', 'any', ''):
         return True
-    parts = [p.strip() for p in nv.replace('+', ',').split(',')]
-    return channel in parts
+    parts = [p.strip() for p in nv.replace('+', ',').split(',') if p.strip()]
+    return channel in parts or ('mail' in nv and channel == 'email') or (channel in nv)
 
 
-def _dispatch_to_users(matched_users, subject, plain_body, html_body,
-                       discord_embed, tg_text,
-                       ec, tc, dc,
-                       email_enabled, tg_enabled, discord_enabled):
-    """
-    Fires alerts to each matched user according to their personal notify_via preference.
-    Returns (sent_bool, first_error_string).
-    """
-    sent = False
-    error = ''
-    for user in matched_users:
-        nv    = user.get('notify_via', 'email')
-        email = user.get('email', '')
-
-        # Email channel
-        if email_enabled and email and _wants_channel(nv, 'email'):
-            ok, err = send_email(email, subject, plain_body, ec, html_body=html_body)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        # Discord channel (global webhook)
-        if discord_enabled and _wants_channel(nv, 'discord'):
-            ok, err = send_discord(dc.get('webhook_url', ''), '', embed=discord_embed)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        # Telegram channel (global bot + chat_id)
-        if tg_enabled and _wants_channel(nv, 'telegram'):
-            ok, err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-    return sent, error
-
-
+# ── ALERT DISPATCHING (GLOBAL / DIRECT) ───────────────────────────────────────
 def process_alert(hostname, message, timestamp):
     """Called by syslog_server for every incoming message"""
     rules = get_rules()
@@ -589,280 +500,62 @@ def process_alert(hostname, message, timestamp):
         subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
             rule, hostname, '', message, timestamp, severity='', status=''
         )
-        sent  = False
-        error = ''
-        notify_via = rule.get('notify_via') or 'both'
+        sent = False
+        errors = []
+        notify_via = (rule.get('notify_via') or 'both').strip()
+        sent_channels = []
 
-        # ── 1. Rule-level to_email (respects rule notify_via) ───────────────
-        rule_emails = set()
-        if rule.get('to_email'):
-            for em in re.split(r'[\n,;]', rule['to_email']):
-                if em.strip():
-                    rule_emails.add(em.strip())
-
-        if email_enabled and notify_via in ('email', 'both') and rule_emails:
+        # ── 1. Email Channel ──────────────────────────────────────────
+        rule_emails = [em.strip() for em in re.split(r'[\n,;]', rule.get('to_email') or '') if em.strip()]
+        if email_enabled and _should_send_channel(notify_via, 'email') and rule_emails:
             for recipient in rule_emails:
                 ok, err = send_email(recipient, subject, plain_body, ec, html_body=html_body)
-                sent = sent or ok
-                if not ok and not error:
-                    error = err
+                if ok:
+                    sent = True
+                    sent_channels.append(f"Email:{recipient}")
+                else:
+                    errors.append(f"Email({recipient}): {err}")
 
-        if tg_enabled and notify_via in ('telegram', 'both'):
+        # ── 2. Telegram Channel ───────────────────────────────────────
+        if tg_enabled and _should_send_channel(notify_via, 'telegram'):
             ok, err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        if discord_enabled and notify_via in ('discord', 'both'):
-            ok, err = send_discord(dc.get('webhook_url', ''), '', embed=discord_embed)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        # ── 2. Per-user dispatch (each user's own channel preference) ───────
-        matched_users = get_users_for_target(hostname, '', 'syslog')
-        if matched_users:
-            u_sent, u_err = _dispatch_to_users(
-                matched_users, subject, plain_body, html_body,
-                discord_embed, tg_text,
-                ec, tc, dc,
-                email_enabled, tg_enabled, discord_enabled
-            )
-            sent  = sent or u_sent
-            if not error:
-                error = u_err
-
-        # ── 3. Log ───────────────────────────────────────────────────────────
-        now = time.strftime('%Y-%m-%dT%H:%M:%S')
-        user_emails_logged = ', '.join(u['email'] for u in matched_users if u.get('email'))
-        recipients_logged  = ', '.join(filter(None, [', '.join(rule_emails), user_emails_logged]))
-
-        execute_db(ALERT_DB, """INSERT INTO alert_log
-            (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (now, rule['id'], rule['name'], hostname,
-             message, recipients_logged, 1 if sent else 0, error))
-        execute_db(ALERT_DB, """UPDATE alert_rules SET
-            hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
-            (now, rule['id']))
-
-        if sent:
-            print(f"[ALERT] Sent: {rule['name']} → {recipients_logged}")
-        else:
-            print(f"[ALERT] Failed: {rule['name']} → {error}")
-
-
-def process_ping_alert(hostname, source_ip, status, timestamp):
-    if status not in ('offline', 'online'):
-        return
-
-    rules = get_rules()
-    if not rules:
-        return
-
-    ec = get_email_config()
-    tc = get_telegram_config()
-    dc = get_discord_config()
-    email_enabled   = bool(ec.get('enabled'))
-    tg_enabled      = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
-    discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
-    if not email_enabled and not tg_enabled and not discord_enabled:
-        return
-
-    display_host = hostname or source_ip
-    if status == 'offline':
-        message  = f"Ping monitor detected {source_ip} as offline"
-        severity = 'critical'
-    else:
-        message  = f"Ping monitor detected {source_ip} is reachable again"
-        severity = 'info'
-
-    for rule in rules:
-        if not match_rule(rule, display_host, message, 'ping'):
-            continue
-
-        subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
-            rule, display_host, source_ip, message, timestamp, severity=severity, status=status
-        )
-        sent  = False
-        error = ''
-        notify_via = rule.get('notify_via') or 'both'
-
-        # ── 1. Rule-level to_email (respects rule notify_via) ───────────────
-        rule_emails = set()
-        if rule.get('to_email'):
-            for em in re.split(r'[\n,;]', rule['to_email']):
-                if em.strip():
-                    rule_emails.add(em.strip())
-
-        if email_enabled and notify_via in ('email', 'both') and rule_emails:
-            for recipient in rule_emails:
-                ok, err = send_email(recipient, subject, plain_body, ec, html_body=html_body)
-                sent = sent or ok
-                if not ok and not error:
-                    error = err
-
-        if tg_enabled and notify_via in ('telegram', 'both'):
-            ok, err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        if discord_enabled and notify_via in ('discord', 'both'):
-            ok, err = send_discord(dc.get('webhook_url', ''), '', embed=discord_embed)
-            sent = sent or ok
-            if not ok and not error:
-                error = err
-
-        # ── 2. Per-user dispatch (each user's own channel preference) ───────
-        matched_users = get_users_for_target(display_host, source_ip, 'ping')
-        if matched_users:
-            u_sent, u_err = _dispatch_to_users(
-                matched_users, subject, plain_body, html_body,
-                discord_embed, tg_text,
-                ec, tc, dc,
-                email_enabled, tg_enabled, discord_enabled
-            )
-            sent  = sent or u_sent
-            if not error:
-                error = u_err
-
-        # ── 3. Log ───────────────────────────────────────────────────────────
-        now = time.strftime('%Y-%m-%dT%H:%M:%S')
-        user_emails_logged = ', '.join(u['email'] for u in matched_users if u.get('email'))
-        recipients_logged  = ', '.join(filter(None, [', '.join(rule_emails), user_emails_logged]))
-
-        execute_db(ALERT_DB, """INSERT INTO alert_log
-            (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (now, rule['id'], rule['name'], display_host,
-             message, recipients_logged, 1 if sent else 0, error))
-        execute_db(ALERT_DB, """UPDATE alert_rules SET
-            hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
-            (now, rule['id']))
-
-
-    """
-    Returns a list of emails of users specifically assigned to monitor this OLT or Ping site.
-    """
-    t_name = (target_name or '').strip().lower()
-    t_ip = (target_ip or '').strip().lower()
-    if not t_name and not t_ip:
-        return []
-
-    try:
-        users = query_db(ALERT_DB, "SELECT email, assigned_olts, assigned_ping_targets FROM users WHERE email IS NOT NULL AND email != ''")
-        matched_emails = []
-        for u in users:
-            email = (u.get('email') or '').strip()
-            if not email:
-                continue
-
-            raw_targets = u.get('assigned_olts' if source_type == 'syslog' else 'assigned_ping_targets') or '[]'
-            targets = []
-            if isinstance(raw_targets, list):
-                targets = [str(x).strip().lower() for x in raw_targets]
-            elif isinstance(raw_targets, str):
-                try:
-                    parsed = json.loads(raw_targets)
-                    if isinstance(parsed, list):
-                        targets = [str(x).strip().lower() for x in parsed]
-                except Exception:
-                    targets = [x.strip().lower() for x in raw_targets.split(',') if x.strip()]
-
-            is_matched = False
-            if '*' in targets or 'all' in targets:
-                is_matched = True
+            if ok:
+                sent = True
+                sent_channels.append("Telegram")
             else:
-                for tgt in targets:
-                    if tgt and (tgt == t_name or tgt in t_name or (t_ip and (tgt == t_ip or tgt in t_ip))):
-                        is_matched = True
-                        break
+                errors.append(f"Telegram: {err}")
 
-            if is_matched and email not in matched_emails:
-                matched_emails.append(email)
+        # ── 3. Discord Channel ────────────────────────────────────────
+        if discord_enabled and _should_send_channel(notify_via, 'discord'):
+            ok, err = send_discord(dc.get('webhook_url', ''), '', embed=discord_embed)
+            if ok:
+                sent = True
+                sent_channels.append("Discord")
+            else:
+                errors.append(f"Discord: {err}")
 
-        return matched_emails
-    except Exception as e:
-        print(f"Error resolving user emails for target: {e}")
-        return []
-
-def process_alert(hostname, message, timestamp):
-    """Called by syslog_server for every incoming message"""
-    rules = get_rules()
-    if not rules:
-        return
-
-    ec = get_email_config()
-    tc = get_telegram_config()
-    dc = get_discord_config()
-    email_enabled = bool(ec.get('enabled'))
-    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
-    discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
-    if not email_enabled and not tg_enabled and not discord_enabled:
-        return
-
-    for rule in rules:
-        if not match_rule(rule, hostname, message, 'syslog'):
-            continue
-
-        subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
-            rule, hostname, '', message, timestamp, severity='', status=''
-        )
-        sent = False
-        error = ""
-        notify_via = rule.get('notify_via') or 'both'
-
-        # Resolve direct rule emails + users assigned to this OLT
-        assigned_user_emails = get_user_emails_for_target(hostname, '', 'syslog')
-        target_emails = set()
-        if rule.get('to_email'):
-            for em in re.split(r'[\n,;]', rule['to_email']):
-                if em.strip():
-                    target_emails.add(em.strip())
-        for em in assigned_user_emails:
-            if em.strip():
-                target_emails.add(em.strip())
-
-        if email_enabled and notify_via in ('email', 'both') and target_emails:
-            for recipient in target_emails:
-                s_ok, s_err = send_email(recipient, subject, plain_body, ec, html_body=html_body)
-                if s_ok:
-                    sent = True
-                elif not error:
-                    error = s_err
-
-        if tg_enabled and notify_via in ('telegram', 'both'):
-            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
-            if not tg_sent and not error:
-                error = tg_err
-            sent = sent or tg_sent
-
-        if discord_enabled and notify_via in ('discord', 'both'):
-            discord_sent, discord_err = send_discord(dc.get('webhook_url', ''), "", embed=discord_embed)
-            if not discord_sent and not error:
-                error = discord_err
-            sent = sent or discord_sent
-            
+        # ── 4. Logging & Counters ─────────────────────────────────────
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
-        recipients_logged = ", ".join(target_emails) if target_emails else rule.get('to_email', '')
+        recipients_logged = ', '.join(sent_channels) if sent_channels else (rule.get('to_email') or 'None')
+        error_msg = '; '.join(errors) if errors else ''
 
-        # Log the alert
         execute_db(ALERT_DB, """INSERT INTO alert_log
             (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
             (now, rule['id'], rule['name'], hostname,
-             message, recipients_logged, 1 if sent else 0, error))
+             message, recipients_logged, 1 if sent else 0, error_msg))
         execute_db(ALERT_DB, """UPDATE alert_rules SET
             hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
             (now, rule['id']))
 
         if sent:
-            print(f"[ALERT] Sent: {rule['name']} → {recipients_logged}")
+            print(f"[ALERT] Sent: {rule['name']} -> {recipients_logged}")
         else:
-            print(f"[ALERT] Failed: {rule['name']} → {error}")
+            print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")
+
 
 def process_ping_alert(hostname, source_ip, status, timestamp):
+    """Called by api.py when a ping target changes state (e.g. offline/online)."""
     if status not in ('offline', 'online'):
         return
 
@@ -873,18 +566,18 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
     ec = get_email_config()
     tc = get_telegram_config()
     dc = get_discord_config()
-    email_enabled = bool(ec.get('enabled'))
-    tg_enabled = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
+    email_enabled   = bool(ec.get('enabled'))
+    tg_enabled      = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
     discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
     if not email_enabled and not tg_enabled and not discord_enabled:
         return
 
     display_host = hostname or source_ip
     if status == 'offline':
-        message = f"Ping monitor detected {source_ip} as offline"
+        message  = f"Ping monitor detected {display_host} ({source_ip}) as OFFLINE"
         severity = 'critical'
     else:
-        message = f"Ping monitor detected {source_ip} is reachable again"
+        message  = f"Ping monitor detected {display_host} ({source_ip}) is ONLINE / REACHABLE"
         severity = 'info'
 
     for rule in rules:
@@ -894,50 +587,55 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
             rule, display_host, source_ip, message, timestamp, severity=severity, status=status
         )
-        sent = False
-        error = ""
-        notify_via = rule.get('notify_via') or 'both'
+        sent  = False
+        errors = []
+        notify_via = (rule.get('notify_via') or 'both').strip()
+        sent_channels = []
 
-        # Resolve direct rule emails + users assigned to this Ping site
-        assigned_user_emails = get_user_emails_for_target(display_host, source_ip, 'ping')
-        target_emails = set()
-        if rule.get('to_email'):
-            for em in re.split(r'[\n,;]', rule['to_email']):
-                if em.strip():
-                    target_emails.add(em.strip())
-        for em in assigned_user_emails:
-            if em.strip():
-                target_emails.add(em.strip())
-
-        if email_enabled and notify_via in ('email', 'both') and target_emails:
-            for recipient in target_emails:
-                s_ok, s_err = send_email(recipient, subject, plain_body, ec, html_body=html_body)
-                if s_ok:
+        # ── 1. Email Channel ──────────────────────────────────────────
+        rule_emails = [em.strip() for em in re.split(r'[\n,;]', rule.get('to_email') or '') if em.strip()]
+        if email_enabled and _should_send_channel(notify_via, 'email') and rule_emails:
+            for recipient in rule_emails:
+                ok, err = send_email(recipient, subject, plain_body, ec, html_body=html_body)
+                if ok:
                     sent = True
-                elif not error:
-                    error = s_err
+                    sent_channels.append(f"Email:{recipient}")
+                else:
+                    errors.append(f"Email({recipient}): {err}")
 
-        if tg_enabled and notify_via in ('telegram', 'both'):
-            tg_sent, tg_err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
-            if not tg_sent and not error:
-                error = tg_err
-            sent = sent or tg_sent
+        # ── 2. Telegram Channel ───────────────────────────────────────
+        if tg_enabled and _should_send_channel(notify_via, 'telegram'):
+            ok, err = send_telegram(tc.get('bot_token', ''), tc.get('chat_id', ''), tg_text)
+            if ok:
+                sent = True
+                sent_channels.append("Telegram")
+            else:
+                errors.append(f"Telegram: {err}")
 
-        if discord_enabled and notify_via in ('discord', 'both'):
-            discord_sent, discord_err = send_discord(dc.get('webhook_url', ''), "", embed=discord_embed)
-            if not discord_sent and not error:
-                error = discord_err
-            sent = sent or discord_sent
+        # ── 3. Discord Channel ────────────────────────────────────────
+        if discord_enabled and _should_send_channel(notify_via, 'discord'):
+            ok, err = send_discord(dc.get('webhook_url', ''), '', embed=discord_embed)
+            if ok:
+                sent = True
+                sent_channels.append("Discord")
+            else:
+                errors.append(f"Discord: {err}")
 
+        # ── 4. Logging & Counters ─────────────────────────────────────
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
-        recipients_logged = ", ".join(target_emails) if target_emails else rule.get('to_email', '')
+        recipients_logged = ', '.join(sent_channels) if sent_channels else (rule.get('to_email') or 'None')
+        error_msg = '; '.join(errors) if errors else ''
 
         execute_db(ALERT_DB, """INSERT INTO alert_log
             (timestamp,rule_id,rule_name,host,message,to_email,sent,error)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
             (now, rule['id'], rule['name'], display_host,
-             message, recipients_logged, 1 if sent else 0, error))
+             message, recipients_logged, 1 if sent else 0, error_msg))
         execute_db(ALERT_DB, """UPDATE alert_rules SET
             hit_count=hit_count+1, last_hit=%s WHERE id=%s""",
             (now, rule['id']))
 
+        if sent:
+            print(f"[ALERT] Sent: {rule['name']} -> {recipients_logged}")
+        else:
+            print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")

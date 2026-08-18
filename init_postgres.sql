@@ -1,4 +1,4 @@
--- SimpleNOC v0.5.6.4 - PostgreSQL Initialization Script
+-- Smart NOC v0.5.6.4 - PostgreSQL Initialization Script
 -- Usage: psql -U postgres -f init_postgres.sql
 
 -- 1. Create the database
@@ -26,4 +26,4 @@ GRANT ALL ON SCHEMA public TO public;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO adminsql;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO adminsql;
 
-\echo 'PostgreSQL Initialization Complete for SimpleNOC!'
+\echo 'PostgreSQL Initialization Complete for Smart NOC!'

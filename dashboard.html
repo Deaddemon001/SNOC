@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SNOC v__APP_VERSION__</title>
+  <title>Smart NOC v__APP_VERSION__</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1294,7 +1294,7 @@
 <body>
   <header>
     <div class="logo">
-      <h1>SNOC</h1><span>v__APP_VERSION__ &mdash; Network Operations Center</span>
+      <h1>Smart NOC</h1><span>v__APP_VERSION__ &mdash; Network Operations Center</span>
     </div>
     <div class="hright">
       <div class="live">
@@ -1360,11 +1360,11 @@
               <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted)" id="dashHostInfo">Checking system...</span>
             </div>
             <div class="dash-diag-title" id="dashDiagTitle">System &amp; Application Status Overview</div>
-            <div class="dash-diag-desc" id="dashDiagVerdict">Analyzing SimpleNOC background services, processes, and database connectivity...</div>
+            <div class="dash-diag-desc" id="dashDiagVerdict">Analyzing Smart NOC background services, processes, and database connectivity...</div>
           </div>
         </div>
         <div class="dash-diag-actions">
-          <button class="btn-power-restart" id="dashRestartBtn" onclick="openConfirmRestart('all')">&#8635; Restart SimpleNOC</button>
+          <button class="btn-power-restart" id="dashRestartBtn" onclick="openConfirmRestart('all')">&#8635; Restart Smart NOC</button>
           <button class="btn-power-shutdown" id="dashShutdownBtn" onclick="openConfirmShutdown()">&#9211; Shutdown</button>
           <button class="rbtn" onclick="refreshDashboardHealth()">&#9764; Health Check</button>
         </div>
@@ -2943,7 +2943,7 @@
 
       <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
       <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">Network — Server ports</h3>
-      <p class="set-note" style="margin-top:0">These ports are saved into <span class="mu">noc_config.py</span>. Restart SimpleNOC after saving to apply them.</p>
+      <p class="set-note" style="margin-top:0">These ports are saved into <span class="mu">noc_config.py</span>. Restart Smart NOC after saving to apply them.</p>
       <div class="set-row"><label for="api_port">Dashboard API</label><input type="number" id="api_port" min="1" max="65535" step="1" /></div>
       <div class="set-row"><label for="https_port">Dashboard HTTPS</label><input type="number" id="https_port" min="1" max="65535" step="1" /></div>
       <div class="set-row"><label for="snmp_port">SNMP Trap</label><input type="number" id="snmp_port" min="1" max="65535" step="1" /></div>
@@ -2957,10 +2957,10 @@
       <div id="settingsVisibleTabs" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
       <hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
       <h3 style="margin:0 0 8px 0;font-size:13px;letter-spacing:2px;color:var(--accent)">System — Application Lifecycle &amp; Power Controls</h3>
-      <p class="set-note" style="margin-top:0">Restart or stop SimpleNOC services running 24x7 without accessing the host machine terminal.</p>
+      <p class="set-note" style="margin-top:0">Restart or stop Smart NOC services running 24x7 without accessing the host machine terminal.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <button type="button" class="btn-power-restart" style="justify-content:center;padding:10px;font-size:12px" onclick="openConfirmRestart('all')">&#8635; Restart SimpleNOC</button>
-        <button type="button" class="btn-power-shutdown" style="justify-content:center;padding:10px;font-size:12px" onclick="openConfirmShutdown()">&#9211; Shutdown SimpleNOC</button>
+        <button type="button" class="btn-power-restart" style="justify-content:center;padding:10px;font-size:12px" onclick="openConfirmRestart('all')">&#8635; Restart Smart NOC</button>
+        <button type="button" class="btn-power-shutdown" style="justify-content:center;padding:10px;font-size:12px" onclick="openConfirmShutdown()">&#9211; Shutdown Smart NOC</button>
       </div>
       <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px">
         <div style="font-size:10px;letter-spacing:1px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase">Restart Individual Service:</div>
@@ -3001,8 +3001,8 @@
 
   <div id="confirmRestartModal" class="modal-overlay" onclick="if(event.target===this) this.classList.remove('show')">
     <div class="modal-panel" role="dialog" style="max-width:440px">
-      <h3 style="color:var(--accent)">&#8635; Restart SimpleNOC</h3>
-      <p class="set-note" style="margin-top:0">Are you sure you want to restart SimpleNOC services? The application will temporarily disconnect and automatically resume once the services are online.</p>
+      <h3 style="color:var(--accent)">&#8635; Restart Smart NOC</h3>
+      <p class="set-note" style="margin-top:0">Are you sure you want to restart Smart NOC services? The application will temporarily disconnect and automatically resume once the services are online.</p>
       <div style="margin-bottom:14px">
         <label class="flabel">RESTART TARGET</label>
         <select id="confirmRestartTarget" class="fsel" style="width:100%;margin-top:4px">
@@ -3023,7 +3023,7 @@
 
   <div id="confirmShutdownModal" class="modal-overlay" onclick="if(event.target===this) this.classList.remove('show')">
     <div class="modal-panel" role="dialog" style="max-width:440px">
-      <h3 style="color:var(--danger)">&#9888; Shutdown SimpleNOC</h3>
+      <h3 style="color:var(--danger)">&#9888; Shutdown Smart NOC</h3>
       <p class="set-note" style="margin-top:0"><strong style="color:var(--danger)">WARNING:</strong> This will terminate all background collectors (SNMP, Syslog, TFTP) and stop the web dashboard. You will need to manually start launcher.pyw or START_NOC.bat on the host PC to bring it back up.</p>
       <div id="confirmShutdownMsg" class="smsg"></div>
       <div class="modal-actions">
@@ -3036,7 +3036,7 @@
   <div id="reconnectProgressModal" class="modal-overlay" style="z-index:20000;background:rgba(5,12,19,0.96)">
     <div class="modal-panel" style="max-width:420px;text-align:center;padding:32px 24px">
       <div class="reconnect-spinner"></div>
-      <h3 id="reconnectTitle" style="font-size:20px;letter-spacing:1px;margin-bottom:8px;color:var(--accent)">Restarting SimpleNOC</h3>
+      <h3 id="reconnectTitle" style="font-size:20px;letter-spacing:1px;margin-bottom:8px;color:var(--accent)">Restarting Smart NOC</h3>
       <p id="reconnectSub" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text);margin-bottom:16px">Restarting services and reconnecting...</p>
       <div style="font-family:'Share Tech Mono',monospace;font-size:28px;font-weight:700;color:var(--accent3);margin-bottom:12px" id="reconnectCountdown">6s</div>
       <div class="dash-bar-wrap" style="height:6px"><div class="dash-bar-fill" id="reconnectBar" style="width:100%"></div></div>

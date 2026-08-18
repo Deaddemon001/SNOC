@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title SimpleNOC v0.5.6.4 - PostgreSQL Setup
+title Smart NOC v0.5.6.4 - PostgreSQL Setup
 color 0B
 echo.
 echo  ==========================================
-echo   Simple NOC v0.5.6.4 - PostgreSQL DB Setup
+echo   Smart NOC v0.5.6.4 - PostgreSQL DB Setup
 echo  ==========================================
 echo.
 echo  This script creates:
@@ -24,7 +24,7 @@ set /p PGADMIN=Enter PostgreSQL superuser name [postgres]:
 if "%PGADMIN%"=="" set "PGADMIN=postgres"
 
 echo.
-echo  Connecting as '%PGADMIN%' to initialize SimpleNOC...
+echo  Connecting as '%PGADMIN%' to initialize Smart NOC...
 echo  You may be prompted for the PostgreSQL superuser password.
 echo.
 
@@ -32,7 +32,7 @@ psql -U "%PGADMIN%" -f "%~dp0init_postgres.sql"
 
 if %errorLevel% equ 0 (
     echo.
-    echo  [SUCCESS] SimpleNOC database and 'adminsql' user initialized.
+    echo  [SUCCESS] Smart NOC database and 'adminsql' user initialized.
     echo  [INFO] App database credentials: username 'adminsql' with matching password.
     set "EXITCODE=0"
 ) else (

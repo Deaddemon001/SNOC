@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title SimpleNOC v0.5.6.4 - Setup and Maintenance
+title Smart NOC v0.5.6.4 - Setup and Maintenance
 color 0B
 
 call :ensure_admin
@@ -13,12 +13,12 @@ if not defined PYTHON goto :end
 cls
 echo.
 echo  ===============================================
-echo   SimpleNOC v0.5.6.4 - Setup and Maintenance Tool
+echo   Smart NOC v0.5.6.4 - Setup and Maintenance Tool
 echo  ===============================================
 echo.
-echo   1. Install or Update SimpleNOC
+echo   1. Install or Update Smart NOC
 echo   2. Setup PostgreSQL Database
-echo   3. Uninstall SimpleNOC
+echo   3. Uninstall Smart NOC
 echo   4. Exit
 echo.
 set /p CHOICE=Select an option [1-4]:
@@ -36,7 +36,7 @@ goto :menu
 :install_app
 cls
 echo.
-echo  Installing or updating SimpleNOC...
+echo  Installing or updating Smart NOC...
 echo.
 "%PYTHON%" "%~dp0setup.py" install
 if errorlevel 1 (
@@ -68,7 +68,7 @@ goto :menu
 :uninstall_app
 cls
 echo.
-echo  Uninstalling SimpleNOC...
+echo  Uninstalling Smart NOC...
 echo.
 "%PYTHON%" "%~dp0setup.py" uninstall
 pause

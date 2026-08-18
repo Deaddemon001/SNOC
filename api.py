@@ -12,7 +12,7 @@ try:
 except ImportError:
     _CRYPTO_AVAILABLE = False
 
-_BACKUP_SALT      = b"SimpleNOC-Backup-v1"
+_BACKUP_SALT      = b"SmartNOC-Backup-v1"
 _ENCRYPTED_MARKER = "ENC:"
 
 def _derive_backup_key():
@@ -2411,12 +2411,12 @@ def test_email():
     }
     now_str = datetime.datetime.now().isoformat()
     html_body = generate_html_email(
-        'Test Alert Rule', 'SimpleNOC Server', '127.0.0.1', now_str,
-        'This is a test alert from SimpleNOC. Email alerts and status dot indicators are working correctly.',
+        'Test Alert Rule', 'Smart NOC Server', '127.0.0.1', now_str,
+        'This is a test alert from Smart NOC. Email alerts and status dot indicators are working correctly.',
         'info', status_info
     )
-    plain_body = f"🟢 SimpleNOC Test Alert\nStatus: ONLINE\nTime: {now_str}\nMessage: Email alerts and status dot indicators are working correctly."
-    sent, err = send_email(to, '🟢 [SNOC] Test Alert - System Online', plain_body, html_body=html_body)
+    plain_body = f"🟢 Smart NOC Test Alert\nStatus: ONLINE\nTime: {now_str}\nMessage: Email alerts and status dot indicators are working correctly."
+    sent, err = send_email(to, '🟢 [Smart NOC] Test Alert - System Online', plain_body, html_body=html_body)
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -2490,7 +2490,7 @@ def test_telegram():
     if not cur.get('chat_id'):
         return jsonify({'success': False, 'error': 'Chat ID is empty. Save Telegram config first.'})
 
-    text = f"<b>🟢 [ONLINE] SimpleNOC Test Alert</b>\n\nTelegram notifications and status indicators are working correctly.\n<b>Time:</b> {datetime.datetime.now().isoformat()}"
+    text = f"<b>🟢 [ONLINE] Smart NOC Test Alert</b>\n\nTelegram notifications and status indicators are working correctly.\n<b>Time:</b> {datetime.datetime.now().isoformat()}"
     sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
     return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
 
@@ -2541,7 +2541,7 @@ def test_discord():
 
     now_str = datetime.datetime.now().isoformat()
     embed = {
-        "title": "🟢 [ONLINE] SimpleNOC Test Alert",
+        "title": "🟢 [ONLINE] Smart NOC Test Alert",
         "description": "Discord webhook notifications and visual status indicators are working correctly.",
         "color": 0x28A745,
         "fields": [
@@ -2549,7 +2549,7 @@ def test_discord():
             {"name": "Severity", "value": "INFO", "inline": True},
             {"name": "Timestamp", "value": now_str, "inline": True}
         ],
-        "footer": {"text": "SimpleNOC Network Operations Center"}
+        "footer": {"text": "Smart NOC Network Operations Center"}
     }
     sent, err = send_discord(cur.get('webhook_url', ''), "", embed=embed)
     return jsonify({'success': sent, 'error': err if not sent else 'Discord message sent!'})

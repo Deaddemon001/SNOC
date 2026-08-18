@@ -1,8 +1,8 @@
 @echo off
-echo SimpleNOC v0.5.6.4 Status
-echo ========================
-tasklist /FI "WindowTitle eq SimpleNOC*" 2>nul | find /I "cmd.exe" >nul
+echo Smart NOC v0.5.6.4 Status
+echo =======================
+tasklist /FI "WindowTitle eq NOC-*" 2>nul | find /I "cmd.exe" >nul
 if %errorLevel%==0 (echo  Services: RUNNING) else (echo  Services: STOPPED)
-echo  Dashboard: http://localhost:5000
+echo  Dashboard: https://localhost:5443
 echo.
 pause

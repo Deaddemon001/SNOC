@@ -1,7 +1,7 @@
 """
-SimpleNOC v0.5.6.4 - Central Configuration
+Smart NOC v0.5.6.4 - Central Configuration
 Edit this file to change ports and paths.
-All scripts read from this file - restart SNOC after any change.
+All scripts read from this file - restart Smart NOC after any change.
 """
 import os
 
@@ -16,7 +16,7 @@ except ImportError:
 
 
 def get_db_connection(db_path_or_name=None):
-    """Return a PostgreSQL connection to the central SimpleNOC database."""
+    """Return a PostgreSQL connection to the central Smart NOC database."""
     if not psycopg2:
         print("PostgreSQL driver not installed. Please install psycopg2-binary.")
         return None
@@ -97,15 +97,15 @@ SNMP_PORT = 162
 SYSLOG_PORT = 5141
 TFTP_PORT = 69
 
-# SimpleNOC now runs only on PostgreSQL.
+# Smart NOC now runs only on PostgreSQL.
 DB_TYPE = "postgres"
 
 POSTGRES_CONFIG = {
-    "host": os.getenv("SIMPLENOC_PGHOST", "localhost"),
-    "port": int(os.getenv("SIMPLENOC_PGPORT", "5432")),
-    "user": os.getenv("SIMPLENOC_PGUSER", "adminsql"),
-    "password": os.getenv("SIMPLENOC_PGPASSWORD", "adminsql"),
-    "dbname": os.getenv("SIMPLENOC_PGDBNAME", "simplenoc"),
+    "host": os.getenv("SMARTNOC_PGHOST", os.getenv("SIMPLENOC_PGHOST", "localhost")),
+    "port": int(os.getenv("SMARTNOC_PGPORT", os.getenv("SIMPLENOC_PGPORT", "5432"))),
+    "user": os.getenv("SMARTNOC_PGUSER", os.getenv("SIMPLENOC_PGUSER", "adminsql")),
+    "password": os.getenv("SMARTNOC_PGPASSWORD", os.getenv("SIMPLENOC_PGPASSWORD", "adminsql")),
+    "dbname": os.getenv("SMARTNOC_PGDBNAME", os.getenv("SIMPLENOC_PGDBNAME", "simplenoc")),
 }
 
 OFFLINE_AFTER_SECS = 120

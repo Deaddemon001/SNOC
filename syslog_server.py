@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.6.4 - Syslog Server
+Smart NOC v0.5.6.4 - Syslog Server
 Listens on UDP port defined in noc_config.py (default 514)
 Change SYSLOG_PORT in noc_config.py to use a custom port
 """
@@ -319,7 +319,7 @@ def start():
             try:
                 process_alert(hostname, parsed['message'], parsed['timestamp'])
             except Exception as ae:
-                pass
+                print(f"[SYSLOG ALERT ERROR] {ae}")
         except KeyboardInterrupt:
             write_queue.put(None)
             break

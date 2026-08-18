@@ -1,12 +1,12 @@
-# SimpleNOC v0.5.6.4
+﻿# Smart NOC v0.5.6.4
 
-SimpleNOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
+Smart NOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
 This repository contains the full desktop/server application used by SNOC v0.5.6.4
 
 ## What the App Does
 
-SimpleNOC is built around one main dashboard and several background services:
+Smart NOC is built around one main dashboard and several background services:
 
 - A Flask-based HTTPS dashboard and API
 - SNMP trap collection
@@ -70,7 +70,7 @@ SimpleNOC is built around one main dashboard and several background services:
 
 ### 24x7 Power Controls & Application Lifecycle
 
-- In-app **Restart SimpleNOC** and **Shutdown SimpleNOC** from Dashboard and Settings
+- In-app **Restart Smart NOC** and **Shutdown Smart NOC** from Dashboard and Settings
 - Individual background daemon restarts (SNMP, Syslog, TFTP, API)
 - 6-second auto-reconnection countdown with health polling during restarts
 - Admin-gated lifecycle management without requiring host terminal access
@@ -106,13 +106,14 @@ SimpleNOC is built around one main dashboard and several background services:
 
 ### Alerts
 
+- **Direct Multi-Channel Alert Dispatch**: Syslog and ping monitoring alerts are evaluated and dispatched unconditionally to all configured and rule-selected channels (**Discord Webhooks**, **SMTP Email**, and **Telegram**) without user binding lookup bottlenecks.
 - **Color-Coded Visual Status Indicators**: Alerts sent across Discord, Telegram, and Email feature instant status indicators for fast visual understanding:
-  - 🔴 **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** incidents (loss-of-signal, link down, host unreachable) with red dots, red badges, and `#dc3545` Discord sidebar embeds.
-  - 🟢 **Green Indication**: Sent for **UP / ONLINE / RESTORED** incidents (service recovery, host reachable, link restored) with green dots, green badges, and `#28a745` Discord sidebar embeds.
-  - 🟡 **Yellow Indication**: Sent for **WARNING / DEGRADED** states (latency spikes, configuration changes).
+  - ðŸ”´ **Red Indication**: Sent for **DOWN / OFFLINE / CRITICAL** incidents (loss-of-signal, link down, host unreachable) with red dots, red badges, and `#dc3545` Discord sidebar embeds.
+  - ðŸŸ¢ **Green Indication**: Sent for **UP / ONLINE / RESTORED** incidents (service recovery, host reachable, link restored) with green dots, green badges, and `#28a745` Discord sidebar embeds.
+  - ðŸŸ¡ **Yellow Indication**: Sent for **WARNING / DEGRADED** states (latency spikes, configuration changes).
 - **Discord Rich Embeds & Webhooks**: Structured Discord embeds with color-coded sidebars (Red for DOWN, Green for UP), formatted parameter fields, and timestamp footers.
 - **Multipart HTML Email Alerts**: Responsive HTML email templates with prominent color-coded status badges, structured details tables, and message highlight boxes alongside plain-text fallbacks.
-- **Telegram Alerts**: Formatted Telegram notifications with bold headers and unicode visual status dots (🔴 for DOWN, 🟢 for UP).
+- **Telegram Alerts**: Formatted Telegram notifications with bold headers and unicode visual status dots (ðŸ”´ for DOWN, ðŸŸ¢ for UP).
 - **Alert Rules Engine**: Syslog-based alert rules, ping offline alert rules, host matching, and excluded-host filters.
 
 ### Settings and Runtime Control
@@ -126,10 +127,11 @@ SimpleNOC is built around one main dashboard and several background services:
 
 This version includes:
 
+- **Direct Multi-Channel Alert Engine**: Global direct delivery to Discord, Email, and Telegram for all matched Syslog rules and Ping state transitions with full cross-platform encoding compatibility.
 - **System Health Dashboard**: Dedicated primary monitoring dashboard tab with live PC resource graphs (CPU, RAM, Disk, Network) and 24/7 uptime tracking.
 - **Diagnostic Engine**: "Does it need a restart?" automated health analyzer with 1-click remediation actions.
 - **24/7 Power Controls**: In-app restart and shutdown capabilities in Dashboard and Settings with automated reconnection timers.
-- **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (🔴 Red for DOWN / 🟢 Green for UP / 🟡 Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
+- **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (ðŸ”´ Red for DOWN / ðŸŸ¢ Green for UP / ðŸŸ¡ Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
 - **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices to prevent log flooding.
 - **Admin Tab Visibility Guarantee**: Permanent access to all 11 tabs for administrators with resilient tab persistence.
 - **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).
@@ -188,11 +190,11 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-SimpleNOC v0.5.6.4 is purely PostgreSQL-based.
+Smart NOC v0.5.6.4 is purely PostgreSQL-based.
 
 Default app DB values:
 
-- Database: `simplenoc`
+- Database: `Smart NOC`
 - User: `adminsql`
 - Password: `adminsql`
 - Host: `localhost`
@@ -200,11 +202,11 @@ Default app DB values:
 
 Supported environment variable overrides:
 
-- `SIMPLENOC_PGHOST`
-- `SIMPLENOC_PGPORT`
-- `SIMPLENOC_PGUSER`
-- `SIMPLENOC_PGPASSWORD`
-- `SIMPLENOC_PGDBNAME`
+- `Smart NOC_PGHOST`
+- `Smart NOC_PGPORT`
+- `Smart NOC_PGUSER`
+- `Smart NOC_PGPASSWORD`
+- `Smart NOC_PGDBNAME`
 
 ## Install and Run
 
@@ -218,7 +220,7 @@ run.bat
 
 Recommended order:
 
-1. `Install or Update SimpleNOC`
+1. `Install or Update Smart NOC`
 2. `Setup PostgreSQL Database`
 3. Start the app with the launcher or installed scripts
 
@@ -251,22 +253,22 @@ python api.py
 ## Repository Layout
 
 ```text
-SimpleNOC/
-├── api.py
-├── alert_engine.py
-├── dashboard.html
-├── login.html
-├── launcher.pyw
-├── noc_config.py
-├── olt_connector.py
-├── setup.py
-├── setup_postgres.bat
-├── init_postgres.sql
-├── trap_receiver.py
-├── syslog_server.py
-├── tftp_server.py
-├── CHANGELOG.md
-└── data/ logs/ backups/
+Smart NOC/
+â”œâ”€â”€ api.py
+â”œâ”€â”€ alert_engine.py
+â”œâ”€â”€ dashboard.html
+â”œâ”€â”€ login.html
+â”œâ”€â”€ launcher.pyw
+â”œâ”€â”€ noc_config.py
+â”œâ”€â”€ olt_connector.py
+â”œâ”€â”€ setup.py
+â”œâ”€â”€ setup_postgres.bat
+â”œâ”€â”€ init_postgres.sql
+â”œâ”€â”€ trap_receiver.py
+â”œâ”€â”€ syslog_server.py
+â”œâ”€â”€ tftp_server.py
+â”œâ”€â”€ CHANGELOG.md
+â””â”€â”€ data/ logs/ backups/
 ```
 
 ## Security and Permissions Model
@@ -412,16 +414,16 @@ run.bat
 
 Then choose:
 
-- `3. Uninstall SimpleNOC`
+- `3. Uninstall Smart NOC`
 
 The uninstaller:
 
-- stops and removes SimpleNOC services if present
+- stops and removes Smart NOC services if present
 - removes scheduled tasks
-- stops running SimpleNOC processes
+- stops running Smart NOC processes
 - removes shortcuts
 - optionally preserves `data`, `backups`, and `logs`
-- schedules removal of `C:\SimpleNOC`
+- schedules removal of `C:\Smart NOC`
 
 ## Troubleshooting
 
@@ -481,7 +483,7 @@ For a clean Windows install:
 
 1. Install Python 3.10+ and PostgreSQL.
 2. Run `run.bat` as Administrator.
-3. Choose `Install or Update SimpleNOC`.
+3. Choose `Install or Update Smart NOC`.
 4. Choose `Setup PostgreSQL Database`.
 5. Start the app with `launcher.pyw`.
 6. Open `https://localhost:5443`.

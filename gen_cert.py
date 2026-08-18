@@ -1,5 +1,5 @@
 """
-SimpleNOC - Self-Signed SSL Certificate Generator
+Smart NOC - Self-Signed SSL Certificate Generator
 Generates cert.pem and key.pem in data/ssl/ if they don't exist.
 Called automatically on startup; can also be run manually.
 """
@@ -19,8 +19,8 @@ def generate_self_signed_cert(cert_path, key_path, hostname="localhost"):
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME,             "US"),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME,   "Local"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME,            "SimpleNOC"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME,        "SimpleNOC"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME,            "SmartNOC"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME,        "SmartNOC"),
         x509.NameAttribute(NameOID.COMMON_NAME,              hostname),
     ])
 

@@ -28,6 +28,11 @@
 - **Syslog Device Registration**: Added allow, deny, and delete actions for registered Syslog devices. Unregistered or denied devices will have their syslog messages ignored to prevent log flooding.
 
 ### Changed
+- **Direct Multi-Channel Alert Dispatch**:
+  - Removed user assignment and binding lookup constraints from the alert engine (`alert_engine.py`). All triggered syslog events and ping state changes are now delivered directly to configured notification channels (**Discord**, **Email**, and **Telegram**) according to rule configuration.
+  - Eliminated duplicate function declarations and runtime resolution dependencies that previously hindered notification dispatch.
+  - Enhanced error handling in `syslog_server.py` to explicitly log alert evaluation exceptions to the console (`[SYSLOG ALERT ERROR]`) rather than silently suppressing errors.
+  - Replaced Windows-unsupported unicode arrow characters with ASCII indicators (`->`) to eliminate `cp1252` charmap encoding crashes during console logging.
 - **Admin Tab Visibility Guarantee**: Admin accounts now always retain full, permanent access to all 11 product tabs (`dashboard`, `syslog`, `snmp`, `tftp`, `ping`, `alerts`, `olt`, `uplink`, `logs`, `ont`, `users`) regardless of global user restrictions in Settings.
 - **Tab Visibility Resilience**: Fixed tab persistence and panel switching to prevent active dashboard views from being hidden on initialization.
 - **Centralized Version Alignment**: Synchronized all scripts, batch files, SQL initializers, and documentation to version `v0.5.6.4`.
