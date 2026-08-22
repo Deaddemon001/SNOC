@@ -2,6 +2,25 @@
 
 ---
 
+## Unreleased - Frontend Migration to Vue.js 3
+
+### Added
+- **Vue.js 3 SPA frontend** (`frontend/`): complete rewrite of `dashboard.html` (7,810-line vanilla-JS monolith) into a Vue 3 + Vite + Pinia + Vue Router application with per-tab lazy-loaded components.
+- **Feature parity with legacy UI**: all 11 tabs (Dashboard Health, Syslog, SNMP Traps, TFTP Backups, Ping Monitor, Alerts, OLT Connect, Uplink Traffic, Logs, ONT Lookup, Users), Settings modal (retention, ports, visible tabs, session timeout, power controls), restart/shutdown/reconnect-countdown modals, ONU data modal with CSV export, edit-alert-rule modal.
+- `MIGRATION_STRATEGY.md`: stack rationale, project structure, phased plan, regression-prevention checklist (API contract preservation, polling cadence parity, theme/RBAC continuity).
+- `MIGRATION_ANALYSIS.md`: full functional/business-logic/integration inventory extracted from README, CHANGELOG, architecture docs, and code.
+
+### Changed
+- **Flask serving** (`api.py`): `/` and `/login` now serve the built Vue app from `frontend/dist/` when present; static assets served from `/assets/<file>`; version injection (`__APP_VERSION__`) retained. Legacy UI remains reachable at `/?legacy=1` for instant rollback — no backend API changes.
+
+### Technical
+- Same REST contract: zero endpoint/payload changes required.
+- Identical polling cadences (health 5 s; syslog/traps/ping/tftp 10 s; alerts/OLT 15 s; users 20 s; uplink 30 s) via reusable `usePolling` composable with automatic cleanup.
+- Theme continuity: same CSS variable names, same `noc_theme` / `noc_tab_order` localStorage keys; light/dark toggle affects Chart.js palettes reactively.
+- Chart.js 4 now bundled (vue-chartjs) instead of CDN; build output code-split into vendor/charts/per-tab chunks (~65 KB gzip core).
+
+---
+
 ## v0.5.6.4 - System Health Dashboard, 24x7 Power Controls, Discord Alerts & App Rebranding
 **Release date:** 2026-06-22
 

@@ -1,0 +1,1 @@
+import{o as l,a as i}from"./vendor-DN-weoRj.js";function s(n,r,u=!0){let t=null;function e(){t||(u&&n(),t=setInterval(n,r))}function o(){t&&(clearInterval(t),t=null)}return l(e),i(o),{start:e,stop:o}}export{s as u};

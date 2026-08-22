@@ -818,10 +818,47 @@ def render_versioned_html(filename):
     from flask import Response
     return Response(content, mimetype='text/html')
 
+
+# ─── Vue.js Frontend Serving (with legacy fallback) ──────────────────────────
+VUE_DIST = os.path.join(BASE_DIR, 'frontend', 'dist')
+
+
+def _vue_built():
+    return os.path.isfile(os.path.join(VUE_DIST, 'index.html'))
+
+
+def render_vue_index():
+    path = os.path.join(VUE_DIST, 'index.html')
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    content = content.replace('__APP_VERSION__', APP_VERSION)
+    from flask import Response
+    resp = Response(content, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
+
+
+@app.route('/assets/<path:filename>')
+def vue_assets(filename):
+    from flask import send_from_directory
+    resp = send_from_directory(os.path.join(VUE_DIST, 'assets'), filename)
+    # Hashed filenames are content-addressed: safe to cache forever
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+
+@app.route('/favicon.svg')
+def favicon_svg():
+    from flask import send_from_directory
+    return send_from_directory(VUE_DIST, 'favicon.svg')
+
+
 @app.route('/login')
 def login_page():
     if is_logged_in():
         return redirect('/')
+    if _vue_built() and request.args.get('legacy') != '1':
+        return render_vue_index()
     return render_versioned_html('login.html')
 
 
@@ -1930,6 +1967,9 @@ def api_system_service_action():
 @app.route('/')
 @login_required
 def index():
+    # Vue.js SPA (default). Append ?legacy=1 for the original vanilla-JS dashboard.
+    if _vue_built() and request.args.get('legacy') != '1':
+        return render_vue_index()
     return render_versioned_html('dashboard.html')
 
 # ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
