@@ -66,7 +66,7 @@ def _decrypt_field(ciphertext: str) -> str:
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.4')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.6')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -3444,7 +3444,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print(f"  SimpleNOC v{APP_VERSION}  –  Starting servers")
+    print(f"  Smart NOC v{APP_VERSION}  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

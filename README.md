@@ -1,8 +1,8 @@
-# Smart NOC v0.5.6.4
+# Smart NOC v0.5.6.6
 
 Smart NOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.6.4
+This repository contains the full desktop/server application used by SNOC v0.5.6.6
 
 ## What the App Does
 
@@ -125,7 +125,7 @@ Smart NOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.5.6.4 Highlights
+## Current v0.5.6.6 Highlights
 
 This version includes:
 
@@ -197,7 +197,7 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-Smart NOC v0.5.6.4 is purely PostgreSQL-based.
+Smart NOC v0.5.6.6 is purely PostgreSQL-based.
 
 Default app DB values:
 
@@ -305,7 +305,7 @@ Planned next-step items:
 
 ## License / Project Status
 
-This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.4.
+This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.6.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes

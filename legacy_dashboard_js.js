@@ -1410,7 +1410,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.6.4'
+      '  This is an automated alert from SimpleNOC v0.5.6.6'
     ].join('\n');
 
     function toggleEmailTemplate() {

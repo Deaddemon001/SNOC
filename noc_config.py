@@ -1,11 +1,11 @@
 """
-Smart NOC v0.5.6.4 - Central Configuration
+Smart NOC v0.5.6.6 - Central Configuration
 Edit this file to change ports and paths.
 All scripts read from this file - restart Smart NOC after any change.
 """
 import os
 
-APP_VERSION = "0.5.6.4"
+APP_VERSION = "0.5.6.6"
 
 try:
     import psycopg2

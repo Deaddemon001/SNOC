@@ -1,9 +1,9 @@
 @echo off
-title Smart NOC v0.5.6.4
+title Smart NOC v0.5.6.6
 color 0B
 echo.
 echo  ==========================================
-echo   Smart NOC v0.5.6.4 - Starting Services
+echo   Smart NOC v0.5.6.6 - Starting Services
 echo  ==========================================
 echo.
 

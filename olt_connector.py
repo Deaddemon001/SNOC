@@ -1,5 +1,5 @@
 """
-Smart NOC v0.5.6.4 - OLT Connector
+Smart NOC v0.5.6.6 - OLT Connector
 SSH (primary) or Telnet (raw socket, Python 3.13 compatible) fallback.
 Collects ONU state and uplink traffic from Vsol GPON OLT.
 """

@@ -1,4 +1,4 @@
-# Smart NOC v0.5.6.4 — Frontend Migration Analysis
+# Smart NOC v0.5.6.6 — Frontend Migration Analysis
 
 Source basis: `README.md`, `CHANGELOG.md`, `software_architecture.md`, plus full code
 reads of `dashboard.html` (7,810 lines), `login.html` (488 lines), and `api.py` (3,444 lines).

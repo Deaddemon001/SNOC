@@ -1,5 +1,5 @@
 # Smart NOC â€” Software Architecture Document
-**Application Version:** `v0.5.6.4`  
+**Application Version:** `v0.5.6.6`  
 **Target Environment:** Windows 10 / 11 / Windows Server (24x7 Headless / Desktop Operation)  
 **Database Engine:** PostgreSQL 12+  
 **Primary Language:** Python 3.10+ / HTML5 / CSS3 / Vanilla JavaScript / Chart.js  

@@ -1,6 +1,6 @@
 {
   "name": "smart-noc-frontend",
-  "version": "0.5.6.4",
+  "version": "0.5.6.6",
   "private": true,
   "type": "module",
   "scripts": {
