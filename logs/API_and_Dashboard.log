@@ -1,0 +1,1122 @@
+127.0.0.1 - - [22/Aug/2026 09:17:23] "GET / HTTP/1.1" 302 -
+127.0.0.1 - - [22/Aug/2026 09:17:23] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:24] "GET /assets/index-Cp6JZhsE.css HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:24] "GET /assets/index-D4OEoDce.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:24] "GET /assets/vendor-DN-weoRj.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:24] "GET /assets/LoginView-D8O-WGO1.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:25] "GET /assets/LoginView-TBYpaYyS.css HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:25] "GET /assets/_plugin-vue_export-helper-DlAUqK2U.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:25] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:25] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [22/Aug/2026 09:17:32] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:32] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/DashboardLayout-BUe5VCW-.css HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/HealthDashboard-6E_VNM9r.css HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/DashboardLayout-B9EqeZgV.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/HealthDashboard-CNWO0glh.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/charts-CxxTB2px.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /assets/usePolling-C3qDrAHC.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:33] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:35] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:39] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:40] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:44] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:46] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:50] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:53] "GET /assets/SnmpTrapsTab-WEEmeB0N.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:53] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:54] "GET /api/traps/summary HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:54] "GET /api/devices HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:54] "GET /api/traps HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:56] "GET /assets/SyslogTab-rEgB0xKZ.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:56] "GET /api/syslog/summary HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:56] "GET /api/syslog/devices HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:56] "GET /api/syslog/severity HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:57] "GET /api/syslog/events?limit=50&offset=0 HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:57] "GET /api/syslog HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:58] "GET /assets/OltConnectTab-DUKs411v.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:58] "GET /assets/StatusMessage-B2suNaTw.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:59] "GET /api/olt/jobs HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:59] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:17:59] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:00] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:07] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:14] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:14] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:14] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:16] "GET /assets/UplinkTrafficTab-DBI96fSx.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:17] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:18] "GET /assets/LogsTab-Be_A9fuq.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:18] "GET /api/logs/list HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:20] "GET /assets/OntLookupTab-C8HiJk5o.js HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:22] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:22] "POST /api/auth/logout HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:23] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [22/Aug/2026 09:18:29] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:32] "GET / HTTP/1.1" 302 -
+127.0.0.1 - - [29/Aug/2026 21:01:32] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:33] "GET /assets/index-BOhz-VjJ.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:33] "GET /assets/index-D9-8-wHC.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:33] "GET /assets/vendor-DN-weoRj.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:33] "GET /assets/LoginView-D8O-WGO1.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:34] "GET /assets/LoginView-TBYpaYyS.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:34] "GET /assets/_plugin-vue_export-helper-DlAUqK2U.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:34] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [29/Aug/2026 21:01:36] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/DashboardLayout-BUe5VCW-.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/HealthDashboard-6E_VNM9r.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/DashboardLayout-Cvexailp.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/HealthDashboard-By3RwGRX.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/charts-CxxTB2px.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:41] "GET /assets/usePolling-C3qDrAHC.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:42] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:43] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:43] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:48] "GET /api/system/health_detailed HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:50] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:51] "GET /assets/SnmpTrapsTab-BLPGTPEW.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:52] "GET /api/traps/summary HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:52] "GET /api/devices HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:52] "GET /api/traps HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:52] "GET /assets/PingMonitorTab-BeXbZSLz.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:52] "GET /assets/PingMonitorTab-Blkp_cgP.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:53] "GET /api/ping/targets HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:57] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:58] "GET /assets/AlertsTab-C33BxuJY.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:58] "GET /assets/AlertsTab-4XmkMuPV.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:58] "GET /assets/StatusMessage-aR6rosvx.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:58] "GET /api/alerts/email_config HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:59] "GET /api/alerts/stats HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:59] "GET /api/alerts/telegram_config HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:59] "GET /api/alerts/log HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:01:59] "GET /api/alerts/discord_config HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:00] "GET /api/alerts/template HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:03] "GET /assets/TftpBackupsTab-Cf2xPK9N.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:03] "GET /assets/TftpBackupsTab-W7mgzdMj.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:03] "GET /api/tftp/config HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:03] "GET /api/tftp/mac_mapping HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:03] "GET /api/tftp/stats HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:04] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:04] "GET /assets/OltConnectTab-BhquyCgj.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:04] "GET /api/tftp/files HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:04] "GET /api/olt/jobs HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:05] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:05] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:11] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:18] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:20] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:20] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:25] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:32] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:34] "GET /api/olt/poll_progress?id=7 HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:35] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:35] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:39] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:47] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:50] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:50] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:54] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:02:54] "GET /api/olt/poll_progress?id=2 HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:01] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:04] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:05] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:07] "GET /assets/UplinkTrafficTab--au-T7kv.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:08] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:08] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:09] "GET /assets/LogsTab-BlR537bU.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:11] "GET /api/logs/list HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:11] "GET /assets/OntLookupTab-DlKfEuQT.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:13] "GET /assets/UsersTab-CBqjlUjA.css HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:13] "GET /assets/UsersTab-B78f7p7l.js HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:14] "GET /api/auth/available_targets HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:14] "GET /api/olt/jobs HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:14] "GET /api/auth/users HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:15] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:15] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:15] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:22] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:29] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:30] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:30] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:36] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:43] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:45] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:45] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:50] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:03:57] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:00] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:01] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:05] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:12] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:15] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:15] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:19] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:26] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:30] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:30] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:33] "POST /api/olt/jobs/toggle HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:33] "GET /api/olt/jobs HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:33] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:40] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:45] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:46] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:47] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:04:54] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:00] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:01] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:01] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:08] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:15] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:15] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:16] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:23] "GET /api/health HTTP/1.1" 200 -
+Alert DB ready.
+Database execution error: column "olt_mac" of relation "syslog_devices" already exists
+
+SQL: ALTER TABLE syslog_devices ADD COLUMN olt_mac TEXT DEFAULT ''
+OLT DB (postgres) ready.
+OLT DB (postgres) ready.
+Database execution error: column "selected_ports" of relation "olt_poll_jobs" already exists
+
+SQL: ALTER TABLE olt_poll_jobs ADD COLUMN selected_ports TEXT DEFAULT ''
+[OLT JOBS] Scheduler worker started.
+Database execution error: column "visible_tabs" of relation "users" already exists
+
+SQL: ALTER TABLE users ADD COLUMN visible_tabs TEXT DEFAULT ''
+Database execution error: column "email" of relation "users" already exists
+
+SQL: ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''
+Database execution error: column "assigned_olts" of relation "users" already exists
+
+SQL: ALTER TABLE users ADD COLUMN assigned_olts TEXT DEFAULT '[]'
+Database execution error: column "assigned_ping_targets" of relation "users" already exists
+
+SQL: ALTER TABLE users ADD COLUMN assigned_ping_targets TEXT DEFAULT '[]'
+Database execution error: column "notify_via" of relation "users" already exists
+
+SQL: ALTER TABLE users ADD COLUMN notify_via TEXT DEFAULT 'email'
+Database execution error: column "authorized" of relation "syslog_devices" already exists
+
+SQL: ALTER TABLE syslog_devices ADD COLUMN authorized INTEGER DEFAULT 0
+[2026-08-29 21:01:28] [HEARTBEAT] API Server is running healthy.
+[Ping] Resumed 103.164.181.22
+[Ping] Resumed 103.164.181.133
+[Ping] Resumed 103.164.181.132
+[Ping] Resumed 103.143.214.227
+[Ping] Resumed 103.164.181.136
+[Ping] Resumed 103.164.181.21
+[Ping] Resumed 103.156.171.183
+[Ping] Resumed 117.200.74.249
+[Ping] Resumed 117.251.22.232
+[Ping] Resumed 117.247.111.175
+[Ping] Resumed 8.8.8.8
+[SSL] Using existing certificate: H:\Github\SNOC\data\ssl\cert.pem
+[SSL] TLS context ready  — cert: H:\Github\SNOC\data\ssl\cert.pem
+=======================================================
+  SimpleNOC v0.5.6.4  –  Starting servers
+=======================================================
+  Default login : admin / admin123
+=======================================================
+[HTTP]  Dashboard http://localhost:5000
+[HTTPS] Dashboard https://localhost:5443
+Database query error: column "traps.olt_id" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: SELECT olt_mac,olt_id,COUNT(*) as count FROM traps GROUP BY ...
+                       ^
+
+SQL: SELECT olt_mac,olt_id,COUNT(*) as count FROM traps GROUP BY olt_mac ORDER BY count DESC
+[OLT] Fetching metrics for PON ports: ['1', '2', '3', '4', '5', '6', '7', '8']
+[OLT] SSH failed (timed out), trying Telnet...
+Database query error: column "host" does not exist
+LINE 1: SELECT name, host FROM olt_profiles ORDER BY name
+                     ^
+
+SQL: SELECT name, host FROM olt_profiles ORDER BY name
+[OLT METRICS FAST TELNET] port 4 (rx=773, dist=625)
+[OLT METRICS FAST TELNET] port 3 (rx=744, dist=587)
+[OLT METRICS FAST TELNET] Error on port 1: [WinError 10053] An established connection was aborted by the software in your host machine
+[OLT] Fetching metrics for PON ports: ['1', '2', '3', '4', '5', '6', '7', '8']
+[OLT METRICS FAST TELNET] port 5 (rx=212, dist=124)
+[OLT METRICS FAST TELNET] port 6 (rx=617, dist=508)
+[OLT METRICS FAST TELNET] port 1 (rx=474, dist=600)
+[OLT METRICS FAST TELNET] port 4 (rx=472, dist=616)
+[OLT METRICS FAST TELNET] port 3 (rx=419, dist=513)
+[OLT METRICS FAST TELNET] port 8 (rx=698, dist=583)
+[OLT METRICS FAST TELNET] Error on port 7: [WinError 10053] An established connection was aborted by the software in your host machine
+[OLT METRICS FAST TELNET] Error on port 2: [WinError 10053] An established connection was aborted by the software in your host machine
+[OLT METRICS FAST TELNET] port 2 (rx=2298, dist=1880)
+[OLT METRICS FAST] Retrying port 1 using the original collector...
+[OLT] Fetching metrics for PON ports: ['2', '3', '4', '5', '6', '7']
+[OLT METRICS FAST TELNET] port 6 (rx=252, dist=260)
+[OLT METRICS FAST TELNET] port 5 (rx=376, dist=447)
+[OLT METRICS FAST TELNET] port 7 (rx=472, dist=614)
+[OLT METRICS FAST SSH] Error on port 2: timed out
+[OLT METRICS FAST] SSH failed for port 2, trying Telnet...
+[OLT METRICS FAST SSH] Error on port 3: timed out
+[OLT METRICS FAST] SSH failed for port 3, trying Telnet...
+[OLT METRICS FAST SSH] Error on port 5: timed out
+[OLT METRICS FAST] SSH failed for port 5, trying Telnet...
+[OLT METRICS FAST SSH] Error on port 4: timed out
+[OLT METRICS FAST] SSH failed for port 4, trying Telnet...
+[OLT METRICS TELNET] port 1 (rx=652, dist=502)
+[OLT METRICS FAST] Retrying port 7 using the original collector...
+[OLT METRICS FAST TELNET] Error on port 3: [WinError 10053] An established connection was aborted by the software in your host machine
+[OLT METRICS FAST TELNET] Error on port 8: [WinError 10053] An established connection was aborted by the software in your host machine
+[OLT METRICS FAST] Retrying port 2 using the original collector...
+[OLT METRICS FAST TELNET] port 2 (rx=1179, dist=955)
+[OLT METRICS FAST TELNET] port 5 (rx=991, dist=875)
+[OLT METRICS FAST SSH] Error on port 6: timed out
+[OLT METRICS FAST] SSH failed for port 6, trying Telnet...
+[OLT METRICS TELNET] port 2 (rx=269, dist=282)
+[OLT METRICS FAST SSH] Error on port 7: timed out
+[OLT METRICS FAST] SSH failed for port 7, trying Telnet...
+[OLT METRICS FAST] Retrying port 8 using the original collector...
+[OLT METRICS FAST TELNET] port 6 (rx=901, dist=742)
+[OLT METRICS FAST TELNET] port 7 (rx=1008, dist=884)
+[OLT METRICS TELNET] port 8 (rx=193, dist=166)
+[OLT DEBUG] Parsing optical port 1 (354 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-18.93
+2-17.75
+3-19.87
+40.00
+50.00
+60.00
+70.00
+8-18.27
+9-17.01
+10-17.12
+110.00
+12-14.40
+130.00
+14-20.97
+150.00
+16-17.50
+170.00
+18-18.24
+190.00
+20-22.60
+210.00
+220.00
+23-16.66
+24-23.98
+TMG_OLT2(config-pon-0/1)# 
+[OLT DEBUG] Matched GPON0/1:1 -> rx_power=-18.93 dBm
+[OLT DEBUG] Matched GPON0/1:2 -> rx_power=-17.75 dBm
+[OLT DEBUG] Matched GPON0/1:3 -> rx_power=-19.87 dBm
+[OLT DEBUG] Matched GPON0/1:4 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:5 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:6 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:7 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:8 -> rx_power=-18.27 dBm
+[OLT DEBUG] Matched GPON0/1:9 -> rx_power=-17.01 dBm
+[OLT DEBUG] Matched GPON0/1:10 -> rx_power=-17.12 dBm
+[OLT DEBUG] Matched GPON0/1:11 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:12 -> rx_power=-14.40 dBm
+[OLT DEBUG] Matched GPON0/1:13 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:14 -> rx_power=-20.97 dBm
+[OLT DEBUG] Matched GPON0/1:15 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:16 -> rx_power=-17.50 dBm
+[OLT DEBUG] Matched GPON0/1:17 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:18 -> rx_power=-18.24 dBm
+[OLT DEBUG] Matched GPON0/1:19 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:20 -> rx_power=-22.60 dBm
+[OLT DEBUG] Matched GPON0/1:21 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:22 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/1:23 -> rx_power=-16.66 dBm
+[OLT DEBUG] Matched GPON0/1:24 -> rx_power=-23.98 dBm
+[OLT DEBUG] Optical done: 24/143 ONUs updated on port 1
+[OLT DEBUG] Parsing distance for port 1 (600 chars):
+show onu 1-128 distance
+onu 1 Distance: 3530m
+onu 2 Distance: 2147m
+onu 3 Distance: 1874m
+onu 4 Distance: 0m
+onu 5 Distance: 0m
+onu 6 Distance: 0m
+onu 7 Distance: 1930m
+onu 8 Distance: 2937m
+onu 9 Distance: 2002m
+onu 10 Distance: 4026m
+onu 11 Distance: 0m
+onu 12 Distance: 2012m
+onu 13 Distance: 3227m
+onu 14 Distance: 1748m
+onu 15 Distance: 2128m
+onu 16 Distance: 2065m
+onu 17 Dista
+[OLT DEBUG] Distance done: 24 ONUs updated on port 1
+[OLT DEBUG] Parsing optical port 2 (219 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-9.69
+2-5.91
+3-10.73
+4-6.08
+5-14.31
+6-19.32
+7-11.83
+8-20.76
+9-21.25
+10-17.93
+TMG_OLT2(config-pon-0/2)# 
+[OLT DEBUG] Matched GPON0/2:1 -> rx_power=-9.69 dBm
+[OLT DEBUG] Matched GPON0/2:2 -> rx_power=-5.91 dBm
+[OLT DEBUG] Matched GPON0/2:3 -> rx_power=-10.73 dBm
+[OLT DEBUG] Matched GPON0/2:4 -> rx_power=-6.08 dBm
+[OLT DEBUG] Matched GPON0/2:5 -> rx_power=-14.31 dBm
+[OLT DEBUG] Matched GPON0/2:6 -> rx_power=-19.32 dBm
+[OLT DEBUG] Matched GPON0/2:7 -> rx_power=-11.83 dBm
+[OLT DEBUG] Matched GPON0/2:8 -> rx_power=-20.76 dBm
+[OLT DEBUG] Matched GPON0/2:9 -> rx_power=-21.25 dBm
+[OLT DEBUG] Matched GPON0/2:10 -> rx_power=-17.93 dBm
+[OLT DEBUG] Optical done: 10/143 ONUs updated on port 2
+[OLT DEBUG] Parsing distance for port 2 (282 chars):
+show onu 1-128 distance
+onu 1 Distance: 5671m
+onu 2 Distance: 4513m
+onu 3 Distance: 4881m
+onu 4 Distance: 5204m
+onu 5 Distance: 6177m
+onu 6 Distance: 7284m
+onu 7 Distance: 6657m
+onu 8 Distance: 6370m
+onu 9 Distance: 6486m
+onu 10 Distance: 6183m
+TMG_OLT2(config-pon-0/2)# 
+[OLT DEBUG] Distance done: 10 ONUs updated on port 2
+[OLT DEBUG] Parsing optical port 3 (319 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-18.63
+2-18.42
+3-20.32
+4-15.88
+5-14.83
+60.00
+7-9.76
+8-22.93
+90.00
+10-21.49
+11-20.36
+12-16.38
+260.00
+290.00
+300.00
+31-24.95
+32-22.08
+33-22.44
+340.00
+35-18.18
+TMG_OLT2(config-pon-0/3)# 
+[OLT DEBUG] Matched GPON0/3:1 -> rx_power=-18.63 dBm
+[OLT DEBUG] Matched GPON0/3:2 -> rx_power=-18.42 dBm
+[OLT DEBUG] Matched GPON0/3:3 -> rx_power=-20.32 dBm
+[OLT DEBUG] Matched GPON0/3:4 -> rx_power=-15.88 dBm
+[OLT DEBUG] Matched GPON0/3:5 -> rx_power=-14.83 dBm
+[OLT DEBUG] Matched GPON0/3:6 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:7 -> rx_power=-9.76 dBm
+[OLT DEBUG] Matched GPON0/3:8 -> rx_power=-22.93 dBm
+[OLT DEBUG] Matched GPON0/3:9 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:10 -> rx_power=-21.49 dBm
+[OLT DEBUG] Matched GPON0/3:11 -> rx_power=-20.36 dBm
+[OLT DEBUG] Matched GPON0/3:12 -> rx_power=-16.38 dBm
+[OLT DEBUG] Matched GPON0/3:26 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:29 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:30 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:31 -> rx_power=-24.95 dBm
+[OLT DEBUG] Matched GPON0/3:32 -> rx_power=-22.08 dBm
+[OLT DEBUG] Matched GPON0/3:33 -> rx_power=-22.44 dBm
+[OLT DEBUG] Matched GPON0/3:34 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/3:35 -> rx_power=-18.18 dBm
+[OLT DEBUG] Optical done: 20/143 ONUs updated on port 3
+[OLT DEBUG] Parsing distance for port 3 (513 chars):
+show onu 1-128 distance
+onu 1 Distance: 6161m
+onu 2 Distance: 5346m
+onu 3 Distance: 5225m
+onu 4 Distance: 5496m
+onu 5 Distance: 6129m
+onu 6 Distance: 6019m
+onu 7 Distance: 6820m
+onu 8 Distance: 5265m
+onu 9 Distance: 0m
+onu 10 Distance: 5120m
+onu 11 Distance: 6139m
+onu 12 Distance: 4388m
+onu 26 Distance: 5997m
+onu 29 Distance: 0m
+onu 30 Distance: 0m
+onu 31 Distance: 5134m
+onu 32 Di
+[OLT DEBUG] Distance done: 20 ONUs updated on port 3
+[OLT DEBUG] Parsing optical port 4 (352 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-15.30
+2-21.25
+30.00
+40.00
+5-25.53
+60.00
+7-23.19
+80.00
+9-23.67
+10-18.36
+110.00
+12-14.56
+130.00
+14-17.31
+15-13.25
+16-12.50
+17-14.59
+180.00
+190.00
+200.00
+210.00
+220.00
+230.00
+24-15.99
+TMG_OLT2(config-pon-0/4)# 
+[OLT DEBUG] Matched GPON0/4:1 -> rx_power=-15.30 dBm
+[OLT DEBUG] Matched GPON0/4:2 -> rx_power=-21.25 dBm
+[OLT DEBUG] Matched GPON0/4:3 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:4 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:5 -> rx_power=-25.53 dBm
+[OLT DEBUG] Matched GPON0/4:6 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:7 -> rx_power=-23.19 dBm
+[OLT DEBUG] Matched GPON0/4:8 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:9 -> rx_power=-23.67 dBm
+[OLT DEBUG] Matched GPON0/4:10 -> rx_power=-18.36 dBm
+[OLT DEBUG] Matched GPON0/4:11 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:12 -> rx_power=-14.56 dBm
+[OLT DEBUG] Matched GPON0/4:13 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:14 -> rx_power=-17.31 dBm
+[OLT DEBUG] Matched GPON0/4:15 -> rx_power=-13.25 dBm
+[OLT DEBUG] Matched GPON0/4:16 -> rx_power=-12.50 dBm
+[OLT DEBUG] Matched GPON0/4:17 -> rx_power=-14.59 dBm
+[OLT DEBUG] Matched GPON0/4:18 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:19 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:20 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:21 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:22 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:23 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/4:24 -> rx_power=-15.99 dBm
+[OLT DEBUG] Optical done: 24/143 ONUs updated on port 4
+[OLT DEBUG] Parsing distance for port 4 (616 chars):
+show onu 1-128 distance
+onu 1 Distance: 7985m
+onu 2 Distance: 8055m
+onu 3 Distance: 8292m
+onu 4 Distance: 0m
+onu 5 Distance: 10138m
+onu 6 Distance: 10263m
+onu 7 Distance: 7973m
+onu 8 Distance: 8077m
+onu 9 Distance: 10149m
+onu 10 Distance: 7820m
+onu 11 Distance: 0m
+onu 12 Distance: 8023m
+onu 13 Distance: 8044m
+onu 14 Distance: 7984m
+onu 15 Distance: 8924m
+onu 16 Distance: 10663m
+on
+[OLT DEBUG] Distance done: 24 ONUs updated on port 4
+[OLT DEBUG] Parsing optical port 5 (291 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-14.31
+2-22.60
+30.00
+4-13.70
+50.00
+6-10.17
+7-25.23
+80.00
+9-23.57
+10-15.56
+11-19.47
+12-18.93
+130.00
+14-26.99
+15-17.19
+16-15.45
+17-19.59
+TMG_OLT2(config-pon-0/5)# 
+[OLT DEBUG] Matched GPON0/5:1 -> rx_power=-14.31 dBm
+[OLT DEBUG] Matched GPON0/5:2 -> rx_power=-22.60 dBm
+[OLT DEBUG] Matched GPON0/5:3 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/5:4 -> rx_power=-13.70 dBm
+[OLT DEBUG] Matched GPON0/5:5 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/5:6 -> rx_power=-10.17 dBm
+[OLT DEBUG] Matched GPON0/5:7 -> rx_power=-25.23 dBm
+[OLT DEBUG] Matched GPON0/5:8 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/5:9 -> rx_power=-23.57 dBm
+[OLT DEBUG] Matched GPON0/5:10 -> rx_power=-15.56 dBm
+[OLT DEBUG] Matched GPON0/5:11 -> rx_power=-19.47 dBm
+[OLT DEBUG] Matched GPON0/5:12 -> rx_power=-18.93 dBm
+[OLT DEBUG] Matched GPON0/5:13 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/5:14 -> rx_power=-26.99 dBm
+[OLT DEBUG] Matched GPON0/5:15 -> rx_power=-17.19 dBm
+[OLT DEBUG] Matched GPON0/5:16 -> rx_power=-15.45 dBm
+[OLT DEBUG] Matched GPON0/5:17 -> rx_power=-19.59 dBm
+[OLT DEBUG] Optical done: 17/143 ONUs updated on port 5
+[OLT DEBUG] Parsing distance for port 5 (447 chars):
+show onu 1-128 distance
+onu 1 Distance: 9131m
+onu 2 Distance: 8875m
+onu 3 Distance: 9240m
+onu 4 Distance: 9500m
+onu 5 Distance: 8866m
+onu 6 Distance: 9384m
+onu 7 Distance: 9079m
+onu 8 Distance: 8866m
+onu 9 Distance: 8975m
+onu 10 Distance: 8909m
+onu 11 Distance: 9038m
+onu 12 Distance: 9073m
+onu 13 Distance: 0m
+onu 14 Distance: 8974m
+onu 15 Distance: 9144m
+onu 16 Distance: 9010m
+onu
+[OLT DEBUG] Distance done: 17 ONUs updated on port 5
+[OLT DEBUG] Parsing optical port 6 (207 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-29.21
+2-25.85
+30.00
+4-23.19
+5-24.56
+60.00
+7-19.10
+8-20.32
+9-24.69
+TMG_OLT2(config-pon-0/6)# 
+[OLT DEBUG] Matched GPON0/6:1 -> rx_power=-29.21 dBm
+[OLT DEBUG] Matched GPON0/6:2 -> rx_power=-25.85 dBm
+[OLT DEBUG] Matched GPON0/6:3 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/6:4 -> rx_power=-23.19 dBm
+[OLT DEBUG] Matched GPON0/6:5 -> rx_power=-24.56 dBm
+[OLT DEBUG] Matched GPON0/6:6 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/6:7 -> rx_power=-19.10 dBm
+[OLT DEBUG] Matched GPON0/6:8 -> rx_power=-20.32 dBm
+[OLT DEBUG] Matched GPON0/6:9 -> rx_power=-24.69 dBm
+[OLT DEBUG] Optical done: 9/143 ONUs updated on port 6
+[OLT DEBUG] Parsing distance for port 6 (260 chars):
+show onu 1-128 distance
+onu 1 Distance: 10925m
+onu 2 Distance: 8153m
+onu 3 Distance: 10486m
+onu 4 Distance: 10023m
+onu 5 Distance: 10523m
+onu 6 Distance: 0m
+onu 7 Distance: 7705m
+onu 8 Distance: 7735m
+onu 9 Distance: 10680m
+TMG_OLT2(config-pon-0/6)# 127.0.0.1 - - [29/Aug/2026 21:05:30] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:30] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:31] "GET /api/olt/sessions HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:36] "POST /api/olt/poll_onu HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:37] "GET /api/health HTTP/1.1" 200 -
+
+[OLT DEBUG] Distance done: 9 ONUs updated on port 6
+[OLT DEBUG] Parsing optical port 7 (357 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-17.99
+2-18.86
+3-11.59
+4-9.83
+5-15.33
+6-28.24
+7-19.63
+8-17.99
+9-8.66
+10-11.36
+11-21.94
+12-21.43
+13-25.38
+14-5.32
+15-12.47
+16-9.31
+17-15.67
+18-27.45
+19-24.32
+20-20.46
+210.00
+22-20.92
+230.00
+TMG_OLT2(config-pon-0/7)# 
+[OLT DEBUG] Matched GPON0/7:1 -> rx_power=-17.99 dBm
+[OLT DEBUG] Matched GPON0/7:2 -> rx_power=-18.86 dBm
+[OLT DEBUG] Matched GPON0/7:3 -> rx_power=-11.59 dBm
+[OLT DEBUG] Matched GPON0/7:4 -> rx_power=-9.83 dBm
+[OLT DEBUG] Matched GPON0/7:5 -> rx_power=-15.33 dBm
+[OLT DEBUG] Matched GPON0/7:6 -> rx_power=-28.24 dBm
+[OLT DEBUG] Matched GPON0/7:7 -> rx_power=-19.63 dBm
+[OLT DEBUG] Matched GPON0/7:8 -> rx_power=-17.99 dBm
+[OLT DEBUG] Matched GPON0/7:9 -> rx_power=-8.66 dBm
+[OLT DEBUG] Matched GPON0/7:10 -> rx_power=-11.36 dBm
+[OLT DEBUG] Matched GPON0/7:11 -> rx_power=-21.94 dBm
+[OLT DEBUG] Matched GPON0/7:12 -> rx_power=-21.43 dBm
+[OLT DEBUG] Matched GPON0/7:13 -> rx_power=-25.38 dBm
+[OLT DEBUG] Matched GPON0/7:14 -> rx_power=-5.32 dBm
+[OLT DEBUG] Matched GPON0/7:15 -> rx_power=-12.47 dBm
+[OLT DEBUG] Matched GPON0/7:16 -> rx_power=-9.31 dBm
+[OLT DEBUG] Matched GPON0/7:17 -> rx_power=-15.67 dBm
+[OLT DEBUG] Matched GPON0/7:18 -> rx_power=-27.45 dBm
+[OLT DEBUG] Matched GPON0/7:19 -> rx_power=-24.32 dBm
+[OLT DEBUG] Matched GPON0/7:20 -> rx_power=-20.46 dBm
+[OLT DEBUG] Matched GPON0/7:21 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/7:22 -> rx_power=-20.92 dBm
+[OLT DEBUG] Matched GPON0/7:23 -> rx_power=0.00 dBm
+[OLT DEBUG] Optical done: 23/143 ONUs updated on port 7
+[OLT DEBUG] Parsing distance for port 7 (614 chars):
+show onu 1-128 distance
+onu 1 Distance: 12032m
+onu 2 Distance: 11349m
+onu 3 Distance: 12063m
+onu 4 Distance: 12777m
+onu 5 Distance: 12750m
+onu 6 Distance: 12519m
+onu 7 Distance: 8045m
+onu 8 Distance: 14118m
+onu 9 Distance: 11175m
+onu 10 Distance: 11609m
+onu 11 Distance: 14656m
+onu 12 Distance: 13457m
+onu 13 Distance: 13441m
+onu 14 Distance: 8094m
+onu 15 Distance: 10513m
+onu 16 Dist
+[OLT DEBUG] Distance done: 23 ONUs updated on port 7
+[OLT DEBUG] Parsing optical port 8 (168 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+1-24.32
+2-3.35
+30.00
+4-17.01
+5-16.78
+TMG_OLT2(config-pon-0/8)# 
+[OLT DEBUG] Matched GPON0/8:1 -> rx_power=-24.32 dBm
+[OLT DEBUG] Matched GPON0/8:2 -> rx_power=-3.35 dBm
+[OLT DEBUG] Matched GPON0/8:3 -> rx_power=0.00 dBm
+[OLT DEBUG] Matched GPON0/8:4 -> rx_power=-17.01 dBm
+[OLT DEBUG] Matched GPON0/8:5 -> rx_power=-16.78 dBm
+[OLT DEBUG] Optical done: 5/143 ONUs updated on port 8
+[OLT DEBUG] Parsing distance for port 8 (166 chars):
+show onu 1-128 distance
+onu 1 Distance: 7703m
+onu 2 Distance: 7697m
+onu 3 Distance: 8011m
+onu 4 Distance: 8171m
+onu 5 Distance: 7697m
+TMG_OLT2(config-pon-0/8)# 
+[OLT DEBUG] Distance done: 5 ONUs updated on port 8
+[OLT] ONU-ONLY TMG_OLT2: 143 ONUs (92 online) via Telnet in 64.9s
+[OLT METRICS TELNET] port 7 (rx=1684, dist=1365)
+[OLT METRICS FAST TELNET] port 4 (rx=1749, dist=1316)
+[OLT METRICS FAST] Retrying port 3 using the original collector...
+[OLT DEBUG] Parsing optical port 1 (552 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/1:1N/A
+GPON0/1:2-15.868(dbm)
+GPON0/1:3N/A
+GPON0/1:4-11.326(dbm)
+GPON0/1:5N/A
+GPON0/1:6-11.538(dbm)
+GPON0/1:7N/A
+GPON0/1:8N/A
+GPON0/1:9N/A
+GPON0/1:10-11.797(dbm)
+GPON0/1:11-10.943(dbm)
+GPON0/1:12-13.706(dbm)
+GPON0/1:13-17.424(dbm)
+GPON0/1:14N/A
+GPON0/1:15-17.012(dbm)
+GPON0/1:16-9.690(dbm)
+GPON0/1:17-17.122(dbm)
+GPON0/1:18-11.067(dbm)
+GPON0/1:19-17.988(dbm)
+GPON0/1:20-15.624(dbm)
+BSNL_OLAPATI(config-pon-0/1)# 
+[OLT DEBUG] Matched GPON0/1:2 -> rx_power=-15.868 dBm
+[OLT DEBUG] Matched GPON0/1:4 -> rx_power=-11.326 dBm
+[OLT DEBUG] Matched GPON0/1:6 -> rx_power=-11.538 dBm
+[OLT DEBUG] Matched GPON0/1:10 -> rx_power=-11.797 dBm
+[OLT DEBUG] Matched GPON0/1:11 -> rx_power=-10.943 dBm
+[OLT DEBUG] Matched GPON0/1:12 -> rx_power=-13.706 dBm
+[OLT DEBUG] Matched GPON0/1:13 -> rx_power=-17.424 dBm
+[OLT DEBUG] Matched GPON0/1:15 -> rx_power=-17.012 dBm
+[OLT DEBUG] Matched GPON0/1:16 -> rx_power=-9.690 dBm
+[OLT DEBUG] Matched GPON0/1:17 -> rx_power=-17.122 dBm
+[OLT DEBUG] Matched GPON0/1:18 -> rx_power=-11.067 dBm
+[OLT DEBUG] Matched GPON0/1:19 -> rx_power=-17.988 dBm
+[OLT DEBUG] Matched GPON0/1:20 -> rx_power=-15.624 dBm
+[OLT DEBUG] Optical done: 13/238 ONUs updated on port 1
+[OLT DEBUG] Parsing distance for port 1 (502 chars):
+show onu 1-128 distance
+onu 1 Distance: 0m
+onu 2 Distance: 1m
+onu 3 Distance: 0m
+onu 4 Distance: 2084m
+onu 5 Distance: 0m
+onu 6 Distance: 1655m
+onu 7 Distance: 0m
+onu 8 Distance: 0m
+onu 9 Distance: 0m
+onu 10 Distance: 475m
+onu 11 Distance: 2663m
+onu 12 Distance: 1326m
+onu 13 Distance: 1359m
+onu 14 Distance: 1331m
+onu 15 Distance: 1508m
+onu 16 Distance: 1525m
+onu 17 Distance: 2361m
+[OLT DEBUG] Distance done: 20 ONUs updated on port 1
+[OLT DEBUG] Parsing optical port 2 (1922 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/2:1N/A
+GPON0/2:2-19.830(dbm)
+GPON0/2:3N/A
+GPON0/2:4-21.805(dbm)
+GPON0/2:5-22.292(dbm)
+GPON0/2:6-23.566(dbm)
+GPON0/2:7-26.022(dbm)
+GPON0/2:8-23.768(dbm)
+GPON0/2:9-22.220(dbm)
+GPON0/2:10N/A
+GPON0/2:11-22.008(dbm)
+GPON0/2:12N/A
+GPON0/2:13N/A
+GPON0/2:14-13.777(dbm)
+GPON0/2:15N/A
+GPON0/2:16-12.832(dbm)
+GPON0/2:17N/A
+GPON0/2:18N/A
+GPON0/2:19-17.496(dbm)
+GPON0/2:20N/A
+GPON0/2:21-20.224(dbm)
+GPON0/2:22-15.186(dbm)
+GPON0/2:23-25.378(dbm)
+GPON0/2:24N/A
+GPON
+[OLT DEBUG] Matched GPON0/2:2 -> rx_power=-19.830 dBm
+[OLT DEBUG] Matched GPON0/2:4 -> rx_power=-21.805 dBm
+[OLT DEBUG] Matched GPON0/2:5 -> rx_power=-22.292 dBm
+[OLT DEBUG] Matched GPON0/2:6 -> rx_power=-23.566 dBm
+[OLT DEBUG] Matched GPON0/2:7 -> rx_power=-26.022 dBm
+[OLT DEBUG] Matched GPON0/2:8 -> rx_power=-23.768 dBm
+[OLT DEBUG] Matched GPON0/2:9 -> rx_power=-22.220 dBm
+[OLT DEBUG] Matched GPON0/2:11 -> rx_power=-22.008 dBm
+[OLT DEBUG] Matched GPON0/2:14 -> rx_power=-13.777 dBm
+[OLT DEBUG] Matched GPON0/2:16 -> rx_power=-12.832 dBm
+[OLT DEBUG] Matched GPON0/2:19 -> rx_power=-17.496 dBm
+[OLT DEBUG] Matched GPON0/2:21 -> rx_power=-20.224 dBm
+[OLT DEBUG] Matched GPON0/2:22 -> rx_power=-15.186 dBm
+[OLT DEBUG] Matched GPON0/2:23 -> rx_power=-25.378 dBm
+[OLT DEBUG] Matched GPON0/2:29 -> rx_power=-25.088 dBm
+[OLT DEBUG] Matched GPON0/2:31 -> rx_power=-24.438 dBm
+[OLT DEBUG] Matched GPON0/2:34 -> rx_power=-20.970 dBm
+[OLT DEBUG] Matched GPON0/2:35 -> rx_power=-14.700 dBm
+[OLT DEBUG] Matched GPON0/2:36 -> rx_power=-13.270 dBm
+[OLT DEBUG] Matched GPON0/2:37 -> rx_power=-21.612 dBm
+[OLT DEBUG] Matched GPON0/2:39 -> rx_power=-22.078 dBm
+[OLT DEBUG] Matched GPON0/2:40 -> rx_power=-21.308 dBm
+[OLT DEBUG] Matched GPON0/2:41 -> rx_power=-24.438 dBm
+[OLT DEBUG] Matched GPON0/2:42 -> rx_power=-17.546 dBm
+[OLT DEBUG] Matched GPON0/2:43 -> rx_power=-26.990 dBm
+[OLT DEBUG] Matched GPON0/2:45 -> rx_power=-26.198 dBm
+[OLT DEBUG] Matched GPON0/2:47 -> rx_power=-17.722 dBm
+[OLT DEBUG] Matched GPON0/2:49 -> rx_power=-24.816 dBm
+[OLT DEBUG] Matched GPON0/2:50 -> rx_power=-19.625 dBm
+[OLT DEBUG] No match in onus for index: GPON0/2:52
+[OLT DEBUG] Matched GPON0/2:53 -> rx_power=-18.540 dBm
+[OLT DEBUG] Matched GPON0/2:55 -> rx_power=-26.384 dBm
+[OLT DEBUG] Matched GPON0/2:57 -> rx_power=-19.356 dBm
+[OLT DEBUG] Matched GPON0/2:58 -> rx_power=-22.520 dBm
+[OLT DEBUG] Matched GPON0/2:61 -> rx_power=-20.088 dBm
+[OLT DEBUG] Matched GPON0/2:63 -> rx_power=-20.970 dBm
+[OLT DEBUG] Matched GPON0/2:64 -> rx_power=-18.570 dBm
+[OLT DEBUG] Matched GPON0/2:66 -> rx_power=-20.270 dBm
+[OLT DEBUG] Matched GPON0/2:67 -> rx_power=-25.088 dBm
+[OLT DEBUG] Matched GPON0/2:68 -> rx_power=-12.791 dBm
+[OLT DEBUG] Matched GPON0/2:69 -> rx_power=-16.636 dBm
+[OLT DEBUG] Matched GPON0/2:70 -> rx_power=-26.778 dBm
+[OLT DEBUG] Matched GPON0/2:71 -> rx_power=-21.308 dBm
+[OLT DEBUG] Optical done: 42/238 ONUs updated on port 2
+[OLT DEBUG] Parsing distance for port 2 (1859 chars):
+ show onu 1-128 distance
+onu 1 Distance: 0m
+onu 2 Distance: 4395m
+onu 3 Distance: 0m
+onu 4 Distance: 4602m
+onu 5 Distance: 4336m
+onu 6 Distance: 4234m
+onu 7 Distance: 3581m
+onu 8 Distance: 5196m
+onu 9 Distance: 347m
+onu 10 Distance: 0m
+onu 11 Distance: 300m
+onu 12 Distance: 0m
+onu 13 Distance: 0m
+onu 14 Distance: 5135m
+onu 15 Distance: 0m
+onu 16 Distance: 327m
+onu 17 Distance: 0m
+[OLT DEBUG] Distance done: 71 ONUs updated on port 2
+[OLT DEBUG] Parsing optical port 3 (629 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/3:1-29.586(dbm)
+GPON0/3:2N/A
+GPON0/3:3N/A
+GPON0/3:4-22.758(dbm)
+GPON0/3:5N/A
+GPON0/3:6N/A
+GPON0/3:7-27.695(dbm)
+GPON0/3:8-26.384(dbm)
+GPON0/3:9-23.100(dbm)
+GPON0/3:10-26.022(dbm)
+GPON0/3:11N/A
+GPON0/3:12-26.198(dbm)
+GPON0/3:13-30.456(dbm)
+GPON0/3:14-33.010(dbm)
+GPON0/3:44-23.468(dbm)
+GPON0/3:58-15.719(dbm)
+GPON0/3:63-26.990(dbm)
+GPON0/3:68N/A
+GPON0/3:82-20.363(dbm)
+GPON0/3:84-18.828(dbm)
+GPON0/3:89N/A
+GPON0/3:99-26.198(dbm)
+GPON0/3:100-27.695(dbm)
+B
+[OLT DEBUG] Matched GPON0/3:1 -> rx_power=-29.586 dBm
+[OLT DEBUG] Matched GPON0/3:4 -> rx_power=-22.758 dBm
+[OLT DEBUG] Matched GPON0/3:7 -> rx_power=-27.695 dBm
+[OLT DEBUG] Matched GPON0/3:8 -> rx_power=-26.384 dBm
+[OLT DEBUG] Matched GPON0/3:9 -> rx_power=-23.100 dBm
+[OLT DEBUG] Matched GPON0/3:10 -> rx_power=-26.022 dBm
+[OLT DEBUG] Matched GPON0/3:12 -> rx_power=-26.198 dBm
+[OLT DEBUG] Matched GPON0/3:13 -> rx_power=-30.456 dBm
+[OLT DEBUG] Matched GPON0/3:14 -> rx_power=-33.010 dBm
+[OLT DEBUG] Matched GPON0/3:44 -> rx_power=-23.468 dBm
+[OLT DEBUG] Matched GPON0/3:58 -> rx_power=-15.719 dBm
+[OLT DEBUG] Matched GPON0/3:63 -> rx_power=-26.990 dBm
+[OLT DEBUG] Matched GPON0/3:82 -> rx_power=-20.363 dBm
+[OLT DEBUG] Matched GPON0/3:84 -> rx_power=-18.828 dBm
+[OLT DEBUG] Matched GPON0/3:99 -> rx_power=-26.198 dBm
+[OLT DEBUG] Matched GPON0/3:100 -> rx_power=-27.695 dBm
+[OLT DEBUG] Optical done: 16/238 ONUs updated on port 3
+[OLT DEBUG] Parsing distance for port 3 (587 chars):
+show onu 1-128 distance
+onu 1 Distance: 1808m
+onu 2 Distance: 0m
+onu 3 Distance: 3462m
+onu 4 Distance: 4386m
+onu 5 Distance: 3359m
+onu 6 Distance: 3732m
+onu 7 Distance: 6226m
+onu 8 Distance: 6586m
+onu 9 Distance: 6587m
+onu 10 Distance: 6134m
+onu 11 Distance: 0m
+onu 12 Distance: 5270m
+onu 13 Distance: 5430m
+onu 14 Distance: 8532m
+onu 44 Distance: 3517m
+onu 58 Distance: 1610m
+onu 63
+[OLT DEBUG] Distance done: 23 ONUs updated on port 3
+[OLT DEBUG] Parsing optical port 4 (653 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/4:1N/A
+GPON0/4:2N/A
+GPON0/4:3N/A
+GPON0/4:4-22.520(dbm)
+GPON0/4:5-24.816(dbm)
+GPON0/4:6-30.000(dbm)
+GPON0/4:7-28.540(dbm)
+GPON0/4:8-26.022(dbm)
+GPON0/4:9-27.960(dbm)
+GPON0/4:10N/A
+GPON0/4:11N/A
+GPON0/4:12-29.586(dbm)
+GPON0/4:13N/A
+GPON0/4:14-22.520(dbm)
+GPON0/4:15-31.548(dbm)
+GPON0/4:16-26.198(dbm)
+GPON0/4:17-31.548(dbm)
+GPON0/4:18-33.978(dbm)
+GPON0/4:19-25.852(dbm)
+GPON0/4:20N/A
+GPON0/4:21-24.317(dbm)
+GPON0/4:22-29.208(dbm)
+GPON0/4:23-21.080(dbm)
+GP
+[OLT DEBUG] Matched GPON0/4:4 -> rx_power=-22.520 dBm
+[OLT DEBUG] Matched GPON0/4:5 -> rx_power=-24.816 dBm
+[OLT DEBUG] No match in onus for index: GPON0/4:6
+[OLT DEBUG] Matched GPON0/4:7 -> rx_power=-28.540 dBm
+[OLT DEBUG] Matched GPON0/4:8 -> rx_power=-26.022 dBm
+[OLT DEBUG] Matched GPON0/4:9 -> rx_power=-27.960 dBm
+[OLT DEBUG] Matched GPON0/4:12 -> rx_power=-29.586 dBm
+[OLT DEBUG] Matched GPON0/4:14 -> rx_power=-22.520 dBm
+[OLT DEBUG] Matched GPON0/4:15 -> rx_power=-31.548 dBm
+[OLT DEBUG] Matched GPON0/4:16 -> rx_power=-26.198 dBm
+[OLT DEBUG] Matched GPON0/4:17 -> rx_power=-31.548 dBm
+[OLT DEBUG] Matched GPON0/4:18 -> rx_power=-33.978 dBm
+[OLT DEBUG] Matched GPON0/4:19 -> rx_power=-25.852 dBm
+[OLT DEBUG] Matched GPON0/4:21 -> rx_power=-24.317 dBm
+[OLT DEBUG] Matched GPON0/4:22 -> rx_power=-29.208 dBm
+[OLT DEBUG] Matched GPON0/4:23 -> rx_power=-21.080 dBm
+[OLT DEBUG] Matched GPON0/4:24 -> rx_power=-26.990 dBm
+[OLT DEBUG] Optical done: 16/238 ONUs updated on port 4
+[OLT DEBUG] Parsing distance for port 4 (625 chars):
+show onu 1-128 distance
+onu 1 Distance: 0m
+onu 2 Distance: 12539m
+onu 3 Distance: 0m
+onu 4 Distance: 9857m
+onu 5 Distance: 8715m
+onu 6 Distance: 10102m
+onu 7 Distance: 11966m
+onu 8 Distance: 10522m
+onu 9 Distance: 11960m
+onu 10 Distance: 12566m
+onu 11 Distance: 0m
+onu 12 Distance: 11211m
+onu 13 Distance: 9341m
+onu 14 Distance: 12055m
+onu 15 Distance: 12585m
+onu 16 Distance: 9131m
+
+[OLT DEBUG] Distance done: 24 ONUs updated on port 4
+[OLT DEBUG] Parsing optical port 5 (197 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/5:1-19.208(dbm)
+GPON0/5:2-19.390(dbm)
+GPON0/5:3-20.656(dbm)
+BSNL_OLAPATI(config-pon-0/5)# 
+[OLT DEBUG] Matched GPON0/5:1 -> rx_power=-19.208 dBm
+[OLT DEBUG] Matched GPON0/5:2 -> rx_power=-19.390 dBm
+[OLT DEBUG] Matched GPON0/5:3 -> rx_power=-20.656 dBm
+[OLT DEBUG] Optical done: 3/238 ONUs updated on port 5
+[OLT DEBUG] Parsing distance for port 5 (124 chars):
+show onu 1-128 distance
+onu 1 Distance: 7975m
+onu 2 Distance: 5972m
+onu 3 Distance: 5501m
+BSNL_OLAPATI(config-pon-0/5)# 
+[OLT DEBUG] Distance done: 3 ONUs updated on port 5
+[OLT DEBUG] Parsing optical port 6 (517 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/6:1N/A
+GPON0/6:2N/A
+GPON0/6:3N/A
+GPON0/6:4-14.510(dbm)
+GPON0/6:5N/A
+GPON0/6:6N/A
+GPON0/6:7-11.637(dbm)
+GPON0/6:8N/A
+GPON0/6:9N/A
+GPON0/6:10N/A
+GPON0/6:11-18.387(dbm)
+GPON0/6:12-26.384(dbm)
+GPON0/6:13N/A
+GPON0/6:14N/A
+GPON0/6:15N/A
+GPON0/6:16-30.968(dbm)
+GPON0/6:17-17.330(dbm)
+GPON0/6:18-19.470(dbm)
+GPON0/6:19-12.582(dbm)
+GPON0/6:20-17.496(dbm)
+BSNL_OLAPATI(config-pon-0/6)# 
+[OLT DEBUG] Matched GPON0/6:4 -> rx_power=-14.510 dBm
+[OLT DEBUG] Matched GPON0/6:7 -> rx_power=-11.637 dBm
+[OLT DEBUG] Matched GPON0/6:11 -> rx_power=-18.387 dBm
+[OLT DEBUG] Matched GPON0/6:12 -> rx_power=-26.384 dBm
+[OLT DEBUG] Matched GPON0/6:16 -> rx_power=-30.968 dBm
+[OLT DEBUG] Matched GPON0/6:17 -> rx_power=-17.330 dBm
+[OLT DEBUG] Matched GPON0/6:18 -> rx_power=-19.470 dBm
+[OLT DEBUG] Matched GPON0/6:19 -> rx_power=-12.582 dBm
+[OLT DEBUG] Matched GPON0/6:20 -> rx_power=-17.496 dBm
+[OLT DEBUG] Optical done: 9/238 ONUs updated on port 6
+[OLT DEBUG] Parsing distance for port 6 (508 chars):
+show onu 1-128 distance
+onu 1 Distance: 4449m
+onu 2 Distance: 4285m
+onu 3 Distance: 0m
+onu 4 Distance: 3883m
+onu 5 Distance: 0m
+onu 6 Distance: 0m
+onu 7 Distance: 4745m
+onu 8 Distance: 0m
+onu 9 Distance: 0m
+onu 10 Distance: 5533m
+onu 11 Distance: 5930m
+onu 12 Distance: 5477m
+onu 13 Distance: 0m
+onu 14 Distance: 5957m
+onu 15 Distance: 5955m
+onu 16 Distance: 5478m
+onu 17 Distance: 3
+[OLT DEBUG] Distance done: 20 ONUs updated on port 6
+[OLT DEBUG] Parsing optical port 7 (1398 chars):
+show pon onu all rx-power
+Onu                 Rx power
+------------------------------------
+GPON0/7:1-29.208(dbm)
+GPON0/7:2N/A
+GPON0/7:3N/A
+GPON0/7:4N/A
+GPON0/7:5-26.022(dbm)
+GPON0/7:6-28.540(dbm)
+GPON0/7:7N/A
+GPON0/7:8N/A
+GPON0/7:9N/A
+GPON0/7:10N/A
+GPON0/7:11-32.218(dbm)
+GPON0/7:12N/A
+GPON0/7:13N/A
+GPON0/7:14N/A
+GPON0/7:15-30.456(dbm)
+GPON0/7:16N/A
+GPON0/7:17-28.240(dbm)
+GPON0/7:18N/A
+GPON0/7:19-27.960(dbm)
+GPON0/7:20N/A
+GPON0/7:21-28.862(dbm)
+GPON0/7:22N/A
+GPON0/7:23N/A
+GPON0/7:24-26.576(dbm)
+GPON0/7:25-30.968(dbm)
+GPON0/7:26-30.000(dbm)
+[OLT DEBUG] Matched GPON0/7:1 -> rx_power=-29.208 dBm127.0.0.1 - - [29/Aug/2026 21:05:44] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:45] "GET /api/olt/profiles HTTP/1.1" 200 -
+127.0.0.1 - - [29/Aug/2026 21:05:46] "GET /api/olt/sessions HTTP/1.1" 200 -

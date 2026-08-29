@@ -97,12 +97,13 @@ Smart NOC is built around one main dashboard and several background services:
 
 ### OLT and ONU Operations
 
-- OLT connection profiles
-- SSH/Telnet polling support
-- ONU inventory/history storage
-- Uplink statistics collection
-- Scheduled OLT polling jobs
-- ONT history charting
+- OLT connection profiles with SSH and Telnet auto-failover
+- Live interactive ONU inventory polling with real-time stage progress and animated spinners
+- Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 240 min) and one-time execution
+- Multi-threaded hardware polling with per-job fault isolation
+- ONU inventory history, optical Rx/Tx dBm diagnostics, distance (meters), and state breakdown (Online, Offline, Dying Gasp)
+- Interface uplink bandwidth statistics collection and charting
+- Historical ONT lookup by serial number with CSV export capabilities
 
 ### Alerts
 
@@ -128,6 +129,9 @@ Smart NOC is built around one main dashboard and several background services:
 
 This version includes:
 
+- **OLT Automatic Polling Scheduler Daemon**: Reliable background daemon worker executing recurring polls (5–240 min) with past-date self-correction on job resume and per-job fault isolation.
+- **Interactive OLT Polling Progress**: Live animated spinners and elapsed counters across both Vue 3 SPA and legacy web interfaces during OLT ONU/uplink polls.
+- **Vue.js 3 Modern Frontend**: Fast, modular Single Page Application with Pinia state management and Chart.js 4 visualization.
 - **App Rebranding to Smart NOC**: Complete branding unification across all web views, daemons, task scheduler scripts, and installation packages.
 - **Direct Multi-Channel Alert Engine**: Global direct delivery to Discord, Email, and Telegram for all matched Syslog rules and Ping state transitions with full cross-platform encoding compatibility.
 - **System Health Dashboard**: Dedicated primary monitoring dashboard tab with live PC resource graphs (CPU, RAM, Disk, Network) and 24/7 uptime tracking.
