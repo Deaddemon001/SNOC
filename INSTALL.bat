@@ -1,9 +1,9 @@
 @echo off
-title SimpleNOC v0.5.6.0 - Installer
+title Smart NOC v0.5.6.4 - Installer
 color 0B
 echo.
 echo  ==========================================
-echo   Simple NOC v0.5.6.0 - Installation
+echo   Smart NOC v0.5.6.4 - Installation
 echo  ==========================================
 echo.
 
@@ -102,7 +102,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo  Starting SimpleNOC installation...
+echo  Starting Smart NOC installation...
 echo.
 %PYTHON% "%~dp0setup.py"
 

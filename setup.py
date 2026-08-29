@@ -1,20 +1,21 @@
 """
-Simple NOC Setup & Installer
+Smart NOC Setup & Installer
 Run as Administrator: python setup.py
 """
 import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 import noc_config as cfg
 
-APP_NAME    = "SimpleNOC"
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.0")
-INSTALL_DIR = r"C:\SimpleNOC"
+APP_NAME    = "SmartNOC"
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.4")
+INSTALL_DIR = r"C:\SmartNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
-    ("SimpleNOC-API", "api.py", "NOC Dashboard & API Server"),
-    ("SimpleNOC-SNMP", "trap_receiver.py", "SNMP Trap Receiver"),
-    ("SimpleNOC-Syslog", "syslog_server.py", "Syslog Server"),
+    ("SmartNOC-API", "api.py", "NOC Dashboard & API Server"),
+    ("SmartNOC-SNMP", "trap_receiver.py", "SNMP Trap Receiver"),
+    ("SmartNOC-Syslog", "syslog_server.py", "Syslog Server"),
 ]
 TASK_NAMES = [name for name, _, _ in SERVICES]
+
 def find_real_python():
     """Find real Python — skip Windows Store stub"""
     import os
@@ -58,15 +59,16 @@ REQUIRED_PACKAGES = [
     "pysnmp",
     "paramiko",
     "psycopg2-binary",
+    "psutil",
 ]
 
 BANNER = rf"""
-  ____  _                 _        _   _  ___   ____
- / ___|(_)_ __ ___  _ __ | | ___  | \ | |/ _ \ / ___|
- \___ \| | '_ ` _ \| '_ \| |/ _ \ |  \| | | | | |
-  ___) | | | | | | | |_) | |  __/ | |\  | |_| | |___
- |____/|_|_| |_| |_| .__/|_|\___| |_| \_|\___/ \____|
-                    |_|
+  ____                      _     _   _  ___   ____
+ / ___| _ __ ___   __ _ _ _| |_  | \ | |/ _ \ / ___|
+ \___ \| '_ ` _ \ / _` | '__| __| |  \| | | | | |
+  ___) | | | | | | (_| | |  | |_  | |\  | |_| | |___
+ |____/|_| |_| |_|\__,_|_|   \__| |_| \_|\___/ \____|
+
          v{APP_VERSION} - Network Operations Center
 """
 
@@ -109,7 +111,7 @@ def create_install_dir():
     step(f"Setting up install directory: {INSTALL_DIR}")
     os.makedirs(INSTALL_DIR, exist_ok=True)
     os.makedirs(os.path.join(INSTALL_DIR, "data"), exist_ok=True)
-    ok("Data directory: C:\\SimpleNOC\\data\\ (databases stored here)")
+    ok("Data directory: C:\\SmartNOC\\data\\ (databases stored here)")
     ok(f"Directory ready: {INSTALL_DIR}")
 
 def copy_files():
@@ -170,9 +172,9 @@ def install_services():
             nssm = nssm_path
 
     services = [
-        ("SimpleNOC-API",     "api.py",           "NOC Dashboard & API Server"),
-        ("SimpleNOC-SNMP",    "trap_receiver.py", "SNMP Trap Receiver"),
-        ("SimpleNOC-Syslog",  "syslog_server.py", "Syslog Server"),
+        ("SmartNOC-API",     "api.py",           "NOC Dashboard & API Server"),
+        ("SmartNOC-SNMP",    "trap_receiver.py", "SNMP Trap Receiver"),
+        ("SmartNOC-Syslog",  "syslog_server.py", "Syslog Server"),
     ]
 
     if nssm:
@@ -243,7 +245,7 @@ def create_shortcuts():
     # Desktop shortcut to open dashboard
     desktop  = os.path.join(os.environ.get('USERPROFILE',''), 'Desktop')
     startmenu = os.path.join(os.environ.get('APPDATA',''),
-                             r'Microsoft\Windows\Start Menu\Programs\SimpleNOC')
+                             r'Microsoft\Windows\Start Menu\Programs\SmartNOC')
     os.makedirs(startmenu, exist_ok=True)
 
     shortcut_script = f"""
@@ -252,14 +254,14 @@ from pathlib import Path
 
 shell = win32com.client.Dispatch("WScript.Shell")
 for folder in [r"{desktop}", r"{startmenu}"]:
-    sc = shell.CreateShortCut(str(Path(folder) / "SimpleNOC Dashboard.lnk"))
+    sc = shell.CreateShortCut(str(Path(folder) / "Smart NOC Dashboard.lnk"))
     sc.TargetPath = "{DASHBOARD_URL}"
-    sc.Description = "Open SimpleNOC Dashboard"
+    sc.Description = "Open Smart NOC Dashboard"
     sc.save()
 """
     # Try creating URL shortcut (simpler, no extra packages needed)
     for folder in [desktop, startmenu]:
-        url_file = os.path.join(folder, "SimpleNOC Dashboard.url")
+        url_file = os.path.join(folder, "Smart NOC Dashboard.url")
         try:
             with open(url_file, 'w') as f:
                 f.write(f"[InternetShortcut]\nURL={DASHBOARD_URL}\n")
@@ -268,7 +270,7 @@ for folder in [r"{desktop}", r"{startmenu}"]:
             warn(f"Could not create shortcut in {folder}: {e}")
 
     # Also create a control panel shortcut
-    ctrl_url = os.path.join(desktop, "SimpleNOC Control.url")
+    ctrl_url = os.path.join(desktop, "Smart NOC Control.url")
     try:
         with open(ctrl_url, 'w') as f:
             f.write(f"[InternetShortcut]\nURL=file:///{INSTALL_DIR}/control.html\n")
@@ -283,9 +285,9 @@ def create_control_bat():
     start_bat = os.path.join(INSTALL_DIR, "START_NOC.bat")
     with open(start_bat, 'w', encoding='utf-8') as f:
         f.write(f"""@echo off
-title SimpleNOC v{APP_VERSION} - Starting...
+title Smart NOC v{APP_VERSION} - Starting...
 echo.
-echo  Starting SimpleNOC v{APP_VERSION}...
+echo  Starting Smart NOC v{APP_VERSION}...
 echo.
 
 net session >nul 2>&1
@@ -295,15 +297,15 @@ if %errorLevel% neq 0 (
 )
 
 echo [1/3] Starting SNMP Trap Receiver...
-start "SimpleNOC SNMP" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} trap_receiver.py >> logs\\snmp.log 2>&1"
+start "NOC-SNMP" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} trap_receiver.py >> logs\\snmp.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 echo [2/3] Starting Syslog Server...
-start "SimpleNOC Syslog" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} syslog_server.py >> logs\\syslog.log 2>&1"
+start "NOC-Syslog" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} syslog_server.py >> logs\\syslog.log 2>&1"
 timeout /t 2 /nobreak >nul
 
 echo [3/3] Starting API & Dashboard...
-start "SimpleNOC API" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} api.py >> logs\\api.log 2>&1"
+start "NOC-API" /min cmd /c "cd /d {INSTALL_DIR} && {PYTHON} api.py >> logs\\api.log 2>&1"
 timeout /t 3 /nobreak >nul
 
 echo.
@@ -318,8 +320,8 @@ start """ + DASHBOARD_URL + """
     stop_bat = os.path.join(INSTALL_DIR, "STOP_NOC.bat")
     with open(stop_bat, 'w', encoding='utf-8') as f:
         f.write("""@echo off
-echo Stopping SimpleNOC...
-taskkill /FI "WindowTitle eq SimpleNOC*" /F >nul 2>&1
+echo Stopping Smart NOC...
+taskkill /FI "WindowTitle eq NOC-*" /F >nul 2>&1
 echo Done.
 """)
     ok("STOP_NOC.bat")
@@ -328,9 +330,9 @@ echo Done.
     status_bat = os.path.join(INSTALL_DIR, "STATUS_NOC.bat")
     with open(status_bat, 'w', encoding='utf-8') as f:
         f.write(f"""@echo off
-echo SimpleNOC v{APP_VERSION} Status
+echo Smart NOC v{APP_VERSION} Status
 echo ========================
-tasklist /FI "WindowTitle eq SimpleNOC*" 2>nul | find /I "cmd.exe" >nul
+tasklist /FI "WindowTitle eq NOC-*" 2>nul | find /I "cmd.exe" >nul
 if %errorLevel%==0 (echo  Services: RUNNING) else (echo  Services: STOPPED)
 echo  Dashboard: """ + DASHBOARD_URL + """
 echo.
@@ -370,7 +372,7 @@ def find_nssm():
     return nssm
 
 def stop_and_remove_services():
-    step("Stopping and removing SimpleNOC services...")
+    step("Stopping and removing Smart NOC services...")
     nssm = find_nssm()
     for svc_name, _, _ in SERVICES:
         if nssm:
@@ -381,8 +383,8 @@ def stop_and_remove_services():
     ok("Windows services removed")
 
 def stop_running_processes():
-    step("Stopping running SimpleNOC processes...")
-    for title in ["SimpleNOC*", "NOC-API*", "NOC-SNMP*", "NOC-Syslog*"]:
+    step("Stopping running Smart NOC processes...")
+    for title in ["SmartNOC*", "NOC-API*", "NOC-SNMP*", "NOC-Syslog*"]:
         run(f'taskkill /FI "WindowTitle eq {title}" /F', check=False)
     ok("Running console processes stopped")
 
@@ -391,12 +393,12 @@ def remove_shortcuts():
     desktop = os.path.join(os.environ.get('USERPROFILE', ''), 'Desktop')
     startmenu = os.path.join(
         os.environ.get('APPDATA', ''),
-        r'Microsoft\Windows\Start Menu\Programs\SimpleNOC'
+        r'Microsoft\Windows\Start Menu\Programs\SmartNOC'
     )
     shortcut_paths = [
-        os.path.join(desktop, "SimpleNOC Dashboard.url"),
-        os.path.join(desktop, "SimpleNOC Control.url"),
-        os.path.join(startmenu, "SimpleNOC Dashboard.url"),
+        os.path.join(desktop, "Smart NOC Dashboard.url"),
+        os.path.join(desktop, "Smart NOC Control.url"),
+        os.path.join(startmenu, "Smart NOC Dashboard.url"),
     ]
     for path in shortcut_paths:
         if os.path.exists(path):
@@ -413,7 +415,7 @@ def remove_shortcuts():
             warn(f"Could not remove {startmenu}: {e}")
 
 def schedule_install_dir_removal():
-    cleanup_bat = os.path.join(tempfile.gettempdir(), "simplenoc_cleanup.bat")
+    cleanup_bat = os.path.join(tempfile.gettempdir(), "smartnoc_cleanup.bat")
     with open(cleanup_bat, "w", encoding="utf-8") as f:
         f.write(
             "@echo off\n"
@@ -436,7 +438,7 @@ def uninstall_app():
     data_backup = None
     if preserve_data:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        data_backup = os.path.join(os.path.dirname(INSTALL_DIR), f"SimpleNOC_data_backup_{timestamp}")
+        data_backup = os.path.join(os.path.dirname(INSTALL_DIR), f"SmartNOC_data_backup_{timestamp}")
 
     stop_and_remove_services()
     remove_old_tasks()
@@ -465,17 +467,17 @@ def uninstall_app():
 
 def print_summary(nssm_installed):
     print("\n" + "="*55)
-    print(f"  SimpleNOC v{APP_VERSION} Installation Complete!")
+    print(f"  Smart NOC v{APP_VERSION} Installation Complete!")
     print("="*55)
     print(f"\n  Install directory : {INSTALL_DIR}")
-    print(f"\n  To START SimpleNOC:")
+    print(f"\n  To START Smart NOC:")
     print(f"    Double-click: {INSTALL_DIR}\\launcher.pyw")
     print(f"    OR run:       {INSTALL_DIR}\\START_NOC.bat  (as Admin)")
     if nssm_installed:
         print(f"\n  Windows Services installed (auto-start on boot)")
-        print(f"    net start SimpleNOC-API")
-        print(f"    net start SimpleNOC-SNMP")
-        print(f"    net start SimpleNOC-Syslog")
+        print(f"    net start SmartNOC-API")
+        print(f"    net start SmartNOC-SNMP")
+        print(f"    net start SmartNOC-Syslog")
     print(f"\n  Dashboard: {DASHBOARD_URL}")
     print(f"\n  Unified maintenance launcher: {INSTALL_DIR}\\run.bat")
     print(f"\n  Logs: {INSTALL_DIR}\\logs\\")
@@ -484,7 +486,7 @@ def print_summary(nssm_installed):
 
 def install_app():
     print(BANNER)
-    print(f"  Installing Simple NOC v{APP_VERSION} on Windows")
+    print(f"  Installing Smart NOC v{APP_VERSION} on Windows")
     print(f"  Python: {PYTHON}")
     print()
 
@@ -505,7 +507,7 @@ def install_app():
     create_shortcuts()
     print_summary(nssm_ok)
 
-    input("\n  Press Enter to launch SimpleNOC now...")
+    input("\n  Press Enter to launch Smart NOC now...")
     subprocess.Popen([PYTHON, os.path.join(INSTALL_DIR, "launcher.pyw")])
 
 def main():

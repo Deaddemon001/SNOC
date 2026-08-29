@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.1 - TFTP Server
+Smart NOC v0.5.6.4 - TFTP Server
 Receives backup files from OLTs via TFTP (UDP port 69).
 RFC 1350 - receive only (WRQ).
 
@@ -191,12 +191,24 @@ def session_timeout_watcher():
                 log_file(k[0], s['olt_name'], s['olt_id'], s['filename'],
                          s['stored_name'], 0, s['file_path'], 'timeout')
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            import datetime
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 threading.Thread(target=session_timeout_watcher, daemon=True).start()
+threading.Thread(target=heartbeat_worker, args=("TFTP Server",), daemon=True).start()
 
 # ── MAIN SERVER ───────────────────────────────────────────────────────────────
 def start():
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    print(f"[TFTP] SimpleNOC v0.5.5.1 TFTP Server")
+    print(f"[TFTP] Smart NOC v0.5.6.4 TFTP Server")
     print(f"[TFTP] Listening on UDP port {TFTP_PORT}")
     print(f"[TFTP] Backup dir: {get_backup_dir()}")
 

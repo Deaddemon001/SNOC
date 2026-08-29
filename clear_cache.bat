@@ -1,10 +1,10 @@
 @echo off
-echo Clearing Python cache from SimpleNOC...
-if exist "C:\SimpleNOC\__pycache__" (
-    rmdir /S /Q "C:\SimpleNOC\__pycache__"
-    echo Cleared: C:\SimpleNOC\__pycache__
+echo Clearing Python cache from Smart NOC...
+if exist "C:\SmartNOC\__pycache__" (
+    rmdir /S /Q "C:\SmartNOC\__pycache__"
+    echo Cleared: C:\SmartNOC\__pycache__
 ) else (
     echo No cache found.
 )
-echo Done. Restart SimpleNOC now.
+echo Done. Restart Smart NOC now.
 pause

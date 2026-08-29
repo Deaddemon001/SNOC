@@ -1,12 +1,72 @@
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
-import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys
+import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64
 from collections import deque
+
+# ── BACKUP ENCRYPTION (AES-256-GCM) ──────────────────────────────────────────
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives import hashes as _crypto_hashes
+    _CRYPTO_AVAILABLE = True
+except ImportError:
+    _CRYPTO_AVAILABLE = False
+
+_BACKUP_SALT      = b"SmartNOC-Backup-v1"
+_ENCRYPTED_MARKER = "ENC:"
+
+def _derive_backup_key():
+    """Derive a 32-byte AES key from the PostgreSQL password (machine-specific secret)."""
+    if not _CRYPTO_AVAILABLE:
+        return None
+    import noc_config as _cfg_inner
+    secret = _cfg_inner.POSTGRES_CONFIG.get("password", "").encode("utf-8")
+    kdf = PBKDF2HMAC(
+        algorithm=_crypto_hashes.SHA256(),
+        length=32,
+        salt=_BACKUP_SALT,
+        iterations=200_000,
+    )
+    return kdf.derive(secret)
+
+def _encrypt_field(plaintext: str) -> str:
+    """Encrypt a single string field. Returns 'ENC:<base64(nonce+ciphertext)>'."""
+    if not plaintext or not _CRYPTO_AVAILABLE:
+        return plaintext
+    try:
+        key = _derive_backup_key()
+        aesgcm = AESGCM(key)
+        nonce  = os.urandom(12)
+        ct     = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
+        return _ENCRYPTED_MARKER + base64.b64encode(nonce + ct).decode("ascii")
+    except Exception:
+        return plaintext  # fallback: return as-is rather than crash
+
+def _decrypt_field(ciphertext: str) -> str:
+    """Decrypt a field produced by _encrypt_field(). Pass-through if not encrypted."""
+    if not ciphertext or not ciphertext.startswith(_ENCRYPTED_MARKER):
+        return ciphertext  # backward-compat: old unencrypted backups
+    if not _CRYPTO_AVAILABLE:
+        raise RuntimeError(
+            "The 'cryptography' package is required to decrypt this backup. "
+            "Run: pip install cryptography"
+        )
+    try:
+        key  = _derive_backup_key()
+        raw  = base64.b64decode(ciphertext[len(_ENCRYPTED_MARKER):])
+        nonce, ct = raw[:12], raw[12:]
+        aesgcm = AESGCM(key)
+        return aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+    except Exception:
+        raise ValueError(
+            "Decryption failed. This backup was likely created on a different machine "
+            "or with a different PostgreSQL password."
+        )
 
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.0')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.4')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -15,7 +75,25 @@ app.config['SESSION_COOKIE_SECURE']   = False
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
 CORS(app, supports_credentials=True)
 
-from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, process_ping_alert
+from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, get_discord_config, send_discord, process_ping_alert
+
+try:
+    import psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
+APP_START_TIME = time.time()
+_METRICS_HISTORY = deque(maxlen=60)
+_LAST_NET_IO = None
+_LAST_NET_TIME = None
+INITIAL_PORTS = {
+    'api_port': getattr(_cfg, 'API_PORT', 5000),
+    'https_port': getattr(_cfg, 'HTTPS_PORT', 5443),
+    'snmp_port': getattr(_cfg, 'SNMP_PORT', 162),
+    'syslog_port': getattr(_cfg, 'SYSLOG_PORT', 5141),
+    'tftp_port': getattr(_cfg, 'TFTP_PORT', 69),
+}
 
 HTTPS_PORT    = getattr(_cfg, 'HTTPS_PORT',    5443)
 HTTP_REDIRECT = getattr(_cfg, 'HTTP_REDIRECT', True)
@@ -41,9 +119,9 @@ OLT_DB     = _cfg.OLT_DB
 BACKUP_DIR = _cfg.BACKUP_DIR
 LOGS_DIR   = os.path.join(BASE_DIR, "logs")
 
-DEFAULT_VISIBLE_TABS = ['syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink']
-ALL_VISIBLE_TABS = DEFAULT_VISIBLE_TABS + ['users', 'logs', 'ont']
-GLOBAL_SETTINGS_TABS = DEFAULT_VISIBLE_TABS + ['ont']
+DEFAULT_VISIBLE_TABS = ['dashboard', 'syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'ont']
+ALL_VISIBLE_TABS = ['dashboard', 'syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'logs', 'ont', 'users']
+GLOBAL_SETTINGS_TABS = ['dashboard', 'syslog', 'snmp', 'tftp', 'ping', 'alerts', 'olt', 'uplink', 'ont']
 
 # Ensure all tables exist
 try:
@@ -195,7 +273,7 @@ def hash_password(password, salt=None):
 
 def verify_password(password, stored_hash, salt):
     hashed, _ = hash_password(password, salt)
-    return hashed == stored_hash
+    return secrets.compare_digest(hashed, stored_hash)
 
 
 def _normalize_role(value):
@@ -266,6 +344,22 @@ def init_auth_db():
         updated_at TEXT
     )''')
     execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN visible_tabs TEXT DEFAULT ''")
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN assigned_olts TEXT DEFAULT '[]'")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN assigned_ping_targets TEXT DEFAULT '[]'")
+    except Exception:
+        pass
+    try:
+        execute_db(AUTH_DB, "ALTER TABLE users ADD COLUMN notify_via TEXT DEFAULT 'email'")
+    except Exception:
+        pass
     execute_db(
         AUTH_DB,
         "UPDATE users SET visible_tabs=? WHERE COALESCE(visible_tabs, '')=''",
@@ -273,22 +367,35 @@ def init_auth_db():
     )
     execute_db(
         AUTH_DB,
-        "UPDATE users SET visible_tabs=? WHERE role='admin' AND COALESCE(visible_tabs, '') IN ('', ?)",
-        (json.dumps(ALL_VISIBLE_TABS), json.dumps(DEFAULT_VISIBLE_TABS))
+        "UPDATE users SET visible_tabs=? WHERE role='admin'",
+        (json.dumps(ALL_VISIBLE_TABS),)
     )
     # Create default admin if no users exist
     rows = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM users")
     if not rows or rows[0]['count'] == 0:
         hashed, salt = hash_password('admin123')
         execute_db(AUTH_DB,
-            "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
-            ('admin', hashed, salt, 'admin', json.dumps(ALL_VISIBLE_TABS), datetime.datetime.now().isoformat()))
+            "INSERT INTO users (username,password,salt,email,role,visible_tabs,assigned_olts,assigned_ping_targets,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            ('admin', hashed, salt, '', 'admin', json.dumps(ALL_VISIBLE_TABS), json.dumps([]), json.dumps([]), datetime.datetime.now().isoformat()))
         print("Default admin created: username=admin password=admin123")
         print("IMPORTANT: Change the password after first login!")
 
 
 
 init_auth_db()
+
+def _normalize_json_list(value):
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        return [x.strip() for x in value.split(',') if x.strip()]
+    return []
 
 # ── ENSURE OTHER DBS ──────────────────────────────────────────────────────────
 def ensure_dbs():
@@ -308,6 +415,8 @@ def ensure_dbs():
         alarm_type TEXT, alarm_name TEXT, severity TEXT,
         onu_id TEXT, pon_slot TEXT, alarm_port TEXT,
         description TEXT, status TEXT)""")
+    execute_db(TRAP_DB, "CREATE INDEX IF NOT EXISTS idx_traps_timestamp ON traps (timestamp DESC)")
+    execute_db(TRAP_DB, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp DESC)")
 
     # Syslog DB
     execute_db(SYSLOG_DB, f'''CREATE TABLE IF NOT EXISTS syslog (
@@ -316,9 +425,21 @@ def ensure_dbs():
         facility TEXT, severity TEXT, severity_num INTEGER,
         hostname TEXT, process TEXT, message TEXT, event_tag TEXT,
         onu_pon TEXT, onu_id TEXT, onu_sn TEXT, raw TEXT)''')
+    execute_db(SYSLOG_DB, "CREATE INDEX IF NOT EXISTS idx_syslog_timestamp ON syslog (timestamp DESC)")
+    execute_db(SYSLOG_DB, "CREATE INDEX IF NOT EXISTS idx_syslog_tag ON syslog (event_tag)")
+
     execute_db(SYSLOG_DB, '''CREATE TABLE IF NOT EXISTS syslog_devices (
         olt_hostname TEXT PRIMARY KEY, source_ip TEXT, olt_id TEXT,
-        name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown')''')
+        name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown',
+        olt_mac TEXT DEFAULT '',
+        authorized INTEGER DEFAULT 0)''')
+
+    try:
+        execute_db(SYSLOG_DB, "ALTER TABLE syslog_devices ADD COLUMN authorized INTEGER DEFAULT 0")
+        execute_db(SYSLOG_DB, "UPDATE syslog_devices SET authorized = 1")
+    except Exception:
+        pass
+
 
     # Ping DB
     execute_db(PING_DB, f'''CREATE TABLE IF NOT EXISTS ping_targets (
@@ -366,26 +487,24 @@ FULL_BACKUP_TABLES = [
     'noc_settings',
     'email_config',
     'email_template',
+    'telegram_config',
     'alert_rules',
-    'alert_log',
-    'traps',
-    'devices',
-    'events',
-    'syslog',
-    'syslog_devices',
     'mac_mapping',
     'ping_targets',
-    'ping_results',
-    'ping_status',
     'tftp_config',
-    'tftp_files',
     'olt_profiles',
-    'onu_data',
-    'onu_history',
-    'uplink_stats',
-    'olt_poll_sessions',
     'olt_poll_jobs',
+    'discord_config',
 ]
+
+# Fields that contain sensitive credentials and must be encrypted in backup files.
+# Format: { table_name: [column, ...] }
+SENSITIVE_BACKUP_FIELDS = {
+    'olt_profiles':    ['password', 'enable_pass'],
+    'email_config':    ['smtp_pass'],
+    'telegram_config': ['bot_token'],
+    'discord_config':  ['webhook_url'],
+}
 
 def _fetch_one(sql, params=()):
     rows = query_db(AUTH_DB, sql, params)
@@ -437,13 +556,15 @@ def _get_global_visible_tabs():
 
 
 def _default_visible_tabs_for_role(role):
-    base_tabs = _get_global_visible_tabs()
     if role == 'admin':
-        return list(base_tabs + [tab for tab in ('users', 'logs') if tab not in base_tabs])
+        return list(ALL_VISIBLE_TABS)
+    base_tabs = _get_global_visible_tabs()
     return list(base_tabs)
 
 
 def _normalize_visible_tabs(value, role='viewer'):
+    if role == 'admin':
+        return list(ALL_VISIBLE_TABS)
     tabs = value
     if isinstance(value, str):
         try:
@@ -462,10 +583,6 @@ def _normalize_visible_tabs(value, role='viewer'):
     defaults = _default_visible_tabs_for_role(role)
     if not cleaned:
         cleaned = defaults
-    if role == 'admin':
-        for extra in ('users', 'logs'):
-            if extra not in cleaned:
-                cleaned.append(extra)
     return cleaned
 
 
@@ -474,12 +591,10 @@ def _visible_tabs_json(value, role='viewer'):
 
 
 def _effective_visible_tabs(user_tabs, role='viewer'):
+    if role == 'admin':
+        return list(ALL_VISIBLE_TABS)
     allowed = set(_get_global_visible_tabs())
     tabs = [tab for tab in _normalize_visible_tabs(user_tabs, role) if tab in allowed]
-    if role == 'admin':
-        for extra in ('users', 'logs'):
-            if extra not in tabs:
-                tabs.append(extra)
     return tabs or _default_visible_tabs_for_role(role)
 
 
@@ -489,6 +604,10 @@ def _get_user_record(username):
         return None
     user = dict(users[0])
     user['visible_tabs'] = _normalize_visible_tabs(user.get('visible_tabs'), user.get('role', 'viewer'))
+    user['email'] = user.get('email') or ''
+    user['assigned_olts'] = _normalize_json_list(user.get('assigned_olts'))
+    user['assigned_ping_targets'] = _normalize_json_list(user.get('assigned_ping_targets'))
+    user['notify_via'] = user.get('notify_via') or 'email'
     return user
 
 
@@ -498,9 +617,10 @@ def _get_current_user_payload():
     user = _get_user_record(username) if username else None
     if user:
         role = user.get('role', role)
-        visible_tabs = user.get('visible_tabs', _default_visible_tabs_for_role(role))
+    if role == 'admin':
+        visible_tabs = list(ALL_VISIBLE_TABS)
     else:
-        visible_tabs = _default_visible_tabs_for_role(role)
+        visible_tabs = user.get('visible_tabs', _default_visible_tabs_for_role(role)) if user else _default_visible_tabs_for_role(role)
     global_visible_tabs = _get_global_visible_tabs()
     return {
         'logged_in': True,
@@ -567,11 +687,20 @@ def build_full_backup():
         raise RuntimeError("Unable to connect to PostgreSQL")
     try:
         tables = {table: _table_rows(conn, table) for table in FULL_BACKUP_TABLES}
+
+        # Encrypt sensitive credential fields before writing to the JSON file
+        for table, fields in SENSITIVE_BACKUP_FIELDS.items():
+            for row in tables.get(table, []):
+                for field in fields:
+                    if row.get(field):
+                        row[field] = _encrypt_field(str(row[field]))
+
         return {
-            'version': APP_VERSION,
-            'database': 'postgres',
+            'version':    APP_VERSION,
+            'database':   'postgres',
             'created_at': datetime.datetime.now().isoformat(),
-            'tables': tables,
+            'encrypted':  _CRYPTO_AVAILABLE,
+            'tables':     tables,
         }
     finally:
         conn.close()
@@ -581,6 +710,19 @@ def restore_full_backup(backup_payload):
     tables = backup_payload.get('tables')
     if not isinstance(tables, dict):
         raise ValueError("Backup file does not contain a valid tables section.")
+
+    # Decrypt sensitive credential fields before inserting into the database
+    for table, fields in SENSITIVE_BACKUP_FIELDS.items():
+        for row in tables.get(table, []):
+            for field in fields:
+                if row.get(field):
+                    try:
+                        row[field] = _decrypt_field(str(row[field]))
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"Failed to decrypt '{field}' in table '{table}'. "
+                            f"{exc}"
+                        ) from exc
 
     conn = get_db_connection()
     if not conn:
@@ -656,6 +798,16 @@ def retention_cleanup_worker():
             print(f"[RETENTION] Cleanup error: {e}")
         time.sleep(3600)
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 
 # ── AUTH ROUTES ───────────────────────────────────────────────────────────────
 def render_versioned_html(filename):
@@ -672,21 +824,53 @@ def login_page():
         return redirect('/')
     return render_versioned_html('login.html')
 
+
+def log_user_auth(username, event_type, ip_address, status):
+    import os, datetime
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        log_path = os.path.join(LOGS_DIR, 'user_auth.log')
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_path, 'a') as f:
+            f.write(f"[{now}] User: {username} | IP: {ip_address} | Event: {event_type} | Status: {status}\n")
+    except Exception:
+        pass
+
+_login_attempts = {}
+
 @app.route('/api/auth/login', methods=['POST'])
 def do_login():
+    import time as _time
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
+    ip = request.remote_addr
+    now = _time.time()
+
+    if ip in _login_attempts:
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < 300]
+        if len(_login_attempts[ip]) >= 5:
+            log_user_auth(username, 'LOGIN', ip, 'FAILED - Rate limited')
+            return jsonify({'success': False, 'error': 'Too many failed attempts. Please try again in 5 minutes.'}), 429
 
     if not username or not password:
         return jsonify({'success': False, 'error': 'Username and password required'}), 400
 
     user = _get_user_record(username)
     if not user:
+        log_user_auth(username, 'LOGIN', ip, 'FAILED - Invalid username')
+        _login_attempts.setdefault(ip, []).append(now)
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
 
     if not verify_password(password, user['password'], user['salt']):
+        log_user_auth(username, 'LOGIN', ip, 'FAILED - Invalid password')
+        _login_attempts.setdefault(ip, []).append(now)
         return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+    if ip in _login_attempts:
+        del _login_attempts[ip]
+
+    log_user_auth(username, 'LOGIN', ip, 'SUCCESS')
 
     # Update last login
     execute_db(AUTH_DB, "UPDATE users SET last_login=? WHERE username=?",
@@ -710,6 +894,9 @@ def do_login():
 
 @app.route('/api/auth/logout', methods=['POST'])
 def do_logout():
+    username = session.get('username', 'unknown')
+    ip = request.remote_addr
+    log_user_auth(username, 'LOGOUT', ip, 'SUCCESS')
     session.clear()
     return jsonify({'success': True})
 
@@ -753,9 +940,13 @@ def list_users():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
     rows = query_db(AUTH_DB,
-        "SELECT id,username,role,visible_tabs,created_at,last_login FROM users ORDER BY id")
+        "SELECT id,username,email,role,visible_tabs,assigned_olts,assigned_ping_targets,notify_via,created_at,last_login FROM users ORDER BY id")
     for row in rows:
         row['visible_tabs'] = _normalize_visible_tabs(row.get('visible_tabs'), row.get('role', 'viewer'))
+        row['email'] = row.get('email') or ''
+        row['assigned_olts'] = _normalize_json_list(row.get('assigned_olts'))
+        row['assigned_ping_targets'] = _normalize_json_list(row.get('assigned_ping_targets'))
+        row['notify_via'] = row.get('notify_via') or 'email'
     return jsonify(rows)
 
 @app.route('/api/auth/users/add', methods=['POST'])
@@ -766,19 +957,38 @@ def add_user():
     data     = request.json or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
+    email    = (data.get('email') or '').strip()
     role     = _normalize_role(data.get('role', 'viewer'))
     if not username or len(password) < 6:
         return jsonify({'error': 'Username required, password min 6 chars'}), 400
-    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
     
+    # Check if user already exists
+    existing = query_db(AUTH_DB, "SELECT id FROM users WHERE username=?", (username,))
+    if existing:
+        return jsonify({'error': f"User '{username}' already exists."}), 409
+
+    visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', []), role)
+    assigned_olts = _normalize_json_list(data.get('assigned_olts', []))
+    assigned_ping_targets = _normalize_json_list(data.get('assigned_ping_targets', []))
+    notify_via = (data.get('notify_via') or 'email').strip()
+
     hashed, salt = hash_password(password)
     success = execute_db(AUTH_DB,
-        "INSERT INTO users (username,password,salt,role,visible_tabs,created_at) VALUES (?,?,?,?,?,?)",
-        (username, hashed, salt, role, json.dumps(visible_tabs), datetime.datetime.now().isoformat()))
+        "INSERT INTO users (username,password,salt,email,role,visible_tabs,assigned_olts,assigned_ping_targets,notify_via,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (username, hashed, salt, email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, datetime.datetime.now().isoformat()))
     if success:
-        return jsonify({'success': True, 'username': username, 'visible_tabs': visible_tabs})
+        return jsonify({
+            'success': True,
+            'username': username,
+            'email': email,
+            'role': role,
+            'visible_tabs': visible_tabs,
+            'assigned_olts': assigned_olts,
+            'assigned_ping_targets': assigned_ping_targets,
+            'notify_via': notify_via
+        })
     else:
-        return jsonify({'error': 'Username already exists or database error'}), 409
+        return jsonify({'error': 'Database error creating user. Please try again.'}), 500
 
 
 @app.route('/api/auth/users/edit', methods=['POST'])
@@ -788,7 +998,9 @@ def edit_user():
         return jsonify({'error': 'Admin only'}), 403
     data = request.json or {}
     username = (data.get('username') or '').strip().lower()
-    role = _normalize_role(data.get('role', 'viewer'))
+    email    = (data.get('email') or '').strip()
+    role     = _normalize_role(data.get('role', 'viewer'))
+    new_pass = data.get('new_password') or data.get('password') or ''
     if not username:
         return jsonify({'error': 'Username required'}), 400
     if username == session.get('username') and role != 'admin':
@@ -799,16 +1011,40 @@ def edit_user():
         return jsonify({'error': 'User not found'}), 404
 
     visible_tabs = _normalize_visible_tabs(data.get('visible_tabs', existing.get('visible_tabs', [])), role)
-    success = execute_db(
-        AUTH_DB,
-        "UPDATE users SET role=?, visible_tabs=? WHERE username=?",
-        (role, json.dumps(visible_tabs), username)
-    )
+    assigned_olts = _normalize_json_list(data.get('assigned_olts', existing.get('assigned_olts', [])))
+    assigned_ping_targets = _normalize_json_list(data.get('assigned_ping_targets', existing.get('assigned_ping_targets', [])))
+    notify_via = (data.get('notify_via') or existing.get('notify_via') or 'email').strip()
+
+    if new_pass:
+        if len(new_pass) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        hashed, salt = hash_password(new_pass)
+        success = execute_db(
+            AUTH_DB,
+            "UPDATE users SET email=?, role=?, visible_tabs=?, assigned_olts=?, assigned_ping_targets=?, notify_via=?, password=?, salt=? WHERE username=?",
+            (email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, hashed, salt, username)
+        )
+    else:
+        success = execute_db(
+            AUTH_DB,
+            "UPDATE users SET email=?, role=?, visible_tabs=?, assigned_olts=?, assigned_ping_targets=?, notify_via=? WHERE username=?",
+            (email, role, json.dumps(visible_tabs), json.dumps(assigned_olts), json.dumps(assigned_ping_targets), notify_via, username)
+        )
+
     if not success:
-        return jsonify({'error': 'Database error'}), 500
+        return jsonify({'error': 'Database error updating user'}), 500
     if username == session.get('username'):
         session['role'] = role
-    return jsonify({'success': True, 'username': username, 'role': role, 'visible_tabs': visible_tabs})
+    return jsonify({
+        'success': True,
+        'username': username,
+        'email': email,
+        'role': role,
+        'visible_tabs': visible_tabs,
+        'assigned_olts': assigned_olts,
+        'assigned_ping_targets': assigned_ping_targets,
+        'notify_via': notify_via
+    })
 
 
 @app.route('/api/auth/users/delete', methods=['POST'])
@@ -821,6 +1057,46 @@ def delete_user():
         return jsonify({'error': 'Cannot delete yourself'}), 400
     execute_db(AUTH_DB, "DELETE FROM users WHERE username=?", (username,))
     return jsonify({'success': True})
+
+
+@app.route('/api/auth/available_targets')
+@login_required
+def available_targets():
+    # Fetch configured OLT profiles and syslog devices
+    olts = []
+    seen_olts = set()
+    try:
+        olt_rows = query_db(OLT_DB, "SELECT name, host FROM olt_profiles ORDER BY name")
+        for r in olt_rows:
+            name = r.get('name') or r.get('host')
+            if name and name not in seen_olts:
+                olts.append({'name': name, 'host': r.get('host', '')})
+                seen_olts.add(name)
+    except Exception:
+        pass
+    try:
+        syslog_devs = query_db(SYSLOG_DB, "SELECT DISTINCT olt_hostname FROM syslog_devices WHERE olt_hostname IS NOT NULL AND olt_hostname != ''")
+        for r in syslog_devs:
+            name = r.get('olt_hostname')
+            if name and name not in seen_olts:
+                olts.append({'name': name, 'host': ''})
+                seen_olts.add(name)
+    except Exception:
+        pass
+
+    # Fetch Ping targets
+    ping_targets_list = []
+    try:
+        p_rows = query_db(PING_DB, "SELECT ip, name FROM ping_targets WHERE enabled=1 ORDER BY name, ip")
+        for r in p_rows:
+            ping_targets_list.append({'name': r.get('name') or r.get('ip'), 'ip': r.get('ip')})
+    except Exception:
+        pass
+
+    return jsonify({
+        'olts': olts,
+        'ping_targets': ping_targets_list
+    })
 
 
 @app.route('/api/settings/retention', methods=['GET', 'POST'], strict_slashes=False)
@@ -971,6 +1247,685 @@ def api_security_settings():
     return jsonify({'success': True, 'session_timeout_minutes': m})
 
 
+# ── SYSTEM MONITORING & HEALTH ───────────────────────────────────────────────
+def _get_dir_size_bytes(path):
+    total = 0
+    try:
+        if os.path.exists(path):
+            for root, _, files in os.walk(path):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    try:
+                        total += os.path.getsize(fp)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return total
+
+def _get_postgres_db_size():
+    try:
+        rows = query_db(AUTH_DB, "SELECT pg_database_size(current_database()) AS size_bytes")
+        if rows and rows[0].get('size_bytes') is not None:
+            return int(rows[0]['size_bytes'])
+    except Exception:
+        pass
+    return 0
+
+def _get_service_heartbeats():
+    heartbeats = {}
+    services_log_map = {
+        'api': ['API_and_Dashboard.log', 'api.log'],
+        'snmp': ['SNMP_Trap_Receiver.log', 'snmp.log'],
+        'syslog': ['Syslog_Server.log', 'syslog.log'],
+        'tftp': ['TFTP_Server.log', 'tftp.log'],
+    }
+    for svc, log_files in services_log_map.items():
+        latest_hb = None
+        for lf in log_files:
+            lp = os.path.join(LOGS_DIR, lf)
+            if os.path.exists(lp):
+                try:
+                    with open(lp, 'r', encoding='utf-8', errors='replace') as f:
+                        lines = deque(f, maxlen=80)
+                        for line in reversed(lines):
+                            if '[HEARTBEAT]' in line or 'is running healthy' in line:
+                                m = re.search(r'\[(.*?)\]', line)
+                                latest_hb = m.group(1) if m else line.strip()
+                                break
+                except Exception:
+                    pass
+            if latest_hb:
+                break
+        heartbeats[svc] = latest_hb
+    return heartbeats
+
+def _find_script_processes():
+    now = time.time()
+    proc_info = {
+        'api': {'running': True, 'pid': os.getpid(), 'cpu_percent': 0.0, 'memory_mb': 0.0, 'uptime_sec': int(now - APP_START_TIME)},
+        'snmp': {'running': False, 'pid': None, 'cpu_percent': 0.0, 'memory_mb': 0.0, 'uptime_sec': 0},
+        'syslog': {'running': False, 'pid': None, 'cpu_percent': 0.0, 'memory_mb': 0.0, 'uptime_sec': 0},
+        'tftp': {'running': False, 'pid': None, 'cpu_percent': 0.0, 'memory_mb': 0.0, 'uptime_sec': 0},
+    }
+    if not _PSUTIL_AVAILABLE:
+        return proc_info
+
+    try:
+        for p in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time', 'memory_info']):
+            try:
+                cmd_list = p.info.get('cmdline') or []
+                cmd = ' '.join(cmd_list).lower()
+                pname = (p.info.get('name') or '').lower()
+                if not cmd or ('python' not in pname and 'python' not in cmd):
+                    continue
+                ctime = p.info.get('create_time') or now
+                up_sec = max(0, int(now - ctime))
+                mem_info = p.info.get('memory_info')
+                mem_mb = (mem_info.rss / (1024 * 1024)) if mem_info else 0.0
+                
+                if 'trap_receiver.py' in cmd:
+                    proc_info['snmp'] = {'running': True, 'pid': p.pid, 'cpu_percent': round(p.cpu_percent(interval=None), 1), 'memory_mb': round(mem_mb, 1), 'uptime_sec': up_sec}
+                elif 'syslog_server.py' in cmd:
+                    proc_info['syslog'] = {'running': True, 'pid': p.pid, 'cpu_percent': round(p.cpu_percent(interval=None), 1), 'memory_mb': round(mem_mb, 1), 'uptime_sec': up_sec}
+                elif 'tftp_server.py' in cmd:
+                    proc_info['tftp'] = {'running': True, 'pid': p.pid, 'cpu_percent': round(p.cpu_percent(interval=None), 1), 'memory_mb': round(mem_mb, 1), 'uptime_sec': up_sec}
+                elif p.pid == os.getpid() or ('api.py' in cmd and p.pid != proc_info['api']['pid']):
+                    proc_info['api'] = {'running': True, 'pid': p.pid, 'cpu_percent': round(p.cpu_percent(interval=None), 1), 'memory_mb': round(mem_mb, 1), 'uptime_sec': int(now - APP_START_TIME)}
+            except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
+                continue
+    except Exception as e:
+        print(f"[SYSTEM] Process scan error: {e}")
+
+    return proc_info
+
+def _collect_system_metrics():
+    global _LAST_NET_IO, _LAST_NET_TIME
+    now = time.time()
+    now_iso = datetime.datetime.now().strftime('%H:%M:%S')
+    
+    sys_cpu = 0.0
+    app_cpu = 0.0
+    sys_mem_pct = 0.0
+    sys_mem_total_mb = 0.0
+    sys_mem_used_mb = 0.0
+    sys_mem_free_mb = 0.0
+    app_mem_mb = 0.0
+    
+    if _PSUTIL_AVAILABLE:
+        try:
+            sys_cpu = round(psutil.cpu_percent(interval=None), 1)
+            cur_proc = psutil.Process(os.getpid())
+            app_cpu = round(cur_proc.cpu_percent(interval=None), 1)
+            mem = psutil.virtual_memory()
+            sys_mem_pct = round(mem.percent, 1)
+            sys_mem_total_mb = round(mem.total / (1024 * 1024), 1)
+            sys_mem_used_mb = round(mem.used / (1024 * 1024), 1)
+            sys_mem_free_mb = round(mem.available / (1024 * 1024), 1)
+            app_mem_mb = round(cur_proc.memory_info().rss / (1024 * 1024), 1)
+        except Exception:
+            pass
+            
+    net_in_rate_kb = 0.0
+    net_out_rate_kb = 0.0
+    net_bytes_sent = 0
+    net_bytes_recv = 0
+    net_packets_sent = 0
+    net_packets_recv = 0
+    
+    if _PSUTIL_AVAILABLE:
+        try:
+            net_io = psutil.net_io_counters()
+            net_bytes_sent = net_io.bytes_sent
+            net_bytes_recv = net_io.bytes_recv
+            net_packets_sent = net_io.packets_sent
+            net_packets_recv = net_io.packets_recv
+            
+            if _LAST_NET_IO and _LAST_NET_TIME and (now - _LAST_NET_TIME) > 0:
+                dt = now - _LAST_NET_TIME
+                net_in_rate_kb = round(max(0, (net_io.bytes_recv - _LAST_NET_IO.bytes_recv) / (1024 * dt)), 1)
+                net_out_rate_kb = round(max(0, (net_io.bytes_sent - _LAST_NET_IO.bytes_sent) / (1024 * dt)), 1)
+            _LAST_NET_IO = net_io
+            _LAST_NET_TIME = now
+        except Exception:
+            pass
+            
+    sample = {
+        'time': now_iso,
+        'timestamp': now,
+        'sys_cpu': sys_cpu,
+        'app_cpu': app_cpu,
+        'sys_mem_pct': sys_mem_pct,
+        'sys_mem_total_mb': sys_mem_total_mb,
+        'sys_mem_used_mb': sys_mem_used_mb,
+        'sys_mem_free_mb': sys_mem_free_mb,
+        'app_mem_mb': app_mem_mb,
+        'app_ram_mb': app_mem_mb,
+        'net_in_rate': net_in_rate_kb,
+        'net_out_rate': net_out_rate_kb,
+        'net_in_rate_kb': net_in_rate_kb,
+        'net_out_rate_kb': net_out_rate_kb,
+        'net_bytes_sent': net_bytes_sent,
+        'net_bytes_recv': net_bytes_recv,
+        'net_packets_sent': net_packets_sent,
+        'net_packets_recv': net_packets_recv,
+    }
+    _METRICS_HISTORY.append(sample)
+    return sample
+
+def _metrics_collector_worker():
+    if _PSUTIL_AVAILABLE:
+        try:
+            psutil.cpu_percent(interval=None)
+            cur_proc = psutil.Process(os.getpid())
+            cur_proc.cpu_percent(interval=None)
+        except Exception:
+            pass
+    time.sleep(1)
+    while True:
+        try:
+            _collect_system_metrics()
+        except Exception:
+            pass
+        time.sleep(5)
+
+def _restart_single_service(service_name):
+    script_map = {
+        'snmp': 'trap_receiver.py',
+        'syslog': 'syslog_server.py',
+        'tftp': 'tftp_server.py'
+    }
+    script = script_map.get(service_name)
+    if not script:
+        return False, "Unknown service name"
+    
+    if _PSUTIL_AVAILABLE:
+        for p in psutil.process_iter(['pid', 'cmdline']):
+            try:
+                cmd = ' '.join(p.info.get('cmdline') or []).lower()
+                if script.lower() in cmd:
+                    p.terminate()
+                    try:
+                        p.wait(timeout=2)
+                    except Exception:
+                        try: p.kill()
+                        except Exception: pass
+            except Exception:
+                pass
+    
+    py_exe = sys.executable
+    script_path = os.path.join(BASE_DIR, script)
+    log_file = os.path.join(LOGS_DIR, f"{service_name}.log")
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    out_fh = open(log_file, 'a')
+    kwargs = {}
+    if sys.platform == 'win32':
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    subprocess.Popen([py_exe, script_path], cwd=BASE_DIR, stdout=out_fh, stderr=out_fh, **kwargs)
+    return True, f"{service_name.upper()} service restarted successfully."
+
+def _restart_all_app():
+    def _do_restart():
+        time.sleep(1.5)
+        launcher_path = os.path.join(BASE_DIR, 'launcher.pyw')
+        start_bat = os.path.join(BASE_DIR, 'START_NOC.bat')
+        api_path = os.path.join(BASE_DIR, 'api.py')
+        
+        if _PSUTIL_AVAILABLE:
+            for p in psutil.process_iter(['pid', 'cmdline']):
+                try:
+                    if p.pid == os.getpid():
+                        continue
+                    cmd = ' '.join(p.info.get('cmdline') or []).lower()
+                    if any(s in cmd for s in ('trap_receiver.py', 'syslog_server.py', 'tftp_server.py', 'launcher.pyw')):
+                        p.terminate()
+                except Exception:
+                    pass
+        
+        kwargs = {}
+        if sys.platform == 'win32':
+            flags = subprocess.CREATE_NO_WINDOW
+            if hasattr(subprocess, 'DETACHED_PROCESS'):
+                flags |= subprocess.DETACHED_PROCESS
+            kwargs['creationflags'] = flags
+        
+        if os.path.exists(launcher_path):
+            subprocess.Popen([sys.executable, launcher_path], cwd=BASE_DIR, **kwargs)
+        elif os.path.exists(start_bat):
+            subprocess.Popen(['cmd.exe', '/c', start_bat], cwd=BASE_DIR, **kwargs)
+        else:
+            subprocess.Popen([sys.executable, api_path], cwd=BASE_DIR, **kwargs)
+            for sc in ['trap_receiver.py', 'syslog_server.py', 'tftp_server.py']:
+                p_path = os.path.join(BASE_DIR, sc)
+                if os.path.exists(p_path):
+                    subprocess.Popen([sys.executable, p_path], cwd=BASE_DIR, **kwargs)
+        
+        time.sleep(0.5)
+        os._exit(0)
+        
+    threading.Thread(target=_do_restart, daemon=False).start()
+
+def _shutdown_all_app():
+    def _do_shutdown():
+        time.sleep(1.2)
+        if _PSUTIL_AVAILABLE:
+            for p in psutil.process_iter(['pid', 'cmdline']):
+                try:
+                    if p.pid == os.getpid():
+                        continue
+                    cmd = ' '.join(p.info.get('cmdline') or []).lower()
+                    if any(s in cmd for s in ('trap_receiver.py', 'syslog_server.py', 'tftp_server.py', 'launcher.pyw', 'api.py')):
+                        p.terminate()
+                except Exception:
+                    pass
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_do_shutdown, daemon=False).start()
+
+@app.route('/api/health')
+def health_check():
+    return jsonify({'status': 'ok', 'version': APP_VERSION, 'timestamp': datetime.datetime.now().isoformat()})
+
+@app.route('/api/system/metrics_history')
+@login_required
+def api_metrics_history():
+    return jsonify(list(_METRICS_HISTORY))
+
+@app.route('/api/system/health_detailed')
+@login_required
+def api_health_detailed():
+    latest_sample = _collect_system_metrics()
+    proc_info = _find_script_processes()
+    heartbeats = _get_service_heartbeats()
+    
+    # Check DB Connection
+    db_conn = get_db_connection()
+    db_connected = bool(db_conn)
+    if db_conn:
+        try: db_conn.close()
+        except Exception: pass
+        
+    # Check Disk & App Storage
+    import shutil
+    drive_total_gb = 0.0; drive_used_gb = 0.0; drive_free_gb = 0.0; drive_free_pct = 0.0
+    try:
+        dt, du, df = shutil.disk_usage(BASE_DIR)
+        drive_total_gb = round(dt / (1024**3), 2)
+        drive_used_gb = round(du / (1024**3), 2)
+        drive_free_gb = round(df / (1024**3), 2)
+        drive_free_pct = round((df / dt) * 100, 1) if dt > 0 else 0.0
+    except Exception:
+        pass
+        
+    db_size_bytes = _get_postgres_db_size()
+    logs_size_bytes = _get_dir_size_bytes(LOGS_DIR)
+    backups_size_bytes = _get_dir_size_bytes(BACKUP_DIR)
+    data_size_bytes = _get_dir_size_bytes(DATA_DIR)
+    total_app_storage_mb = round((db_size_bytes + logs_size_bytes + backups_size_bytes + data_size_bytes) / (1024 * 1024), 2)
+    
+    # Port changes detection
+    current_ports = {
+        'api_port': int(getattr(_cfg, 'API_PORT', 5000)),
+        'https_port': int(getattr(_cfg, 'HTTPS_PORT', 5443)),
+        'snmp_port': int(getattr(_cfg, 'SNMP_PORT', 162)),
+        'syslog_port': int(getattr(_cfg, 'SYSLOG_PORT', 5141)),
+        'tftp_port': int(getattr(_cfg, 'TFTP_PORT', 69)),
+    }
+    ports_changed = any(current_ports[k] != INITIAL_PORTS.get(k) for k in current_ports)
+    
+    # Services status breakdown
+    services = [
+        {
+            'key': 'api',
+            'name': 'API and Dashboard Server',
+            'script': 'api.py',
+            'port': f"HTTP {current_ports['api_port']} / HTTPS {current_ports['https_port']}",
+            'protocol': 'TCP',
+            'running': proc_info['api']['running'],
+            'pid': proc_info['api']['pid'],
+            'cpu_percent': proc_info['api']['cpu_percent'],
+            'memory_mb': proc_info['api']['memory_mb'],
+            'uptime_sec': proc_info['api']['uptime_sec'],
+            'last_heartbeat': heartbeats.get('api'),
+            'status': 'healthy' if proc_info['api']['running'] else 'stopped',
+        },
+        {
+            'key': 'snmp',
+            'name': 'SNMP Trap Receiver',
+            'script': 'trap_receiver.py',
+            'port': str(current_ports['snmp_port']),
+            'protocol': 'UDP',
+            'running': proc_info['snmp']['running'],
+            'pid': proc_info['snmp']['pid'],
+            'cpu_percent': proc_info['snmp']['cpu_percent'],
+            'memory_mb': proc_info['snmp']['memory_mb'],
+            'uptime_sec': proc_info['snmp']['uptime_sec'],
+            'last_heartbeat': heartbeats.get('snmp'),
+            'status': 'healthy' if proc_info['snmp']['running'] else 'stopped',
+        },
+        {
+            'key': 'syslog',
+            'name': 'Syslog Server',
+            'script': 'syslog_server.py',
+            'port': str(current_ports['syslog_port']),
+            'protocol': 'UDP',
+            'running': proc_info['syslog']['running'],
+            'pid': proc_info['syslog']['pid'],
+            'cpu_percent': proc_info['syslog']['cpu_percent'],
+            'memory_mb': proc_info['syslog']['memory_mb'],
+            'uptime_sec': proc_info['syslog']['uptime_sec'],
+            'last_heartbeat': heartbeats.get('syslog'),
+            'status': 'healthy' if proc_info['syslog']['running'] else 'stopped',
+        },
+        {
+            'key': 'tftp',
+            'name': 'TFTP Server',
+            'script': 'tftp_server.py',
+            'port': str(current_ports['tftp_port']),
+            'protocol': 'UDP',
+            'running': proc_info['tftp']['running'],
+            'pid': proc_info['tftp']['pid'],
+            'cpu_percent': proc_info['tftp']['cpu_percent'],
+            'memory_mb': proc_info['tftp']['memory_mb'],
+            'uptime_sec': proc_info['tftp']['uptime_sec'],
+            'last_heartbeat': heartbeats.get('tftp'),
+            'status': 'healthy' if proc_info['tftp']['running'] else 'stopped',
+        },
+        {
+            'key': 'postgres',
+            'name': 'PostgreSQL Database',
+            'script': 'PostgreSQL Server',
+            'port': str(_cfg.POSTGRES_CONFIG.get('port', 5432)),
+            'protocol': 'TCP',
+            'running': db_connected,
+            'pid': None,
+            'cpu_percent': 0.0,
+            'memory_mb': 0.0,
+            'uptime_sec': int(time.time() - APP_START_TIME),
+            'last_heartbeat': 'Database Connected' if db_connected else 'Connection Failed',
+            'status': 'healthy' if db_connected else 'down',
+        }
+    ]
+    
+    # Entity Counts
+    counts = {}
+    try:
+        t_row = query_db(TRAP_DB, "SELECT COUNT(*) as count FROM traps")
+        counts['traps'] = t_row[0]['count'] if t_row else 0
+        s_row = query_db(SYSLOG_DB, "SELECT COUNT(*) as count FROM syslog")
+        counts['syslog'] = s_row[0]['count'] if s_row else 0
+        p_row = query_db(PING_DB, "SELECT COUNT(*) as count FROM ping_targets WHERE enabled=1")
+        counts['ping_targets'] = p_row[0]['count'] if p_row else 0
+        tf_row = query_db(TFTP_DB, "SELECT COUNT(*) as count FROM tftp_files")
+        counts['tftp_files'] = tf_row[0]['count'] if tf_row else 0
+        olt_row = query_db(OLT_DB, "SELECT COUNT(*) as count FROM olt_profiles")
+        counts['olt_profiles'] = olt_row[0]['count'] if olt_row else 0
+        al_row = query_db(AUTH_DB, "SELECT COUNT(*) as count FROM alert_rules WHERE enabled=1")
+        counts['alert_rules'] = al_row[0]['count'] if al_row else 0
+    except Exception:
+        pass
+
+    # Diagnostic Analyzer
+    issues = []
+    advisories = []
+    needs_restart = False
+    restart_target = None
+    
+    if not db_connected:
+        issues.append("PostgreSQL database connection is down. Verify PostgreSQL service status.")
+        needs_restart = True
+        restart_target = "all"
+        
+    stopped_svcs = [s['name'] for s in services if s['key'] != 'postgres' and not s['running']]
+    if stopped_svcs:
+        issues.append(f"{', '.join(stopped_svcs)} {'is' if len(stopped_svcs) == 1 else 'are'} currently stopped.")
+        if not needs_restart:
+            needs_restart = True
+            restart_target = 'all' if len(stopped_svcs) > 1 else services[[s['name'] for s in services].index(stopped_svcs[0])]['key']
+            
+    if ports_changed:
+        issues.append("Server ports were modified in Settings. An application restart is required to bind to the new ports.")
+        needs_restart = True
+        restart_target = "all"
+        
+    app_mem = latest_sample.get('app_mem_mb', 0)
+    if app_mem > 1500:
+        issues.append(f"Elevated memory usage detected ({app_mem:.0f} MB). App restart recommended.")
+        if not needs_restart:
+            needs_restart = True
+            restart_target = "all"
+            
+    uptime_days = int((time.time() - APP_START_TIME) / 86400)
+    if uptime_days >= 30:
+        advisories.append(f"Continuous 24/7 uptime active ({uptime_days} days). System is operating normally.")
+        
+    if not issues:
+        verdict = "All SimpleNOC background services, collectors, and PostgreSQL database are running optimally. No restart required."
+        overall_health = "optimal"
+    else:
+        verdict = " | ".join(issues)
+        overall_health = "critical" if not db_connected else "warning"
+        
+    uptime_sec = int(time.time() - APP_START_TIME)
+    uptime_days = uptime_sec // 86400
+    uptime_hours = (uptime_sec % 86400) // 3600
+    uptime_mins = (uptime_sec % 3600) // 60
+    uptime_formatted = f"{uptime_days}d {uptime_hours}h {uptime_mins}m" if uptime_days > 0 else f"{uptime_hours}h {uptime_mins}m"
+
+    headline = "System Optimal" if overall_health == "optimal" else ("System Warning" if overall_health == "warning" else "Action Required")
+    
+    diagnostics = {
+        'headline': headline,
+        'overall_health': overall_health,
+        'overall_status': overall_health,
+        'needs_restart': needs_restart,
+        'restart_target': restart_target or 'all',
+        'verdict': verdict,
+        'issues': issues,
+        'advisories': advisories,
+        'ports_changed': ports_changed,
+    }
+    
+    # Total App Process Memory
+    total_app_mem_mb = sum(s['memory_mb'] for s in services if s.get('memory_mb'))
+    if total_app_mem_mb < app_mem:
+        total_app_mem_mb = app_mem
+
+    services_dict = {}
+    for s in services:
+        k = s['key']
+        services_dict[k] = {
+            'key': k,
+            'name': s['name'],
+            'script': s['script'],
+            'port': s['port'],
+            'protocol': s['protocol'],
+            'running': s['running'],
+            'pids': [s['pid']] if s.get('pid') else [],
+            'cpu_percent': s.get('cpu_percent', 0.0),
+            'memory_rss_mb': s.get('memory_mb', 0.0),
+            'memory_mb': s.get('memory_mb', 0.0),
+            'uptime_sec': s.get('uptime_sec', 0),
+            'uptime_formatted': f"{s.get('uptime_sec', 0)//60}m" if s.get('uptime_sec') else ('Active' if s['running'] else '—'),
+            'last_heartbeat': s.get('last_heartbeat'),
+            'last_heartbeat_ago': str(s.get('last_heartbeat') or '—'),
+            'status': s.get('status', 'healthy')
+        }
+
+    counts_formatted = {
+        'traps': counts.get('traps', 0),
+        'syslog': counts.get('syslog', 0),
+        'ping_targets': counts.get('ping_targets', 0),
+        'tftp_files': counts.get('tftp_files', 0),
+        'tftp_backups': counts.get('tftp_files', 0),
+        'olt_profiles': counts.get('olt_profiles', 0),
+        'alert_rules': counts.get('alert_rules', 0),
+    }
+        
+    return jsonify({
+        'version': APP_VERSION,
+        'uptime_sec': uptime_sec,
+        'uptime': {
+            'seconds': uptime_sec,
+            'formatted': uptime_formatted,
+        },
+        'hostname': platform.node(),
+        'os': f"{platform.system()} {platform.release()}",
+        'python_version': platform.python_version(),
+        'threads_active': threading.active_count(),
+        'overall_status': overall_health,
+        'diagnostic': diagnostics,
+        'diagnostics': diagnostics,
+        'system': {
+            'hostname': platform.node(),
+            'os': f"{platform.system()} {platform.release()}",
+            'cpu_count': os.cpu_count() or 1,
+            'cpu_percent': latest_sample.get('sys_cpu', 0.0),
+            'memory_percent': latest_sample.get('sys_mem_pct', 0.0),
+            'memory_total_mb': latest_sample.get('sys_mem_total_mb', 0.0),
+            'memory_used_mb': latest_sample.get('sys_mem_used_mb', 0.0),
+            'memory_available_mb': latest_sample.get('sys_mem_free_mb', 0.0),
+        },
+        'process': {
+            'pid': os.getpid(),
+            'python_version': platform.python_version(),
+            'threads_count': threading.active_count(),
+            'cpu_percent': latest_sample.get('app_cpu', 0.0),
+            'memory_rss_mb': round(total_app_mem_mb, 1),
+        },
+        'disk': {
+            'drive_total_gb': drive_total_gb,
+            'drive_used_gb': drive_used_gb,
+            'drive_free_gb': drive_free_gb,
+            'drive_percent_free': drive_free_pct,
+            'postgres_db_mb': round(db_size_bytes / (1024 * 1024), 2),
+            'logs_size_mb': round(logs_size_bytes / (1024 * 1024), 2),
+            'backups_size_mb': round(backups_size_bytes / (1024 * 1024), 2),
+            'data_size_mb': round(data_size_bytes / (1024 * 1024), 2),
+            'app_total_mb': total_app_storage_mb,
+            'app_storage_mb': total_app_storage_mb,
+        },
+        'network': {
+            'net_in_rate_kb': latest_sample.get('net_in_rate_kb', 0.0),
+            'net_out_rate_kb': latest_sample.get('net_out_rate_kb', 0.0),
+            'bytes_sent': latest_sample.get('net_bytes_sent', 0),
+            'bytes_recv': latest_sample.get('net_bytes_recv', 0),
+            'packets_sent': latest_sample.get('net_packets_sent', 0),
+            'packets_recv': latest_sample.get('net_packets_recv', 0),
+        },
+        'resources': {
+            'cpu': {
+                'system_percent': latest_sample.get('sys_cpu', 0.0),
+                'app_percent': latest_sample.get('app_cpu', 0.0),
+            },
+            'memory': {
+                'system_percent': latest_sample.get('sys_mem_pct', 0.0),
+                'system_total_mb': latest_sample.get('sys_mem_total_mb', 0.0),
+                'system_used_mb': latest_sample.get('sys_mem_used_mb', 0.0),
+                'system_free_mb': latest_sample.get('sys_mem_free_mb', 0.0),
+                'app_rss_mb': round(total_app_mem_mb, 1),
+                'app_percent': round((total_app_mem_mb / latest_sample['sys_mem_total_mb'] * 100), 2) if latest_sample.get('sys_mem_total_mb') else 0.0,
+            },
+            'disk': {
+                'drive_total_gb': drive_total_gb,
+                'drive_used_gb': drive_used_gb,
+                'drive_free_gb': drive_free_gb,
+                'drive_free_pct': drive_free_pct,
+                'app_db_size_mb': round(db_size_bytes / (1024 * 1024), 2),
+                'app_logs_size_mb': round(logs_size_bytes / (1024 * 1024), 2),
+                'app_backups_size_mb': round(backups_size_bytes / (1024 * 1024), 2),
+                'app_data_size_mb': round(data_size_bytes / (1024 * 1024), 2),
+                'total_app_storage_mb': total_app_storage_mb,
+            },
+            'network': {
+                'bytes_sent': latest_sample.get('net_bytes_sent', 0),
+                'bytes_recv': latest_sample.get('net_bytes_recv', 0),
+                'packets_sent': latest_sample.get('net_packets_sent', 0),
+                'packets_recv': latest_sample.get('net_packets_recv', 0),
+                'in_rate_kb': latest_sample.get('net_in_rate_kb', 0.0),
+                'out_rate_kb': latest_sample.get('net_out_rate_kb', 0.0),
+            }
+        },
+        'services': services_dict,
+        'services_list': services,
+        'counts': counts_formatted,
+        'latest_metrics': latest_sample,
+        'metrics_history': list(_METRICS_HISTORY),
+    })
+
+@app.route('/api/system/restart', methods=['POST'])
+@login_required
+def api_system_restart():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    target = (d.get('target') or 'all').strip().lower()
+    
+    if target in ('all', 'api', 'app'):
+        _restart_all_app()
+        return jsonify({
+            'success': True,
+            'target': 'all',
+            'reconnecting_in': 6,
+            'message': 'SimpleNOC application stack is restarting. Automatic reconnection will occur shortly.'
+        })
+    elif target in ('snmp', 'syslog', 'tftp'):
+        ok, msg = _restart_single_service(target)
+        if ok:
+            return jsonify({'success': True, 'target': target, 'message': msg})
+        else:
+            return jsonify({'success': False, 'error': msg}), 400
+    else:
+        return jsonify({'error': f'Invalid restart target: {target}'}), 400
+
+@app.route('/api/system/shutdown', methods=['POST'])
+@login_required
+def api_system_shutdown():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    _shutdown_all_app()
+    return jsonify({
+        'success': True,
+        'message': 'SimpleNOC application is shutting down all services.'
+    })
+
+@app.route('/api/system/service_action', methods=['POST'])
+@login_required
+def api_system_service_action():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    action = (d.get('action') or '').strip().lower()
+    service = (d.get('service') or '').strip().lower()
+    
+    if service not in ('snmp', 'syslog', 'tftp', 'api', 'all'):
+        return jsonify({'error': 'Invalid service'}), 400
+        
+    if action == 'restart':
+        if service in ('all', 'api'):
+            _restart_all_app()
+            return jsonify({'success': True, 'target': 'all', 'reconnecting_in': 6, 'message': 'Restarting SimpleNOC...'})
+        else:
+            ok, msg = _restart_single_service(service)
+            return jsonify({'success': ok, 'message': msg})
+    elif action == 'stop':
+        if service in ('all', 'api'):
+            _shutdown_all_app()
+            return jsonify({'success': True, 'message': 'Shutting down SimpleNOC...'})
+        else:
+            script_map = {'snmp': 'trap_receiver.py', 'syslog': 'syslog_server.py', 'tftp': 'tftp_server.py'}
+            script = script_map.get(service)
+            if _PSUTIL_AVAILABLE and script:
+                for p in psutil.process_iter(['pid', 'cmdline']):
+                    try:
+                        cmd = ' '.join(p.info.get('cmdline') or []).lower()
+                        if script.lower() in cmd:
+                            p.terminate()
+                    except Exception: pass
+            return jsonify({'success': True, 'message': f'{service.upper()} service stopped.'})
+    else:
+        return jsonify({'error': 'Invalid action'}), 400
+
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
 @app.route('/')
 @login_required
@@ -1101,9 +2056,9 @@ def all_syslog():
     h = request.args.get('olt_hostname')
     if h:
         return jsonify(query_db(SYSLOG_DB,
-            "SELECT * FROM syslog WHERE olt_hostname=? ORDER BY timestamp DESC LIMIT 200", (h,)))
+            "SELECT * FROM syslog WHERE olt_hostname=? AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) ORDER BY timestamp DESC LIMIT 200", (h,)))
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT * FROM syslog ORDER BY timestamp DESC LIMIT 200"))
+        "SELECT * FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) ORDER BY timestamp DESC LIMIT 200"))
 
 @app.route('/api/syslog/events')
 @login_required
@@ -1113,7 +2068,8 @@ def syslog_events():
         'UPLINK_UP','UPLINK_DOWN',
         'USER_LOGIN','USER_LOGOUT','LOGIN_FAILED',
         'OLT_COLD_START','OLT_WARM_START','OLT_REBOOT',
-        'CONFIG_CHANGE','CONFIG_SAVE')"""
+        'CONFIG_CHANGE','CONFIG_SAVE')
+        AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1)"""
     params = ()
     h = request.args.get('olt_hostname')
     if h:
@@ -1139,7 +2095,8 @@ def syslog_onu_events():
     # ONU-level events — kept separate
     sql = """SELECT * FROM syslog WHERE event_tag IN (
         'ONU_ONLINE','ONU_OFFLINE','ONU_DYING_GASP',
-        'ONU_REGISTER','ONU_DEREGISTER','ONU_BIP8_ERR','ONU_LOS')"""
+        'ONU_REGISTER','ONU_DEREGISTER','ONU_BIP8_ERR','ONU_LOS')
+        AND olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1)"""
     params = ()
     h = request.args.get('olt_hostname')
     if h:
@@ -1152,13 +2109,13 @@ def syslog_onu_events():
 @login_required
 def syslog_summary():
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT event_tag,COUNT(*) as count FROM syslog GROUP BY event_tag ORDER BY count DESC"))
+        "SELECT event_tag,COUNT(*) as count FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) GROUP BY event_tag ORDER BY count DESC"))
 
 @app.route('/api/syslog/severity')
 @login_required
 def syslog_severity():
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT severity,COUNT(*) as count FROM syslog GROUP BY severity ORDER BY severity_num"))
+        "SELECT severity,severity_num,COUNT(*) as count FROM syslog WHERE olt_hostname IN (SELECT olt_hostname FROM syslog_devices WHERE authorized=1) GROUP BY severity,severity_num ORDER BY severity_num"))
 
 # ── ONU HISTORY ───────────────────────────────────────────────────────────────
 @app.route('/api/onu/history')
@@ -1188,6 +2145,39 @@ def rename_syslog_device():
         return jsonify({'error': 'olt_hostname and name required'}), 400
     execute_db(SYSLOG_DB,
         "UPDATE syslog_devices SET name=? WHERE olt_hostname=?", (d['name'], key))
+    return jsonify({'success': True})
+
+@app.route('/api/syslog/devices/authorize', methods=['POST'])
+@login_required
+def authorize_syslog_device():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    hostname = d.get('olt_hostname')
+    status = d.get('authorized')
+    if not hostname or status is None:
+        return jsonify({'error': 'olt_hostname and authorized status required'}), 400
+    try:
+        status_val = int(status)
+    except ValueError:
+        return jsonify({'error': 'Invalid authorized status'}), 400
+    execute_db(SYSLOG_DB,
+        "UPDATE syslog_devices SET authorized=? WHERE olt_hostname=?", (status_val, hostname))
+    return jsonify({'success': True})
+
+@app.route('/api/syslog/devices/delete', methods=['POST'])
+@login_required
+def delete_syslog_device():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    hostname = d.get('olt_hostname')
+    if not hostname:
+        return jsonify({'error': 'olt_hostname required'}), 400
+    # Delete from syslog_devices
+    execute_db(SYSLOG_DB, "DELETE FROM syslog_devices WHERE olt_hostname=?", (hostname,))
+    # Delete associated logs from syslog table
+    execute_db(SYSLOG_DB, "DELETE FROM syslog WHERE olt_hostname=?", (hostname,))
     return jsonify({'success': True})
 
 # ── PING ENGINE ───────────────────────────────────────────────────────────────
@@ -1269,6 +2259,8 @@ def ping_db_writer():
                     current_status = current_rows[0].get('status') or ''
                     current_name = current_rows[0].get('name') or ip
                     if current_status == 'offline' and prev_status != 'offline':
+                        process_ping_alert(current_name, ip, current_status, now)
+                    elif current_status == 'online' and prev_status == 'offline':
                         process_ping_alert(current_name, ip, current_status, now)
         except __import__('queue').Empty:
             continue
@@ -1407,9 +2399,24 @@ def test_email():
         return jsonify({'success': False, 'error': 'SMTP password is empty. Save email config first.'})
     if not ec.get('enabled'):
         return jsonify({'success': False, 'error': 'Email is DISABLED. Check the Enabled box and save config.'})
-    sent, err = send_email(to,
-        '[SNOC] Test Alert',
-        'This is a test alert from SNOC v0.5.6.0\nEmail alerts are working correctly.')
+    
+    from alert_engine import generate_html_email
+    status_info = {
+        'dot': '🟢',
+        'status': 'ONLINE / TEST',
+        'color_hex': '#28a745',
+        'badge_bg': '#d4edda',
+        'badge_color': '#155724',
+        'is_healthy': True,
+    }
+    now_str = datetime.datetime.now().isoformat()
+    html_body = generate_html_email(
+        'Test Alert Rule', 'Smart NOC Server', '127.0.0.1', now_str,
+        'This is a test alert from Smart NOC. Email alerts and status dot indicators are working correctly.',
+        'info', status_info
+    )
+    plain_body = f"🟢 Smart NOC Test Alert\nStatus: ONLINE\nTime: {now_str}\nMessage: Email alerts and status dot indicators are working correctly."
+    sent, err = send_email(to, '🟢 [Smart NOC] Test Alert - System Online', plain_body, html_body=html_body)
     return jsonify({'success': sent, 'error': err if not sent else 'Email sent! Check your inbox.'})
 
 @app.route('/api/alerts/email_diag')
@@ -1483,9 +2490,69 @@ def test_telegram():
     if not cur.get('chat_id'):
         return jsonify({'success': False, 'error': 'Chat ID is empty. Save Telegram config first.'})
 
-    text = f"[SNOC] Test Alert\nTelegram alerts are working.\nTime: {datetime.datetime.now().isoformat()}"
+    text = f"<b>🟢 [ONLINE] Smart NOC Test Alert</b>\n\nTelegram notifications and status indicators are working correctly.\n<b>Time:</b> {datetime.datetime.now().isoformat()}"
     sent, err = send_telegram(cur.get('bot_token', ''), cur.get('chat_id', ''), text)
     return jsonify({'success': sent, 'error': err if not sent else 'Telegram message sent!'})
+
+@app.route('/api/alerts/discord_config', methods=['GET'])
+@login_required
+def get_discord_cfg():
+    d = get_discord_config() or {}
+    webhook = d.get('webhook_url', '') or ''
+    safe = webhook[:15] + '...' + webhook[-10:] if len(webhook) > 30 else webhook
+    return jsonify({
+        'webhook_url': safe if webhook else '',
+        'enabled': bool(d.get('enabled')),
+        'webhook_set': bool(webhook),
+    })
+
+
+@app.route('/api/alerts/discord_config', methods=['POST'])
+@login_required
+def save_discord_cfg():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    webhook_url = (d.get('webhook_url') or '').strip()
+    enabled = 1 if d.get('enabled') else 0
+
+    if '...' in webhook_url:
+        cur = get_discord_config() or {}
+        webhook_url = cur.get('webhook_url', '') or ''
+
+    execute_db(
+        AUTH_DB,
+        "UPDATE discord_config SET webhook_url=?, enabled=? WHERE id=1",
+        (webhook_url, enabled),
+    )
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/test_discord', methods=['POST'])
+@login_required
+def test_discord():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    cur = get_discord_config() or {}
+    if not cur.get('enabled'):
+        return jsonify({'success': False, 'error': 'Discord is DISABLED. Enable it and save config.'})
+    if not cur.get('webhook_url'):
+        return jsonify({'success': False, 'error': 'Webhook URL is empty. Save Discord config first.'})
+
+    now_str = datetime.datetime.now().isoformat()
+    embed = {
+        "title": "🟢 [ONLINE] Smart NOC Test Alert",
+        "description": "Discord webhook notifications and visual status indicators are working correctly.",
+        "color": 0x28A745,
+        "fields": [
+            {"name": "Status", "value": "🟢 ONLINE / HEALTHY", "inline": True},
+            {"name": "Severity", "value": "INFO", "inline": True},
+            {"name": "Timestamp", "value": now_str, "inline": True}
+        ],
+        "footer": {"text": "Smart NOC Network Operations Center"}
+    }
+    sent, err = send_discord(cur.get('webhook_url', ''), "", embed=embed)
+    return jsonify({'success': sent, 'error': err if not sent else 'Discord message sent!'})
 
 @app.route('/api/alerts/rules', methods=['GET'])
 @login_required
@@ -1523,6 +2590,33 @@ def delete_alert_rule():
     if not rule_id:
         return jsonify({'error': 'id required'}), 400
     execute_db(AUTH_DB, "DELETE FROM alert_rules WHERE id=?", (rule_id,))
+    return jsonify({'success': True})
+
+@app.route('/api/alerts/rules/edit', methods=['POST'])
+@login_required
+def edit_alert_rule():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    rule_id = d.get('id')
+    name = (d.get('name') or '').strip()
+    source_type = (d.get('source_type') or 'syslog').strip()
+    host_match = (d.get('host_match') or '').strip()
+    exclude_hosts = (d.get('exclude_hosts') or '').strip()
+    text_match = (d.get('text_match') or '').strip()
+    to_email = (d.get('to_email') or '').strip()
+    notify_via = (d.get('notify_via') or 'both').strip()
+
+    if not rule_id:
+        return jsonify({'error': 'id required'}), 400
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if source_type == 'syslog' and not text_match:
+        return jsonify({'error': 'text_match required for syslog alerts'}), 400
+
+    execute_db(AUTH_DB, """UPDATE alert_rules SET
+        name=?, source_type=?, host_match=?, exclude_hosts=?, text_match=?, to_email=?, notify_via=?
+        WHERE id=?""", (name, source_type, host_match, exclude_hosts, text_match, to_email, notify_via, rule_id))
     return jsonify({'success': True})
 
 @app.route('/api/alerts/rules/toggle', methods=['POST'])
@@ -1628,7 +2722,7 @@ def delete_mac_mapping():
 def tftp_syslog_devices():
     # Return syslog devices for hostname dropdown in MAC mapping
     return jsonify(query_db(SYSLOG_DB,
-        "SELECT olt_hostname, name, source_ip FROM syslog_devices ORDER BY olt_hostname"))
+        "SELECT olt_hostname, name, source_ip FROM syslog_devices WHERE authorized=1 ORDER BY olt_hostname"))
 
 # ── BACKUP & RESTORE ──────────────────────────────────────────────────────────
 @app.route('/api/backup/download')
@@ -2172,11 +3266,14 @@ def get_uplink_latest():
 @app.route('/api/olt/onu_summary', methods=['GET'])
 @login_required
 def get_onu_summary():
-    ip   = request.args.get('ip', '')
-
-
-threading.Thread(target=olt_job_scheduler, daemon=True).start()
-threading.Thread(target=retention_cleanup_worker, daemon=True).start()
+    ip = request.args.get('ip', '')
+    if ip:
+        rows = query_db(OLT_DB, "SELECT COUNT(*) as total, SUM(CASE WHEN online=1 THEN 1 ELSE 0 END) as online FROM onu_data WHERE olt_ip=?", (ip,))
+    else:
+        rows = query_db(OLT_DB, "SELECT COUNT(*) as total, SUM(CASE WHEN online=1 THEN 1 ELSE 0 END) as online FROM onu_data")
+    total = rows[0]['total'] if rows else 0
+    online = rows[0]['online'] if rows and rows[0]['online'] is not None else 0
+    return jsonify({'total': total, 'online': online, 'offline': max(0, total - online)})
 
 
 if __name__ == '__main__':
@@ -2249,7 +3346,7 @@ if __name__ == '__main__':
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
-                srv = make_server("0.0.0.0", http_port, target_app)
+                srv = make_server("0.0.0.0", http_port, target_app, threaded=True)
                 print(label)
                 srv.serve_forever()
                 return
@@ -2269,7 +3366,7 @@ if __name__ == '__main__':
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
-                srv = make_server("0.0.0.0", https_port, app, ssl_context=ssl_ctx)
+                srv = make_server("0.0.0.0", https_port, app, ssl_context=ssl_ctx, threaded=True)
                 print(f"[HTTPS] Dashboard https://localhost:{https_port}")
                 srv.serve_forever()
                 return

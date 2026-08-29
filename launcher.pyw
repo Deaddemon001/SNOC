@@ -1,15 +1,15 @@
 """
-SimpleNOC Launcher
+Smart NOC Launcher
 Double-click to start all services. Close window to quit.
 """
-import subprocess, sys, os, threading, time, webbrowser
+import subprocess, sys, os, threading, time, webbrowser, json, urllib.request, ssl
 import noc_config as cfg
 import tkinter as tk
 from tkinter import messagebox
 
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 PYTHON      = sys.executable
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.0")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.4")
 DASHBOARD_URL = (
     f"https://localhost:{cfg.HTTPS_PORT}"
     if getattr(cfg, "HTTPS_PORT", 0)
@@ -29,7 +29,8 @@ processes = {}
 def remove_conflicting_tasks():
     """Remove any scheduled tasks that cause CMD windows to flash"""
     try:
-        for task in ["SimpleNOC-API", "SimpleNOC-SNMP", "SimpleNOC-Syslog"]:
+        for task in ["SmartNOC-API", "SmartNOC-SNMP", "SmartNOC-Syslog",
+                     "SimpleNOC-API", "SimpleNOC-SNMP", "SimpleNOC-Syslog"]:
             subprocess.run(
                 ['schtasks', '/Delete', '/TN', task, '/F'],
                 capture_output=True,
@@ -90,14 +91,16 @@ def stop_all():
 class NOCApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("SimpleNOC v" + APP_VERSION)
+        self.root.title("Smart NOC v" + APP_VERSION)
         self.root.geometry("380x420")
         self.root.resizable(False, False)
         self.root.configure(bg="#0a1520")
         self.root.protocol("WM_DELETE_WINDOW", self.on_quit)
 
+        self.consecutive_hangs = {}
+
         # Header
-        tk.Label(self.root, text="Simple NOC",
+        tk.Label(self.root, text="Smart NOC",
                  font=("Courier New", 18, "bold"),
                  fg="#00e5ff", bg="#0a1520").pack(pady=(18, 0))
         tk.Label(self.root, text="v" + APP_VERSION + " - Network Operations Center",
@@ -174,12 +177,39 @@ class NOCApp:
 
     def update_status(self):
         running_count = 0
-        for name, _ in SERVICES:
+        for name, script in SERVICES:
             lbl = self.service_labels[name]
             is_running = name in processes and processes[name].poll() is None
+            
             if is_running:
-                lbl.config(fg="#39ff14") # Lime Green
-                running_count += 1
+                if name == "API and Dashboard":
+                    # For API, also check responsiveness
+                    try:
+                        health_url = f"{DASHBOARD_URL}/api/health"
+                        ctx = ssl.create_default_context()
+                        ctx.check_hostname = False
+                        ctx.verify_mode = ssl.CERT_NONE
+                        with urllib.request.urlopen(health_url, timeout=2, context=ctx) as r:
+                            if r.getcode() == 200:
+                                lbl.config(fg="#39ff14") # Green - Responsive
+                                running_count += 1
+                                self.consecutive_hangs[name] = 0
+                            else:
+                                lbl.config(fg="#ffd60a") # Yellow - Unresponsive (bad code)
+                                self.consecutive_hangs[name] = self.consecutive_hangs.get(name, 0) + 1
+                    except Exception:
+                        lbl.config(fg="#ffd60a") # Yellow - Unresponsive (timeout/error)
+                        self.consecutive_hangs[name] = self.consecutive_hangs.get(name, 0) + 1
+                    
+                    # Auto-restart if hanging for too long (approx 30s)
+                    if self.consecutive_hangs.get(name, 0) >= 6:
+                        print(f"[LAUNCHER] Service {name} is hung. Auto-restarting...")
+                        stop_service(name)
+                        start_service(name, script)
+                        self.consecutive_hangs[name] = 0
+                else:
+                    lbl.config(fg="#39ff14") # Lime Green
+                    running_count += 1
             else:
                 lbl.config(fg="#ff2d55") # Pink Red
         
@@ -213,7 +243,7 @@ class NOCApp:
             self.start_btn.config(state="normal")
             self.stop_btn.config(state="normal")
             
-        self.root.after(2000, self.update_status)
+        self.root.after(5000, self.update_status)
 
     def auto_start(self):
         remove_conflicting_tasks()
@@ -230,8 +260,8 @@ class NOCApp:
 
     def on_quit(self):
         result = messagebox.askyesno(
-            "Quit SimpleNOC",
-            "Stop all services and quit SimpleNOC?",
+            "Quit Smart NOC",
+            "Stop all services and quit Smart NOC?",
             icon="warning"
         )
         if result:

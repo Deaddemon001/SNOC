@@ -1,5 +1,5 @@
 """
-SimpleNOC v0.5.5.1 - Syslog Server
+Smart NOC v0.5.6.4 - Syslog Server
 Listens on UDP port defined in noc_config.py (default 514)
 Change SYSLOG_PORT in noc_config.py to use a custom port
 """
@@ -132,7 +132,15 @@ def init_db(path=None):
     execute_db(path, '''CREATE TABLE IF NOT EXISTS syslog_devices (
         olt_hostname TEXT PRIMARY KEY, source_ip TEXT, olt_id TEXT,
         name TEXT, last_seen TEXT, status TEXT DEFAULT 'unknown',
-        olt_mac TEXT DEFAULT '')''')
+        olt_mac TEXT DEFAULT '',
+        authorized INTEGER DEFAULT 0)''')
+
+    try:
+        execute_db(path, "ALTER TABLE syslog_devices ADD COLUMN authorized INTEGER DEFAULT 0")
+        execute_db(path, "UPDATE syslog_devices SET authorized = 1")
+    except Exception:
+        pass
+
 
     execute_db(path, '''CREATE TABLE IF NOT EXISTS mac_mapping (
         olt_mac      TEXT PRIMARY KEY,
@@ -247,10 +255,21 @@ def offline_checker():
         time.sleep(30)
         write_queue.put(('offline',))
 
+def heartbeat_worker(service_name):
+    """Log a heartbeat message every 5 minutes."""
+    while True:
+        try:
+            now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print(f"[{now}] [HEARTBEAT] {service_name} is running healthy.")
+        except Exception:
+            pass
+        time.sleep(300)
+
 def start():
     init_db()
     threading.Thread(target=db_writer,       daemon=True).start()
     threading.Thread(target=offline_checker,  daemon=True).start()
+    threading.Thread(target=heartbeat_worker, args=("Syslog Server",), daemon=True).start()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -300,7 +319,7 @@ def start():
             try:
                 process_alert(hostname, parsed['message'], parsed['timestamp'])
             except Exception as ae:
-                pass
+                print(f"[SYSLOG ALERT ERROR] {ae}")
         except KeyboardInterrupt:
             write_queue.put(None)
             break
