@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <main>
     <div class="srow" style="grid-template-columns:repeat(5,minmax(0,1fr))">
       <div class="sc g"><div class="sl">OLT Profiles</div><div class="sv">{{ profiles.length }}</div><div class="ss">configured</div></div>
@@ -124,7 +124,8 @@
           <label class="flabel">UPLINK PORT</label>
           <select v-model="job.selected_ports" class="finp"><option value="">Saved profile ports</option></select>
         </div>
-        <button class="rb" style="padding:9px 16px" @click="addJob">+ Save Schedule</button>
+        <button class="rb" style="padding:9px 16px" @click="saveJob">{{ editJobId ? 'Update Schedule' : '+ Save Schedule' }}</button>
+        <button v-if="editJobId" class="ubtn" style="padding:9px 16px" @click="cancelJobEdit">Cancel Edit</button>
       </div>
       <StatusMessage :msg="jobMsg" :ok="jobOk" />
       <div class="tw">
@@ -132,7 +133,7 @@
           <thead><tr><th>OLT</th><th>Poll Type</th><th>Mode</th><th>Start</th><th>Interval</th><th>Enabled</th><th>Last Run</th><th v-if="auth.isAdmin">Actions</th></tr></thead>
           <tbody>
             <tr v-if="!jobs.length"><td :colspan="auth.isAdmin ? 8 : 7"><div class="empty">No automatic polls configured.</div></td></tr>
-            <tr v-for="j in jobs" :key="j.id">
+            <tr v-for="j in jobs" :key="j.id" :style="editJobId === String(j.id) ? { background: 'rgba(0,229,255,0.06)' } : {}">
               <td>{{ jobOltName(j) }}</td>
               <td><span class="b bc">{{ j.poll_type }}</span></td>
               <td>{{ j.run_mode === 'once' ? 'One Time' : 'Repeated' }}</td>
@@ -141,6 +142,7 @@
               <td><span class="b" :class="j.enabled ? 'bg' : 'bx'">{{ j.enabled ? 'ACTIVE' : 'PAUSED' }}</span></td>
               <td style="font-size:11px">{{ j.last_run ? new Date(j.last_run).toLocaleString() : 'Never' }}</td>
               <td v-if="auth.isAdmin" style="white-space:nowrap">
+                <button class="ubtn" style="padding:2px 8px;font-size:10px;margin-right:4px" @click="startJobEdit(j)">Edit</button>
                 <button class="ubtn" style="padding:2px 8px;font-size:10px;margin-right:4px" @click="toggleJob(j)">{{ j.enabled ? 'Pause' : 'Resume' }}</button>
                 <button class="lbtn" style="padding:2px 8px;font-size:10px" @click="deleteJob(j)">Del</button>
               </td>
@@ -204,7 +206,9 @@ const emptyForm = () => ({
 })
 const form = reactive(emptyForm())
 
-const job = ref({ profile_id: '', poll_type: 'onu', run_mode: 'repeat', start_at: '', interval_min: '60', selected_ports: '' })
+const emptyJob = () => ({ profile_id: '', poll_type: 'onu', run_mode: 'repeat', start_at: '', interval_min: '60', selected_ports: '' })
+const job = ref(emptyJob())
+const editJobId = ref('')
 
 const profileMsg = ref(''); const profileOk = ref(false)
 const actionMsg = ref(''); const actionOk = ref(false)
@@ -367,7 +371,24 @@ async function pollUplink(p) {
 
 function onJobTypeChange() { /* port select shows saved profile ports */ }
 
-async function addJob() {
+function startJobEdit(j) {
+  editJobId.value = String(j.id)
+  job.value = {
+    profile_id: String(j.profile_id),
+    poll_type: j.poll_type || 'onu',
+    run_mode: j.run_mode || 'repeat',
+    start_at: j.start_at ? j.start_at.slice(0, 16) : '',
+    interval_min: String(j.interval_min || 60),
+    selected_ports: j.selected_ports || ''
+  }
+}
+
+function cancelJobEdit() {
+  editJobId.value = ''
+  job.value = emptyJob()
+}
+
+async function saveJob() {
   const body = { ...job.value }
   if (!body.profile_id) { flash(jobMsg, jobOk, 'Select an OLT profile first.', false); return }
   if (!body.start_at) {
@@ -375,9 +396,16 @@ async function addJob() {
     body.start_at = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   }
   try {
-    const r = await apiPost('/api/olt/jobs/add', body)
-    if (r.success) { flash(jobMsg, jobOk, 'Automatic poll saved.', true); loadJobs() }
-    else flash(jobMsg, jobOk, 'Error: ' + (r.error || 'Failed to save job'), false)
+    const url = editJobId.value ? '/api/olt/jobs/update' : '/api/olt/jobs/add'
+    const payload = editJobId.value ? { ...body, id: editJobId.value } : body
+    const r = await apiPost(url, payload)
+    if (r.success) {
+      flash(jobMsg, jobOk, editJobId.value ? 'Automatic poll schedule updated.' : 'Automatic poll saved.', true)
+      cancelJobEdit()
+      loadJobs()
+    } else {
+      flash(jobMsg, jobOk, 'Error: ' + (r.error || 'Failed to save job'), false)
+    }
   } catch (e) { flash(jobMsg, jobOk, 'Request failed: ' + e.message, false) }
 }
 

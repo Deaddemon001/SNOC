@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
 import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64
@@ -2990,7 +2991,7 @@ def add_olt_job():
     selected_ports = (d.get('selected_ports') or '').strip()
     if not profile_id:
         return jsonify({'error': 'profile_id required'}), 400
-    if poll_type not in ('full', 'uplink'):
+    if poll_type not in ('full', 'uplink', 'onu'):
         return jsonify({'error': 'invalid poll_type'}), 400
     if run_mode not in ('once', 'repeat'):
         return jsonify({'error': 'invalid run_mode'}), 400
@@ -3045,6 +3046,55 @@ def delete_olt_job():
     execute_db(OLT_DB, "DELETE FROM olt_poll_jobs WHERE id=?", (job_id,))
     return jsonify({'success': True})
 
+
+@app.route('/api/olt/jobs/update', methods=['POST'])
+@login_required
+def update_olt_job():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    job_id = d.get('id')
+    if not job_id:
+        return jsonify({'error': 'id required'}), 400
+    rows = query_db(OLT_DB, "SELECT * FROM olt_poll_jobs WHERE id=?", (job_id,))
+    if not rows:
+        return jsonify({'error': 'Job not found'}), 404
+    job = rows[0]
+
+    profile_id = d.get('profile_id', job['profile_id'])
+    poll_type = (d.get('poll_type') or job['poll_type']).strip().lower()
+    run_mode = (d.get('run_mode') or job['run_mode']).strip().lower()
+    start_at = (d.get('start_at') or job['start_at'] or '').strip()
+    interval_min = int(d.get('interval_min', job['interval_min']) or 60)
+    selected_ports = (d.get('selected_ports') if 'selected_ports' in d else job['selected_ports'] or '').strip()
+
+    if poll_type not in ('full', 'uplink', 'onu'):
+        return jsonify({'error': 'invalid poll_type'}), 400
+    if run_mode not in ('once', 'repeat'):
+        return jsonify({'error': 'invalid run_mode'}), 400
+
+    profiles = query_db(OLT_DB, "SELECT id,name,ip FROM olt_profiles WHERE id=?", (profile_id,))
+    if not profiles:
+        return jsonify({'error': 'Profile not found'}), 404
+    profile = profiles[0]
+
+    next_run = job['next_run']
+    if job['enabled']:
+        if run_mode == 'once':
+            start_dt = _parse_dt(start_at) or datetime.datetime.now()
+            next_run = start_dt.replace(microsecond=0).isoformat()
+        else:
+            base = job['last_run'] or start_at or _now_iso()
+            next_run = _compute_job_next_run('repeat', interval_min, base)
+
+    execute_db(OLT_DB, """UPDATE olt_poll_jobs
+                    SET profile_id=?, profile_name=?, profile_ip=?, poll_type=?, run_mode=?, start_at=?, interval_min=?, selected_ports=?, next_run=?
+                    WHERE id=?""",
+                 (profile['id'], profile['name'] or profile['ip'], profile['ip'], poll_type, run_mode,
+                  start_at, interval_min, selected_ports, next_run, job_id))
+    return jsonify({'success': True})
+
+
 @app.route('/api/olt/poll', methods=['POST'])
 @login_required
 def poll_olt_now():
@@ -3072,7 +3122,7 @@ def poll_olt_now():
 @app.route('/api/olt/poll_onu', methods=['POST'])
 @login_required
 def poll_onu_only():
-    """Poll ONU info only — fast, no uplink commands."""
+    """Poll ONU info only - fast, no uplink commands."""
     d   = request.json or {}
     pid = d.get('id')
     if not pid:
@@ -3107,7 +3157,7 @@ def get_olt_poll_progress_route():
 def poll_uplink_only():
     """Poll one or more uplink interfaces only.
     Body: { id: <profile_id>, interfaces: ['gigabitethernet 0/1', ...] }
-    If interfaces is omitted, uses the profile's saved uplink_ports.
+    If interfaces is omitted, uses the profiles saved uplink_ports.
     """
     d   = request.json or {}
     pid = d.get('id')

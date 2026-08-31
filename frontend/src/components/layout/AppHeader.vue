@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <header>
     <div class="logo">
       <h1>SMART NOC</h1>
@@ -7,6 +7,7 @@
     <div class="hright">
       <div class="live-pill"><span class="dot"></span>LIVE</div>
       <div class="upd">{{ lastUpdate }}</div>
+      <button class="ubtn legacy-btn" title="Switch to Legacy UI" @click="switchToLegacy">&#9194; Legacy UI</button>
       <button class="rbtn" title="Refresh all data" @click="$emit('refresh')">&#8634; Refresh</button>
       <button class="ubtn" title="Settings" @click="$emit('open-settings')">&#9881; Settings</button>
       <div class="userinfo">
@@ -45,6 +46,7 @@ function tick() {
 
 function goUsers() { router.push('/users') }
 function doLogout() { auth.logout() }
+function switchToLegacy() { window.location.href = '/?legacy=1' }
 
 onMounted(() => {
   tick()

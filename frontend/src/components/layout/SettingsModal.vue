@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="modal-overlay show" @click.self="$emit('close')">
     <div class="modal-panel" style="max-width:640px">
       <h3>&#9881; Settings</h3>
@@ -57,6 +57,12 @@
           <button class="ubtn" @click="openRestart('all')">&#x21BB; Restart Smart NOC</button>
           <button class="lbtn" @click="openShutdown">&#x1F6D1; Shutdown Smart NOC</button>
         </div>
+      </div>
+
+      <div class="set-section">
+        <h4>UI Version</h4>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Switch to the classic vanilla-JS single-file dashboard.</p>
+        <button class="ubtn" @click="switchToLegacy">&#9194; Switch to Legacy Version</button>
       </div>
 
       <div class="modal-actions">
@@ -154,6 +160,10 @@ async function saveTimeout() {
     timeoutMsg.value = r && r.success ? 'Session timeout saved.' : (r.error || 'Save failed')
     timeoutOk.value = !!(r && r.success)
   } catch (e) { timeoutMsg.value = e.message; timeoutOk.value = false }
+}
+
+function switchToLegacy() {
+  window.location.href = '/?legacy=1'
 }
 
 onMounted(async () => {
