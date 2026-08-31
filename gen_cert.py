@@ -68,7 +68,7 @@ def generate_self_signed_cert(cert_path, key_path, hostname="localhost"):
 def ensure_ssl_cert(base_dir):
     """
     Ensure SSL cert + key exist in <base_dir>/data/ssl/.
-    Generates them automatically if missing.
+    Validates they can be loaded by SSLContext; regenerates them automatically if missing or invalid.
     Returns (cert_path, key_path).
     """
     ssl_dir   = os.path.join(base_dir, "data", "ssl")
@@ -76,10 +76,16 @@ def ensure_ssl_cert(base_dir):
     key_path  = os.path.join(ssl_dir, "key.pem")
 
     if os.path.exists(cert_path) and os.path.exists(key_path):
-        print(f"[SSL] Using existing certificate: {cert_path}")
-        return cert_path, key_path
+        import ssl
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            print(f"[SSL] Using existing certificate: {cert_path}")
+            return cert_path, key_path
+        except Exception as e:
+            print(f"[SSL] Existing certificate invalid ({e}) - regenerating...")
 
-    print("[SSL] No certificate found — generating self-signed cert...")
+    print("[SSL] Generating fresh self-signed cert...")
     return generate_self_signed_cert(cert_path, key_path)
 
 
