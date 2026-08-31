@@ -1,5 +1,5 @@
 """
-Smart NOC v0.5.6.4 - Alert Engine
+Smart NOC v0.5.6.6 - Alert Engine
 Monitors syslog messages and ping state changes, then sends email, Discord, and Telegram alerts based on rules.
 Rules: if Host = X AND message contains Y -> send alert via configured channels.
 """
@@ -56,7 +56,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[Smart NOC Alert] {rule_name} - {olt_host}'
-        default_body = 'Smart NOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
+        default_body = 'Smart NOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.6'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -374,7 +374,7 @@ def get_email_template():
     rows = query_db(ALERT_DB, "SELECT subject, body FROM email_template WHERE id=1")
     if rows:
         return rows[0]['subject'], rows[0]['body']
-    return '{status_dot} [Smart NOC Alert] {rule_name} - {olt_host}', '{status_dot} Smart NOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
+    return '{status_dot} [Smart NOC Alert] {rule_name} - {olt_host}', '{status_dot} Smart NOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.6'
 
 
 def save_email_template(subject, body):

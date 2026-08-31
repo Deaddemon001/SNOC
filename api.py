@@ -67,7 +67,7 @@ def _decrypt_field(ciphertext: str) -> str:
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.4')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.6')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
@@ -250,6 +250,7 @@ def run_olt_job(job_id):
                           error=error or '')
 
 def olt_job_scheduler():
+    print("[OLT JOBS] Scheduler worker started.")
     while True:
         try:
             now_iso = _now_iso()
@@ -257,10 +258,15 @@ def olt_job_scheduler():
                                        WHERE enabled=1 AND next_run IS NOT NULL AND next_run<=?
                                        ORDER BY next_run ASC, id ASC""", (now_iso,))
             for job in due_jobs:
-                run_olt_job(job['id'])
+                try:
+                    run_olt_job(job['id'])
+                except Exception as ex:
+                    print(f"[OLT JOBS] Error running job {job.get('id')}: {ex}")
         except Exception as e:
             print(f"[OLT JOBS] Scheduler error: {e}")
         time.sleep(15)
+
+threading.Thread(target=olt_job_scheduler, daemon=True, name="olt-job-scheduler").start()
 
 
 # Database functions are now imported from noc_config
@@ -808,6 +814,9 @@ def heartbeat_worker(service_name):
         except Exception:
             pass
         time.sleep(300)
+
+threading.Thread(target=retention_cleanup_worker, daemon=True, name="retention-cleaner").start()
+threading.Thread(target=heartbeat_worker, args=("API Server",), daemon=True, name="api-heartbeat").start()
 
 
 # ── AUTH ROUTES ───────────────────────────────────────────────────────────────
@@ -1466,6 +1475,8 @@ def _metrics_collector_worker():
         except Exception:
             pass
         time.sleep(5)
+
+threading.Thread(target=_metrics_collector_worker, daemon=True, name="metrics-collector").start()
 
 def _restart_single_service(service_name):
     script_map = {
@@ -3026,11 +3037,24 @@ def toggle_olt_job():
     enabled = 0 if row['enabled'] else 1
     next_run = None
     if enabled:
-        start_dt = _parse_dt(row['start_at']) or datetime.datetime.now()
+        now = datetime.datetime.now()
+        start_dt = _parse_dt(row['start_at'])
         if row['run_mode'] == 'once':
-            next_run = start_dt.replace(microsecond=0).isoformat()
+            if start_dt and start_dt > now:
+                next_run = start_dt.replace(microsecond=0).isoformat()
+            else:
+                next_run = now.replace(microsecond=0).isoformat()
         else:
-            next_run = _compute_job_next_run('repeat', row['interval_min'], row['last_run'] or start_dt.replace(microsecond=0).isoformat())
+            calc_next = None
+            if row.get('last_run'):
+                calc_next = _parse_dt(_compute_job_next_run('repeat', row['interval_min'], row['last_run']))
+            elif start_dt and start_dt > now:
+                calc_next = start_dt
+
+            if calc_next and calc_next > now:
+                next_run = calc_next.replace(microsecond=0).isoformat()
+            else:
+                next_run = now.replace(microsecond=0).isoformat()
     execute_db(OLT_DB, "UPDATE olt_poll_jobs SET enabled=?, next_run=? WHERE id=?", (enabled, next_run, job_id))
     return jsonify({'success': True})
 
@@ -3470,7 +3494,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print(f"  SimpleNOC v{APP_VERSION}  –  Starting servers")
+    print(f"  Smart NOC v{APP_VERSION}  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

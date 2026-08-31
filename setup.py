@@ -6,7 +6,7 @@ import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 import noc_config as cfg
 
 APP_NAME    = "SmartNOC"
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.4")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.6")
 INSTALL_DIR = r"C:\SmartNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [

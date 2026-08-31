@@ -1,4 +1,4 @@
-﻿
+
     :root {
       --bg: #050c13;
       --panel: #0a1520;
@@ -907,6 +907,31 @@
       100% {
         transform: rotate(360deg);
       }
+    }
+
+    .status-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(0, 229, 255, 0.25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+
+    .btn-spinner {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+      vertical-align: middle;
+      margin-right: 4px;
     }
 
     /* â”€â”€ DASHBOARD SYSTEM HEALTH & POWER CONTROLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

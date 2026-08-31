@@ -73,7 +73,10 @@
               <td style="font-size:11px">{{ p.last_poll ? new Date(p.last_poll).toLocaleString() : 'Never' }}</td>
               <td :style="{ fontSize: '11px', fontWeight: 700, color: statusColor(p.last_status) }">{{ (p.last_status || 'never').toUpperCase() }}{{ pollingId === p.id ? ' \u2026' : '' }}</td>
               <td style="white-space:nowrap">
-                <button class="rb" style="padding:4px 9px;font-size:10px;margin-right:4px" :disabled="pollingId === p.id" @click="pollOnu(p)">{{ pollingId === p.id ? 'Fetching' : 'Get ONU Info' }}</button>
+                <button class="rb" style="padding:4px 9px;font-size:10px;margin-right:4px;display:inline-flex;align-items:center;gap:4px" :disabled="pollingId === p.id" @click="pollOnu(p)">
+                  <span v-if="pollingId === p.id" class="btn-spinner"></span>
+                  {{ pollingId === p.id ? 'Getting ONU info...' : 'Get ONU Info' }}
+                </button>
                 <button class="ubtn" style="padding:4px 9px;font-size:10px;margin-right:4px" @click="viewOnus(p)">View ONUs</button>
                 <button class="ubtn" style="padding:4px 9px;font-size:10px;margin-right:4px" :disabled="pollingId === p.id" @click="pollUplink(p)">Uplink</button>
                 <template v-if="auth.isAdmin">
@@ -85,7 +88,7 @@
           </tbody>
         </table>
       </div>
-      <StatusMessage :msg="actionMsg" :ok="actionOk" />
+      <StatusMessage :msg="actionMsg" :ok="actionOk" :loading="actionLoading" />
     </div>
 
     <div v-if="auth.isAdmin" class="panel">
@@ -211,7 +214,7 @@ const job = ref(emptyJob())
 const editJobId = ref('')
 
 const profileMsg = ref(''); const profileOk = ref(false)
-const actionMsg = ref(''); const actionOk = ref(false)
+const actionMsg = ref(''); const actionOk = ref(false); const actionLoading = ref(false)
 const jobMsg = ref(''); const jobOk = ref(false)
 
 const onuModalOpen = ref(false)
@@ -308,28 +311,37 @@ function statusColor(s) {
 
 async function watchProgress(profileId) {
   pollingId.value = profileId
+  actionLoading.value = true
   const tick = async () => {
     if (pollingId.value !== profileId) return
     try {
       const pr = await apiFetch('/api/olt/poll_progress?id=' + encodeURIComponent(profileId))
       if (pr && pr.status === 'running') {
-        flash(actionMsg, actionOk, (pr.stage || 'Polling') + (pr.detail ? ': ' + pr.detail : '') + '...', true)
+        const stage = pr.stage || 'Getting ONU info'
+        const detail = pr.detail ? ' — ' + pr.detail : ''
+        flash(actionMsg, actionOk, `${stage}${detail}...`, true)
         setTimeout(tick, 1000)
       } else {
         pollingId.value = null
+        actionLoading.value = false
       }
-    } catch (_) { pollingId.value = null }
+    } catch (_) { 
+      pollingId.value = null
+      actionLoading.value = false
+    }
   }
   tick()
 }
 
 async function pollOnu(p) {
   pollingId.value = p.id
-  flash(actionMsg, actionOk, 'Fetching ONU data from ' + (p.name || p.ip) + '...', true)
+  actionLoading.value = true
+  flash(actionMsg, actionOk, 'Getting ONU info: Connecting to ' + (p.name || p.ip) + '...', true)
   watchProgress(p.id)
   try {
     const r = await apiPost('/api/olt/poll_onu', { id: p.id })
     pollingId.value = null
+    actionLoading.value = false
     if (r.success) {
       flash(actionMsg, actionOk,
         `ONU data done: ${r.onu_count} ONUs (${r.online_count} online) via ${(r.method || '?').toUpperCase()} in ${r.duration}s`, true)
@@ -341,10 +353,12 @@ async function pollOnu(p) {
       load()
     } else {
       pollingId.value = null
+      actionLoading.value = false
       flash(actionMsg, actionOk, 'ONU fetch failed: ' + (r.error || 'Unknown error'), false)
     }
   } catch (e) {
     pollingId.value = null
+    actionLoading.value = false
     flash(actionMsg, actionOk, 'Error: ' + e.message, false)
   }
 }

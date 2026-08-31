@@ -1,4 +1,4 @@
-﻿
+
     var API = window.location.protocol + '//' + window.location.host;
     var barChart, lineChart, sysEventChart, sysSevChart, pingHistChart;
     var currentSysOlt = '';
@@ -76,11 +76,17 @@
       });
     }
 
-    function showMsg(id, msg, ok, persist) {
+    function showMsg(id, msg, ok, persist, loading) {
       var el = document.getElementById(id);
       if (!el) return;
-      el.textContent = msg;
-      el.style.display = 'block';
+      if (loading) {
+        el.innerHTML = '<span class="status-spinner"></span> <span>' + msg + '</span>';
+      } else {
+        el.textContent = msg;
+      }
+      el.style.display = 'flex';
+      el.style.alignItems = 'center';
+      el.style.gap = '8px';
       el.style.background = ok ? 'rgba(57,255,20,0.08)' : 'rgba(255,45,85,0.08)';
       el.style.border = '1px solid ' + (ok ? 'rgba(57,255,20,0.3)' : 'rgba(255,45,85,0.3)');
       el.style.color = ok ? 'var(--accent3)' : 'var(--danger)';
@@ -1404,7 +1410,7 @@
       '  Text Match : {text_match}',
       '',
       '====================================================',
-      '  This is an automated alert from SimpleNOC v0.5.6.4'
+      '  This is an automated alert from SimpleNOC v0.5.6.6'
     ].join('\n');
 
     function toggleEmailTemplate() {
@@ -2748,10 +2754,11 @@
       btn.disabled = true;
       btn.dataset.origText = btn.textContent;
       var elapsed = 0;
-      btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top:2px solid #fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:5px"></span>' + (label || 'Working') + '...';
+      var lbl = label || 'Getting ONU info';
+      btn.innerHTML = '<span class="btn-spinner"></span> ' + lbl + '...';
       _loadingTimer = setInterval(function () {
         elapsed++;
-        btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top:2px solid #fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:5px"></span>' + elapsed + 's...';
+        btn.innerHTML = '<span class="btn-spinner"></span> ' + lbl + ' (' + elapsed + 's)...';
       }, 1000);
     }
 
@@ -2766,9 +2773,12 @@
       stopOltProgressWatcher();
       function tick() {
         apiFetch('/api/olt/poll_progress?id=' + encodeURIComponent(profileId)).then(function (p) {
-          var msg = (p.stage || pollLabel || 'Working') + (p.detail ? ' ? ' + p.detail : '');
-          showMsg('oltProfileMsg', msg, !p.error, true);
-          if (p.done) stopOltProgressWatcher();
+          var stage = p.stage || pollLabel || 'Getting ONU info';
+          var detail = p.detail ? ' — ' + p.detail : '';
+          var msg = stage + detail;
+          var isDone = p.done || p.stage === 'Completed' || p.stage === 'Failed';
+          showMsg('oltProfileMsg', msg, !p.error, !isDone, !isDone);
+          if (isDone) stopOltProgressWatcher();
         }).catch(function () { });
       }
       tick();
@@ -2787,9 +2797,9 @@
 
     // Get ONU Info only
     function startOnuPoll(profile, btn) {
-      showBtnLoading(btn, 'Fetching ONUs');
-      showMsg('oltProfileMsg', 'Fetching ONU data from ' + (profile.name || profile.ip) + '...', true, true);
-      startOltProgressWatcher(profile.id, 'Starting ONU poll');
+      showBtnLoading(btn, 'Getting ONU info');
+      showMsg('oltProfileMsg', 'Getting ONU info: Connecting to ' + (profile.name || profile.ip) + '...', true, true, true);
+      startOltProgressWatcher(profile.id, 'Getting ONU info');
       apiPost('/api/olt/poll_onu', { id: profile.id }).then(function (r) {
         hideBtnLoading();
         if (r.success) {

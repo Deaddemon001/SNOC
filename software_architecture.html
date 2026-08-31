@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smart NOC v0.5.6.4 - Software Architecture Document</title>
+<title>Smart NOC v0.5.6.6 - Software Architecture Document</title>
 <style>
   @page {
     size: A4 portrait;
@@ -217,7 +217,7 @@
         <div class="doc-title">Smart NOC Architecture</div>
         <div class="doc-subtitle">System Design, Data Flow Pipelines & Technical Interdependency Specification</div>
       </div>
-      <div class="doc-badge">Release v0.5.6.4</div>
+      <div class="doc-badge">Release v0.5.6.6</div>
     </div>
     <div class="meta-grid">
       <div class="meta-item"><strong>Target Platform</strong>Windows 10 / 11 / Server</div>
@@ -372,21 +372,28 @@
       <tr>
         <td><strong>api.py</strong></td>
         <td><span class="badge-proto">HTTP 5000</span> <span class="badge-proto">HTTPS 5443</span></td>
-        <td>Flask REST API core; session auth; Ping Engine; Retention Cleanup; Health Diagnostics; Power Management (Restart/Shutdown).</td>
-        <td>Serves <code>dashboard.html</code>, <code>login.html</code>; triggers <code>alert_engine.py</code> on ping changes; calls <code>olt_connector.py</code>.</td>
+        <td>Flask REST API core; session auth; Ping Engine; Retention Cleaner; OLT Polling Scheduler (<code>olt_job_scheduler</code>); Health Diagnostics; Power Management (Restart/Shutdown).</td>
+        <td>Serves Vue 3 SPA and legacy UI; triggers <code>alert_engine.py</code> on ping changes; calls <code>olt_connector.py</code> for live scans and background scheduled polls.</td>
+      </tr>
+      <tr>
+        <td><strong>frontend/</strong></td>
+        <td><span class="badge-proto">Vue 3 SPA</span></td>
+        <td>Modern Single Page Application built with Vue 3, Vite, Pinia, and Vue Router; 11 operational tabs; real-time polling composables; live loading spinners; Chart.js 4 telemetry graphs.</td>
+        <td>Served directly by <code>api.py</code> from <code>frontend/dist/</code> at <code>/</code> and <code>/login</code>.</td>
       </tr>
       <tr>
         <td><strong>dashboard.html</strong></td>
-        <td><span class="badge-proto">Client UI</span></td>
-        <td>Single-page app with 11 functional tabs; Chart.js visual graphs; drag-drop tab order; power control modals; diagnostic verdict banner.</td>
-        <td>Communicates via authenticated JSON REST calls with <code>api.py</code>; displays real-time telemetry from all daemons.</td>
+        <td><span class="badge-proto">Client UI (Legacy)</span></td>
+        <td>Classic single-page UI with 11 functional tabs; Chart.js visual graphs; drag-drop tab order; power control modals; diagnostic verdict banner.</td>
+        <td>Fallback UI served when <code>/?legacy=1</code> is requested; communicates via JSON REST calls with <code>api.py</code>.</td>
       </tr>
       <tr>
         <td><strong>alert_engine.py</strong></td>
         <td><span class="badge-proto">Outbound REST/SMTP</span></td>
-        <td>Direct multi-channel rule matcher; visual status renderer (ðŸ”´ Red / ðŸŸ¢ Green / ðŸŸ¡ Yellow); Discord embed creator; Telegram bot dispatcher; HTML email sender.</td>
+        <td>Direct multi-channel rule matcher; visual status renderer (🔴 Red / 🟢 Green / 🟡 Yellow); Discord embed creator; Telegram bot dispatcher; HTML email sender.</td>
         <td>Invoked by <code>syslog_server.py</code> and <code>api.py</code> (Ping Worker); logs dispatched alerts to PostgreSQL <code>alert_log</code> table.</td>
       </tr>
+
       <tr>
         <td><strong>syslog_server.py</strong></td>
         <td><span class="badge-proto">UDP 5141</span></td>

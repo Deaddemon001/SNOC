@@ -2,7 +2,18 @@
 
 ---
 
-## Unreleased - Frontend Migration to Vue.js 3
+## Unreleased - OLT Automatic Scheduler Fix, Polling Animations & Vue.js 3 Frontend
+
+### Fixed & Enhanced
+- **OLT Automatic Polling Scheduler Daemon** (`api.py`):
+  - Fixed missing background daemon thread initialization for `olt_job_scheduler`, ensuring automatic recurring OLT polls (5–240 min) execute reliably on schedule.
+  - Initialized background daemon threads for database retention cleanup (`retention-cleaner`), API heartbeat worker (`api-heartbeat`), and live hardware metrics collector (`metrics-collector`).
+  - Fixed `POST /api/olt/jobs/toggle` logic so enabling/resuming overdue jobs immediately sets `next_run` to the current timestamp rather than remaining stuck on past dates.
+  - Added per-job exception isolation inside the scheduler loop so connection failures or timeouts on one OLT do not block or crash remaining jobs.
+- **Interactive OLT Polling Progress & Spinning Indicators**:
+  - Fixed character encoding glitch (`?` delimiter) in live poll progress messages, formatting stages cleanly as `Getting ONU info: Connecting to OLT — <name> (<ip>)...`.
+  - Added animated CSS loading spinners (`.status-spinner`) in the status banner and (`.btn-spinner`) inside the **Get ONU Info** button with live elapsed time counters (`Getting ONU info... (Xs)`).
+  - Integrated across both the modern Vue 3 SPA (`OltConnectTab.vue`, `StatusMessage.vue`) and legacy UI (`dashboard.html`, `legacy_dashboard_js.js`).
 
 ### Added
 - **Vue.js 3 SPA frontend** (`frontend/`): complete rewrite of `dashboard.html` (7,810-line vanilla-JS monolith) into a Vue 3 + Vite + Pinia + Vue Router application with per-tab lazy-loaded components.
