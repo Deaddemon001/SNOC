@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+logs/
+*.log
+
+# Local Runtime Data & SSL certificates/keys
+data/ssl/
+data/*.pem
+data/*.key
+data/*.crt
+
+# Backups
+backups/
+
+# Node / Frontend dependencies
+frontend/node_modules/
+node_modules/
+
+# Environment / local settings
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE / OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
