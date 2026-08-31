@@ -1,6 +1,6 @@
 """
-Smart NOC v0.5.6.6 - TFTP Server
-Receives backup files from OLTs via TFTP (UDP port 69).
+Smart NOC v0.6.0 - TFTP Server
+Listens on UDP port 69 (or TFTP_PORT in noc_config.py) for OLT configuration backups.
 RFC 1350 - receive only (WRQ).
 
 Key insight from debug: Vsol OLT sends ALL packets from same source port (49803)

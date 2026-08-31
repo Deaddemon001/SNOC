@@ -1,6 +1,6 @@
 """
-Smart NOC v0.5.6.6 - SNMP Trap Receiver
-Listens on UDP port defined in noc_config.py (default 162)
+Smart NOC v0.6.0 - SNMP Trap Receiver
+Listens on UDP port 162 for SNMP v1/v2c traps from OLTs.py (default 162)
 Identifies OLTs by MAC address from Vsol trap varbinds
 """
 from pysnmp.carrier.asyncio.dgram import udp

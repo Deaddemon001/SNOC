@@ -2,33 +2,69 @@
 
 ---
 
-## Unreleased - OLT Automatic Scheduler Fix, Polling Animations & Vue.js 3 Frontend
-
-### Fixed & Enhanced
-- **OLT Automatic Polling Scheduler Daemon** (`api.py`):
-  - Fixed missing background daemon thread initialization for `olt_job_scheduler`, ensuring automatic recurring OLT polls (5–240 min) execute reliably on schedule.
-  - Initialized background daemon threads for database retention cleanup (`retention-cleaner`), API heartbeat worker (`api-heartbeat`), and live hardware metrics collector (`metrics-collector`).
-  - Fixed `POST /api/olt/jobs/toggle` logic so enabling/resuming overdue jobs immediately sets `next_run` to the current timestamp rather than remaining stuck on past dates.
-  - Added per-job exception isolation inside the scheduler loop so connection failures or timeouts on one OLT do not block or crash remaining jobs.
-- **Interactive OLT Polling Progress & Spinning Indicators**:
-  - Fixed character encoding glitch (`?` delimiter) in live poll progress messages, formatting stages cleanly as `Getting ONU info: Connecting to OLT — <name> (<ip>)...`.
-  - Added animated CSS loading spinners (`.status-spinner`) in the status banner and (`.btn-spinner`) inside the **Get ONU Info** button with live elapsed time counters (`Getting ONU info... (Xs)`).
-  - Integrated across both the modern Vue 3 SPA (`OltConnectTab.vue`, `StatusMessage.vue`) and legacy UI (`dashboard.html`, `legacy_dashboard_js.js`).
+## v0.6.0 - React 19 Frontend Suite, Studio Theme Engine, Pure PostgreSQL Telemetry & Production Stabilization
+**Release date:** 2026-08-31
 
 ### Added
-- **Vue.js 3 SPA frontend** (`frontend/`): complete rewrite of `dashboard.html` (7,810-line vanilla-JS monolith) into a Vue 3 + Vite + Pinia + Vue Router application with per-tab lazy-loaded components.
-- **Feature parity with legacy UI**: all 11 tabs (Dashboard Health, Syslog, SNMP Traps, TFTP Backups, Ping Monitor, Alerts, OLT Connect, Uplink Traffic, Logs, ONT Lookup, Users), Settings modal (retention, ports, visible tabs, session timeout, power controls), restart/shutdown/reconnect-countdown modals, ONU data modal with CSV export, edit-alert-rule modal.
-- `MIGRATION_STRATEGY.md`: stack rationale, project structure, phased plan, regression-prevention checklist (API contract preservation, polling cadence parity, theme/RBAC continuity).
-- `MIGRATION_ANALYSIS.md`: full functional/business-logic/integration inventory extracted from README, CHANGELOG, architecture docs, and code.
+- **Modern React 19 + TypeScript + Watermelon UI Frontend (`frontend/`)**:
+  - Full rewrite into a high-performance modern React 19 Single Page Application with TypeScript 5, Tailwind CSS 3.4, Lucide React icons, and Chart.js 4 (`react-chartjs-2`).
+  - **Watermelon UI Design System ([ui.watermelon.sh](https://ui.watermelon.sh))**:
+    - Cyber-dark studio palette (`#030712` / `slate-950`), translucent glassmorphism cards (`slate-900/80`), subtle slate borders (`#1e293b`), and glowing status accents (cyan `#00e5ff`, emerald `#10b981`, amber `#f59e0b`, rose `#f43f5e`).
+    - Dynamic studio sidebar with route status pills, animated brand logo, user role badges (`ADMIN` / `READ-ONLY`), and direct session management.
+    - Top studio navigation bar with live breadcrumbs, dark/light mode toggle, headless power controls, and a quick `⏮ Legacy UI` switcher (`/?legacy=1`).
+- **Comprehensive Light & Dark Theme Engine**:
+  - Class-based theme toggle applied at the root HTML element with persistent `localStorage` preference.
+  - Complete `.light` CSS selector overrides across all navigation elements, modals, KPI metric cards, data tables, filter inputs, status badges, and chart legends for high-contrast visibility.
+- **Direct Live ONU Snapshot & Telemetry Viewer**:
+  - Fixed live ONU querying in the modern UI (`handleViewOnus`) to query latest PostgreSQL snapshots with real-time online/offline calculation, signal level (Rx Power dBm), distance (m / km), model/profile, and full-text filtering.
+- **Syslog Device Authorization & Real-Time Status Engine**:
+  - Real-time device status calculation (<60s Receiving, 1–5m Standby, >5m Offline).
+  - Enforced syslog ingestion filtering and admin authorization controls (**Accept**, **Deny**, **Delete**, and inline **Rename**).
+- **Precision MB & Kbps Telemetry on Health Dashboard**:
+  - 5-way breakdown doughnut chart displaying exact Megabyte (MB) values for PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space.
+  - 3-way breakdown doughnut chart in exact Megabytes (MB) for Smart NOC App RSS, Other Processes, and Free System Memory.
+  - Network throughput explicitly measured and visualized in Kilobits per second (Kbps).
+- **OLT Automatic Poll Scheduler Inline Editing**:
+  - Added `@app.route('/api/olt/jobs/update')` endpoint supporting inline modification of poll type, schedule mode, start time, and interval.
+
+### Changed & Fixed
+- **Session Cookie & CORS Cross-Compatibility**:
+  - Configured `SESSION_COOKIE_SECURE = False` and `SESSION_COOKIE_SAMESITE = 'Lax'` with explicit CORS origin headers so session authentication works seamlessly across both HTTP (port 5000 / Vite port 3000) and HTTPS (port 5443).
+- **Pure PostgreSQL Storage Engine**:
+  - Standardized all modules (SNMP Traps, Syslog, TFTP, Ping Monitor, OLT/ONU Telemetry, Auth, and Alerts) on PostgreSQL backend.
+- **Legacy & Modern UI Dual Support**:
+  - Classic single-file dashboard (`dashboard.html`) remains 100% functional and directly accessible via `/?legacy=1`.
+- **Codebase Clean-Up**:
+  - Removed all obsolete Vue components, Vue router/stores, and temporary test fixtures while maintaining clean zero-warning builds.
+
+---
+
+## v0.5.6.6 - React 19 + TypeScript + Watermelon UI Frontend Redesign, Syslog Access Control & Precision Health Telemetry
+
+### Added
+- **Modern React 19 + TypeScript + Tailwind CSS Single-Page Application (`frontend/`)**:
+  - Re-architected frontend into a high-performance modern React 19 SPA with TypeScript, Tailwind CSS 3.4, Lucide icons, and Chart.js 4 (`react-chartjs-2`).
+  - **Watermelon UI Design System ([ui.watermelon.sh](https://ui.watermelon.sh))**:
+    - Cyber-dark studio palette (`#030712` / `slate-950`), translucent cards with subtle borders (`#1e293b` / `slate-800`), glassmorphism backdrop blur, and glowing neon accents (cyan `#00e5ff`, emerald `#10b981`, amber `#f59e0b`, rose `#f43f5e`).
+    - Collapsible studio sidebar with route status pills, animated brand logo, user role badges (`ADMIN` / `READ-ONLY`), and direct session management.
+    - Top studio navigation bar with live breadcrumbs, dark/light mode toggle, headless power controls, and a quick `⏮ Legacy UI` switcher (`/?legacy=1`).
+- **Syslog Device Authorization & Real-Time Status Engine**:
+  - **Device Status Calculation**: Real-time status based on last received timestamp (<60s Receiving, 1–5m Standby, >5m Offline).
+  - **Access Control & Ingestion Enforcing**: New syslog devices default to pending authorization. Admin actions to **Accept**, **Deny**, **Delete**, and inline **Rename** devices.
+  - Filter dropdowns dynamically filter only authorized devices to prevent unauthorized log flooding.
+- **Precision MB & Kbps Telemetry on Health Dashboard**:
+  - **Storage & Database Distribution**: 5-way breakdown doughnut chart displaying exact Megabyte (MB) values for PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space.
+  - **System Memory Allocation**: 3-way breakdown doughnut chart in exact Megabytes (MB) for Smart NOC App RSS, Other Processes, and Free System Memory.
+  - **Network Throughput**: Explicitly measured and visualized in Kilobits per second (Kbps) across all charts and stat cards.
+- **OLT Automatic Poll Scheduler Inline Editing**:
+  - Added `@app.route('/api/olt/jobs/update')` endpoint supporting inline modification of poll type, schedule mode, start time, and interval without recreating jobs.
+- **Self-Healing SSL/TLS Validation**:
+  - Enhanced `gen_cert.py` to validate certificate and private key consistency on startup, self-healing broken certificate chains automatically.
 
 ### Changed
-- **Flask serving** (`api.py`): `/` and `/login` now serve the built Vue app from `frontend/dist/` when present; static assets served from `/assets/<file>`; version injection (`__APP_VERSION__`) retained. Legacy UI remains reachable at `/?legacy=1` for instant rollback — no backend API changes.
+- **Zero Backend Breaking Changes**: Preserved 100% of existing REST APIs, session cookies, database schemas, and background daemons.
+- **Instant Legacy UI Switcher**: Classic single-file dashboard (`dashboard.html`) remains accessible anytime via `/?legacy=1` or top bar `⏮ Legacy UI` button.
 
-### Technical
-- Same REST contract: zero endpoint/payload changes required.
-- Identical polling cadences (health 5 s; syslog/traps/ping/tftp 10 s; alerts/OLT 15 s; users 20 s; uplink 30 s) via reusable `usePolling` composable with automatic cleanup.
-- Theme continuity: same CSS variable names, same `noc_theme` / `noc_tab_order` localStorage keys; light/dark toggle affects Chart.js palettes reactively.
-- Chart.js 4 now bundled (vue-chartjs) instead of CDN; build output code-split into vendor/charts/per-tab chunks (~65 KB gzip core).
 
 ---
 

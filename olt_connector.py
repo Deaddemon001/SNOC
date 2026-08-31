@@ -1,6 +1,6 @@
 """
-Smart NOC v0.5.6.6 - OLT Connector
-SSH (primary) or Telnet (raw socket, Python 3.13 compatible) fallback.
+Smart NOC v0.6.0 - OLT Connector
+SSH and Telnet client for V1600G1/G1B OLTs.
 Collects ONU state and uplink traffic from Vsol GPON OLT.
 """
 import concurrent.futures

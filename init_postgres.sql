@@ -1,4 +1,4 @@
--- Smart NOC v0.5.6.6 - PostgreSQL Initialization Script
+-- Smart NOC v0.6.0 - PostgreSQL Initialization Script
 -- Usage: psql -U postgres -f init_postgres.sql
 
 -- 1. Create the database

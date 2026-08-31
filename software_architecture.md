@@ -1,8 +1,8 @@
-# Smart NOC â€” Software Architecture Document
-**Application Version:** `v0.5.6.6`  
+# Smart NOC — Software Architecture Document
+**Application Version:** `v0.6.0`  
 **Target Environment:** Windows 10 / 11 / Windows Server (24x7 Headless / Desktop Operation)  
 **Database Engine:** PostgreSQL 12+  
-**Primary Language:** Python 3.10+ / HTML5 / CSS3 / Vanilla JavaScript / Chart.js  
+**Primary Stack:** Python 3.10+ / Flask / React 19 / TypeScript / Tailwind CSS / Chart.js 4  
 
 ---
 
@@ -46,8 +46,8 @@ graph TD
     end
 
     subgraph Presentation Layer [User Interfaces]
-        DASH[dashboard.html<br/>11 Functional Tabs<br/>Chart.js Visualizations]
-        LOGIN[login.html<br/>PBKDF2 Auth & Session Control]
+        SPA[React 19 + TypeScript SPA<br/>Watermelon UI / Tailwind CSS<br/>frontend/dist/]
+        LEGACY[dashboard.html / login.html<br/>Vanilla JS Legacy Fallback<br/>/?legacy=1]
     end
 
     %% Network flows
@@ -85,8 +85,8 @@ graph TD
     %% Presentation to API
     API <-->|SQL Queries / Connection Pool| PG
     API <-->|Read / Write Backups & Logs| FS
-    API -->|Serves Web UI & REST Data| DASH
-    API -->|Serves Auth Views| LOGIN
+    API -->|Serves React SPA Bundle| SPA
+    API -->|Serves Legacy Fallback| LEGACY
 ```
 
 ---
@@ -99,265 +99,108 @@ The application follows a decoupled daemon architecture where all components com
 | :--- | :--- | :--- | :--- |
 | [`noc_config.py`](file:///h:/Github/SNOC/noc_config.py) | **Configuration** | Central configuration repository, port mappings, retention parameters, and PostgreSQL connection pool initialization (`query_db`, `execute_db`, `get_db_connection`). | Imported by **all** Python modules (`api.py`, `alert_engine.py`, `trap_receiver.py`, `syslog_server.py`, `tftp_server.py`, `olt_connector.py`, `launcher.pyw`). |
 | [`launcher.pyw`](file:///h:/Github/SNOC/launcher.pyw) | **Supervisor GUI** | Process orchestrator, Tkinter tray/window controller, service heartbeat monitor, and self-healing watchdog (auto-restarts hanging API instances). | Spawns `api.py`, `trap_receiver.py`, `syslog_server.py`, `tftp_server.py`; communicates via HTTP health checks. |
-| [`api.py`](file:///h:/Github/SNOC/api.py) | **Web Server & Core API** | Flask application (HTTP 5000 / HTTPS 5443), PBKDF2 authentication, RBAC session handling, REST API endpoints, background Ping Worker, Retention Cleaner, Diagnostic Health Engine, OLT Polling Scheduler (`olt_job_scheduler`), and Power Lifecycle handlers (`/api/system/restart`, `/api/system/shutdown`). | Reads/writes PostgreSQL via `noc_config.py`; serves Vue 3 SPA and legacy UI; executes `alert_engine.py` for ping triggers; calls `olt_connector.py` for live scans and background scheduled polls. |
-| [`frontend/`](file:///h:/Github/SNOC/frontend/) | **Vue.js 3 SPA** | Modern Single Page Application built with Vue 3, Vite, Pinia, and Vue Router. Provides 11 operational tabs, real-time polling composables, animated loading spinners, Chart.js 4 telemetry graphs, and modal controls. | Served directly by `api.py` from `frontend/dist/` at `/` and `/login`. |
+| [`api.py`](file:///h:/Github/SNOC/api.py) | **Web Server & Core API** | Flask application (HTTP 5000 / HTTPS 5443), PBKDF2 authentication, RBAC session handling, REST API endpoints, background Ping Worker, Retention Cleaner, Diagnostic Health Engine, OLT Polling Scheduler (`olt_job_scheduler`), and Power Lifecycle handlers (`/api/system/restart`, `/api/system/shutdown`). | Reads/writes PostgreSQL via `noc_config.py`; serves React 19 SPA and legacy UI; executes `alert_engine.py` for ping triggers; calls `olt_connector.py` for live scans and background scheduled polls. |
+| [`frontend/`](file:///h:/Github/SNOC/frontend/) | **React 19 + TypeScript SPA** | Modern Single Page Application built with React 19, TypeScript, Tailwind CSS 3.4, Lucide icons, and Watermelon UI design system ([ui.watermelon.sh](https://ui.watermelon.sh)). Provides 11 operational modules, polling hooks, Chart.js 4 telemetry graphs, and studio modal controls. | Served directly by `api.py` from `frontend/dist/` at `/` and `/login`. |
 | [`dashboard.html`](file:///h:/Github/SNOC/dashboard.html) | **Presentation SPA (Legacy Fallback)** | Classic single-page UI with 11 operational tabs, Chart.js real-time graphing, drag-and-drop tab ordering, and modal management. | Fallback UI served when `/?legacy=1` is requested. |
-| [`login.html`](file:///h:/Github/SNOC/login.html) | **Authentication UI (Legacy)** | Cyberpunk-themed standalone login page handling credentials and session establishment. | Submits authentication requests to `api.py` (`POST /api/auth/login`). |
-| [`alert_engine.py`](file:///h:/Github/SNOC/alert_engine.py) | **Alerting Service** | Direct multi-channel rule matching engine for Syslog events and Ping state changes; builds color-coded notifications (🔴 Red for DOWN, 🟢 Green for UP, 🟡 Yellow for Warning) and dispatches directly via Discord Embeds, Telegram Bot API, and SMTP HTML emails without user binding bottlenecks. | Invoked by `syslog_server.py`, `trap_receiver.py`, and `api.py` (Ping Worker); writes alert logs to PostgreSQL table `alert_log`. |
-| [`syslog_server.py`](file:///h:/Github/SNOC/syslog_server.py) | **UDP Ingestion Daemon** | Listens on UDP port 5141, parses RFC 3164/5424 syslog streams, enforces Device Security Registration (Allow/Deny/Delete), persists to `syslog` table, and triggers rule checks in `alert_engine.py` with explicit error logging. | Uses `noc_config.py` for DB connection and settings; calls `alert_engine.process_alert()`. |
+| [`login.html`](file:///h:/Github/SNOC/login.html) | **Authentication UI (Legacy)** | Standalone login page handling credentials and session establishment. | Submits authentication requests to `api.py` (`POST /api/auth/login`). |
+| [`alert_engine.py`](file:///h:/Github/SNOC/alert_engine.py) | **Alerting Service** | Direct multi-channel rule matching engine for Syslog events and Ping state changes; builds color-coded notifications (🔴 Red for DOWN, 🟢 Green for UP, 🟡 Yellow for Warning) and dispatches directly via Discord Embeds, Telegram Bot API, and SMTP HTML emails. | Invoked by `syslog_server.py`, `trap_receiver.py`, and `api.py` (Ping Worker); writes alert logs to PostgreSQL table `alert_log`. |
+| [`syslog_server.py`](file:///h:/Github/SNOC/syslog_server.py) | **UDP Ingestion Daemon** | Listens on UDP port 5141, parses RFC 3164/5424 syslog streams, enforces Device Security Registration (Allow/Deny/Delete), persists to `syslog` table, and triggers rule checks in `alert_engine.py`. | Uses `noc_config.py` for DB connection and settings; calls `alert_engine.process_alert()`. |
 | [`trap_receiver.py`](file:///h:/Github/SNOC/trap_receiver.py) | **UDP Ingestion Daemon** | Listens on UDP port 162, decodes SNMP v1/v2c trap payloads via PySNMP, translates enterprise OIDs via `vsol_mib.py`, persists records in `traps` table, and flags event alerts. | Uses `vsol_mib.py` for OID translation; uses `noc_config.py` for database persistence. |
 | [`tftp_server.py`](file:///h:/Github/SNOC/tftp_server.py) | **UDP Ingestion Daemon** | Listens on UDP port 69, accepts binary and text configuration upload requests from network switches/OLTs, saves files to `/backups/`, and indexes records in `tftp_files`. | Uses `noc_config.py` for ports and directories; updates PostgreSQL `tftp_files` table. |
 | [`olt_connector.py`](file:///h:/Github/SNOC/olt_connector.py) | **Hardware Library** | Paramiko-based SSH/Telnet automation engine for ZTE, VSOL, Huawei, and Fiberhome OLTs. Polls ONU tables, optical power (Rx/Tx dBm), CATV status, and interface uplink traffic counters with live progress callback dispatch. | Called by `api.py` during live scan requests and background scheduler worker (`olt_job_scheduler`). |
 | [`vsol_mib.py`](file:///h:/Github/SNOC/vsol_mib.py) | **MIB Translation** | Static mapping table and translation parser for standard RFC MIBs and VSOL Enterprise OIDs (Enterprise ID `37950`). | Imported by `trap_receiver.py` and `olt_connector.py`. |
-| [`gen_cert.py`](file:///h:/Github/SNOC/gen_cert.py) | **Security Tool** | Generates self-signed 2048-bit RSA TLS/SSL certificates (`server.crt` and `server.key`) with Subject Alternative Names (SAN) for HTTPS support. | Run during installation or setup to provide HTTPS certificates for `api.py`. |
+| [`gen_cert.py`](file:///h:/Github/SNOC/gen_cert.py) | **Security Tool** | Generates and validates self-signed 2048-bit RSA TLS/SSL certificates (`server.crt` and `server.key`) with Subject Alternative Names (SAN) for HTTPS support with self-healing consistency checks. | Run during installation or setup to provide HTTPS certificates for `api.py`. |
 | [`check_downtime.py`](file:///h:/Github/SNOC/check_downtime.py) | **Audit Tool** | Audits background service log files (`logs/`) to detect time gaps and historical downtime intervals between consecutive heartbeat entries. | Standalone administrative command-line utility. |
 
-
 ---
 
-## 3. Data Flow & Processing Pipelines
+## 3. Frontend Architecture (React 19 + Watermelon UI)
 
-### 3.1. Telemetry Ingestion & Real-Time Alerting Pipeline
-```mermaid
-sequenceDiagram
-    autonumber
-    actor OLT as OLT / Switch
-    participant SYSLOG as syslog_server.py (UDP 5141)
-    participant DB as PostgreSQL Database
-    participant ALERT as alert_engine.py
-    participant DISCORD as Discord / Telegram / SMTP
-    participant DASH as dashboard.html (Client)
-
-    OLT->>SYSLOG: UDP Syslog Packet ("Uplink-port 0/1 Down")
-    SYSLOG->>DB: Check Device Authorized (syslog_devices)
-    alt Device Denied / Unregistered
-        SYSLOG-->>SYSLOG: Drop Packet (Prevent Log Flooding)
-    else Device Authorized
-        SYSLOG->>DB: INSERT INTO syslog & events tables
-        SYSLOG->>ALERT: process_alert(hostname, message, timestamp)
-        ALERT->>DB: Query enabled alert_rules
-        ALERT->>ALERT: Evaluate Match & Exclude Filters
-        alt Rule Matches Incident
-            ALERT->>ALERT: Determine Status (🔴 Red for DOWN / 🟢 Green for UP)
-            ALERT->>DISCORD: Direct Dispatch: Discord Embed (#dc3545) / HTML Email / Telegram
-            ALERT->>DB: INSERT INTO alert_log (sent status & errors)
-        end
-    end
-    DASH->>DB: Polling /api/syslog/events (5s interval)
-    DB-->>DASH: Return latest event records & update UI table
-```
-
-### 3.2. Diagnostic Health & In-App Power Management Pipeline
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Admin as Admin User
-    participant DASH as dashboard.html
-    participant API as api.py (/api/system/*)
-    participant PS as psutil / OS Process Manager
-    participant LAUNCHER as launcher.pyw / START_NOC.bat
-
-    %% Health Polling
-    loop Continuous Diagnostic Loop (5s)
-        DASH->>API: GET /api/system/health_detailed
-        API->>PS: Collect Process CPU, RSS Memory, System CPU/RAM, Disk & Net I/O
-        API->>API: Check Database, Service Heartbeats, Port Changes, Memory Thresholds
-        API-->>DASH: Return JSON (Overall Status, Diagnostic Verdict, 5 Services, KPIs)
-        DASH->>DASH: Update 5 KPI Cards, 4 Chart.js Charts, Diagnostic Banner
-    end
-
-    %% In-App Restart Trigger
-    Admin->>DASH: Click "Restart Smart NOC" (Target: All)
-    DASH->>API: POST /api/system/restart { "target": "all" }
-    API-->>DASH: Return { success: true, reconnecting_in: 6 }
-    DASH->>DASH: Display 6s Countdown Banner & Start Health Polling Loop
-    API->>API: Spawn background thread _do_restart()
-    API->>PS: Terminate daemons (trap, syslog, tftp)
-    API->>LAUNCHER: Spawn launcher.pyw / START_NOC.bat
-    API->>API: Exit process (os._exit(0))
-    LAUNCHER->>LAUNCHER: Re-initialize all daemons & start fresh API server
-    DASH->>API: GET /api/health (Polling until 200 OK)
-    API-->>DASH: HTTP 200 OK (Reconnected)
-    DASH->>DASH: Dismiss Banner & Resume Normal Real-Time Monitoring
+```text
+frontend/src/
+├── api.ts                     # Type-safe API client, credentials handler & 401 interceptor
+├── types/index.ts             # TypeScript domain schemas (Health, Syslog, OLT, ONUs, Ping)
+├── context/
+│   ├── AuthContext.tsx        # User authentication, RBAC tab permissions & role gating
+│   └── ThemeContext.tsx       # Dark/Light theme state & HTML class management
+├── hooks/
+│   └── usePolling.ts          # Resilient interval polling with automatic cleanup
+├── components/
+│   ├── layout/
+│   │   ├── AppLayout.tsx      # Collapsible Watermelon UI studio sidebar & header
+│   │   ├── SettingsModal.tsx  # Retention, ports, tab visibility, session timeout
+│   │   ├── RestartModal.tsx   # Targeted / All-service graceful restart modal
+│   │   └── ShutdownModal.tsx  # Controlled headless stop modal
+│   ├── shared/
+│   │   └── StatusMessage.tsx  # Reusable alert and status feedback pill
+│   └── olt/
+│       └── OnuModal.tsx       # Detailed ONU inventory table with search filter
+└── views/
+    ├── LoginView.tsx          # Studio dark login card with cyber grid glow
+    ├── HealthDashboardView.tsx# 5 KPI cards, 3-way memory, 5-way MB storage, Kbps net rate
+    ├── SyslogView.tsx         # Live status, auth controls, event charts, stream table
+    ├── OntLookupView.tsx      # Optical Rx power curve, distance in m/km, history
+    ├── OltConnectView.tsx     # OLT profiles, ONU poll progress, automated scheduler
+    ├── SnmpTrapsView.tsx      # Traps per OLT bar chart, trap volume, device cards
+    ├── TftpBackupsView.tsx    # Backup files table, download/delete, MAC mappings
+    ├── PingMonitorView.tsx    # ICMP latency bars, loss %, website launcher, history chart
+    ├── UplinkTrafficView.tsx  # Bandwidth rates (Kbps/Mbps), port status cards
+    ├── AlertsView.tsx         # SMTP, Telegram, Discord, rules engine & template editor
+    ├── UsersView.tsx          # User management, RBAC tab scoping, AES-256 backup/restore
+    └── LogsView.tsx           # Tail line selector, search filter, terminal color output
 ```
 
 ---
 
-## 4. Database Schema & Relational Structure
-
-Smart NOC uses a pure PostgreSQL database schema with auto-indexing on high-frequency timestamp columns to maintain sub-second query latency under continuous multi-gigabyte log throughput.
-
-```mermaid
-erDiagram
-    USERS ||--o{ NOC_SETTINGS : configures
-    USERS {
-        serial id PK
-        text username UK
-        text password
-        text salt
-        text email
-        text role
-        text visible_tabs
-        text assigned_olts
-        text assigned_ping_targets
-        text notify_via
-        text created_at
-        text last_login
-    }
-
-    SYSLOG_DEVICES ||--o{ SYSLOG : sends
-    SYSLOG_DEVICES {
-        serial id PK
-        text device_ip UK
-        text hostname
-        text olt_mac
-        int authorized
-        text created_at
-    }
-
-    SYSLOG {
-        serial id PK
-        text timestamp
-        text host
-        text facility
-        text severity
-        text tag
-        text message
-    }
-
-    TRAPS {
-        serial id PK
-        text timestamp
-        text source_ip
-        text trap_oid
-        text enterprise_oid
-        text trap_type
-        text raw_bindings
-        text details
-        text severity
-    }
-
-    ALERT_RULES ||--o{ ALERT_LOG : generates
-    ALERT_RULES {
-        serial id PK
-        text name
-        text host
-        text exclude_hosts
-        text contains_text
-        text source_type
-        text severity
-        text notify_via
-        text webhook_url
-        text email_to
-        text telegram_chat_id
-        int enabled
-        int cooldown_minutes
-        text last_fired
-    }
-
-    ALERT_LOG {
-        serial id PK
-        text timestamp
-        text rule_name
-        text host
-        text message
-        text severity
-        text channel
-        text status
-    }
-
-    PING_TARGETS ||--o{ PING_RESULTS : records
-    PING_TARGETS {
-        serial id PK
-        text name
-        text ip UK
-        text group_name
-        int interval_sec
-        int timeout_ms
-        int enabled
-        text status
-        text last_seen
-        float last_rtt
-    }
-
-    OLT_PROFILES ||--o{ ONU_DATA : discovers
-    OLT_PROFILES ||--o{ OLT_POLL_JOBS : schedules
-    OLT_PROFILES {
-        serial id PK
-        text name
-        text ip UK
-        text vendor
-        text protocol
-        int port
-        text username
-        text password
-        text enable_password
-        text snmp_community
-        int enabled
-    }
-
-    TFTP_FILES {
-        serial id PK
-        text filename
-        text filepath
-        text client_ip
-        bigint filesize
-        text upload_time
-        text checksum
-    }
-```
-
----
-
-## 5. Security & Role-Based Access Control (RBAC)
+## 4. Security & Role-Based Access Control (RBAC)
 
 1. **Authentication Engine**:
    - Password hashing via **PBKDF2-HMAC-SHA256** with 200,000 iterations and unique 16-byte random cryptographic salts.
-   - Client session tokens stored in secure, HttpOnly, SameSite Flask session cookies with configurable inactivity timeouts (10, 30, 60 minutes).
+   - Client session tokens stored in secure, HttpOnly, SameSite Flask session cookies with configurable inactivity timeouts (15, 30, 60, 120, 240, 480 minutes).
 2. **Role Separation**:
    - `admin`: Full unrestricted access to all 11 tabs, system power controls (Restart/Shutdown), port configuration, retention parameters, user provisioning, and OLT configuration write operations.
    - `viewer`: Read-only telemetry access scoped strictly to administrator-assigned tabs, assigned OLTs, and assigned ping targets. Write and deletion APIs return HTTP 403 Forbidden.
 3. **Network Daemon Protection**:
    - Syslog Device Gatekeeper: Automatically drops packets originating from unauthorized or denied IP addresses, protecting the PostgreSQL database against log injection and flooding attacks.
    - TFTP Path Traversal Prevention: Strips malicious relative path syntax (`../`) to guarantee uploads are confined strictly to the `/backups/` directory.
-4. **Transport Layer Security**:
-   - Automatic TLS/SSL certificate resolver supporting HTTPS on configurable ports (default `5443`). Fallback self-signed certificates are generated via `gen_cert.py`.
+4. **Transport Layer Security & Self-Healing**:
+   - Automatic TLS/SSL certificate resolver supporting HTTPS on configurable ports (default `5443`). Self-healing certificate regeneration via `gen_cert.py` if corruption or mismatch is detected.
+5. **Disaster Recovery & Encrypted Backups**:
+   - AES-256-GCM encrypted backup archive export and restoration (`/api/backup/download`, `/api/backup/restore`) securing credentials and system configuration.
 
 ---
 
-## 6. Directory Layout & Storage Hierarchy
+## 5. Directory Layout & Storage Hierarchy
 
 ```text
-e:\antigravity\
-â”œâ”€â”€ api.py                    # Flask Web & REST API Core Backend
-â”œâ”€â”€ launcher.pyw              # Supervisor GUI & Watchdog Process
-â”œâ”€â”€ alert_engine.py           # Multi-Channel Alert & Rule Dispatcher
-â”œâ”€â”€ syslog_server.py          # UDP 5141 Syslog Listener Daemon
-â”œâ”€â”€ trap_receiver.py          # UDP 162 SNMP Trap Listener Daemon
-â”œâ”€â”€ tftp_server.py            # UDP 69 TFTP Backup Storage Daemon
-â”œâ”€â”€ olt_connector.py          # SSH/Telnet OLT & ONU Polling Engine
-â”œâ”€â”€ vsol_mib.py               # Enterprise MIB OID Dictionary
-â”œâ”€â”€ noc_config.py             # Central Application Settings & DB Pool
-â”œâ”€â”€ gen_cert.py               # TLS/SSL Certificate Generator
-â”œâ”€â”€ check_downtime.py         # Log & Uptime Gap Audit Tool
-â”œâ”€â”€ setup.py                  # Installation & Maintenance Engine
-â”œâ”€â”€ init_postgres.sql         # Base PostgreSQL Database DDL
-â”œâ”€â”€ dashboard.html            # Single Page Web App (Frontend UI)
-â”œâ”€â”€ login.html                # Secure Authentication Frontend
-â”œâ”€â”€ README.md                 # Product Reference Documentation
-â”œâ”€â”€ CHANGELOG.md              # Historical Release & Patch Log
-â”œâ”€â”€ INSTALL.bat               # Windows Installation Bootstrap
-â”œâ”€â”€ START_NOC.bat             # Production Service Startup Script
-â”œâ”€â”€ STOP_NOC.bat              # Production Service Shutdown Script
-â”œâ”€â”€ STATUS_NOC.bat            # Service Health Inspection Script
-â”œâ”€â”€ run.bat                   # Setup & Diagnostics Interactive Menu
-â”œâ”€â”€ clear_cache.bat           # Python Bytecode Cleanup Utility
-â”œâ”€â”€ remove_tasks.bat          # Task Scheduler Maintenance Utility
-â”œâ”€â”€ backups/                  # TFTP Uploads & Configuration Backups
-â”œâ”€â”€ data/                     # Local Application Cache & SQLite DBs
-â””â”€â”€ logs/                     # Daemon Heartbeats & Runtime Logs
-    â”œâ”€â”€ API_and_Dashboard.log
-    â”œâ”€â”€ SNMP_Trap_Receiver.log
-    â”œâ”€â”€ Syslog_Server.log
-    â””â”€â”€ TFTP_Server.log
+SNOC/
+├── api.py                    # Flask Web & REST API Core Backend
+├── launcher.pyw              # Supervisor GUI & Watchdog Process
+├── alert_engine.py           # Multi-Channel Alert & Rule Dispatcher
+├── syslog_server.py          # UDP 5141 Syslog Listener Daemon
+├── trap_receiver.py          # UDP 162 SNMP Trap Listener Daemon
+├── tftp_server.py            # UDP 69 TFTP Backup Storage Daemon
+├── olt_connector.py          # SSH/Telnet OLT & ONU Polling Engine
+├── vsol_mib.py               # Enterprise MIB OID Dictionary
+├── noc_config.py             # Central Application Settings & DB Pool
+├── gen_cert.py               # TLS/SSL Certificate Generator & Validator
+├── check_downtime.py         # Log & Uptime Gap Audit Tool
+├── setup.py                  # Installation & Maintenance Engine
+├── init_postgres.sql         # Base PostgreSQL Database DDL
+├── dashboard.html            # Legacy Single-File Web UI (/?legacy=1 fallback)
+├── login.html                # Legacy Login Page
+├── frontend/                 # React 19 + TypeScript + Tailwind CSS Source
+│   ├── src/                  # Components, Contexts, Hooks, Views
+│   ├── dist/                 # Production Bundled Assets
+│   ├── package.json          # NPM Dependencies & Scripts
+│   ├── tailwind.config.js    # Watermelon UI Color Tokens & Shadows
+│   ├── tsconfig.json         # TypeScript Configuration
+│   └── vite.config.js        # Vite Build & Proxy Configuration
+├── backups/                  # TFTP Uploads & Configuration Backups
+├── data/                     # Local Application Cache & SSL Certs
+└── logs/                     # Daemon Heartbeats & Runtime Logs
+    ├── API_and_Dashboard.log
+    ├── SNMP_Trap_Receiver.log
+    ├── Syslog_Server.log
+    └── TFTP_Server.log
 ```

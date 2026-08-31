@@ -1,8 +1,8 @@
-# Smart NOC v0.5.6.6
+# Smart NOC v0.6.0
 
 Smart NOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.5.6.6
+This repository contains the full desktop/server application used by SNOC v0.6.0
 
 ## What the App Does
 
@@ -19,29 +19,32 @@ Smart NOC is built around one main dashboard and several background services:
 
 ## Major Modules
 
-- `api.py`
-  Main Flask server, authentication, settings APIs, ping engine, dashboard endpoints, backup/restore, OLT APIs, and retention helpers.
+- `frontend/`
+  Modern Single-Page Application (SPA) built with React 19, TypeScript, Tailwind CSS 3.4, Lucide icons, and Watermelon UI design system ([ui.watermelon.sh](https://ui.watermelon.sh)). Features dark studio glassmorphism, responsive sidebar layout, and Chart.js 4 telemetry graphs.
 
-- `dashboard.html`
-  Single-page web UI for Syslog, SNMP, TFTP, Ping Monitor, Alerts, OLT Connect, Uplink Traffic, Logs, ONT lookup, and Users.
+- `api.py`
+  Main Flask server, authentication, settings APIs, ping engine, dashboard endpoints, backup/restore, OLT APIs, retention helpers, and static bundle delivery (`frontend/dist/`).
+
+- `dashboard.html` / `legacy_dashboard_js.js`
+  Classic legacy single-file dashboard interface, accessible anytime via `/?legacy=1` for fallback and validation.
 
 - `login.html`
-  Login page for authenticated dashboard access.
+  Legacy authentication view fallback.
 
 - `alert_engine.py`
-  Alert rule storage, matching, email sending, Telegram sending, template rendering, and alert logging.
+  Alert rule storage, matching, email sending, Telegram sending, Discord webhooks, template rendering, and alert logging.
 
 - `launcher.pyw`
   Windows launcher GUI that starts all runtime services together.
 
 - `trap_receiver.py`
-  SNMP trap receiver and trap/event ingestion.
+  SNMP trap receiver (UDP 162) and trap/event ingestion.
 
 - `syslog_server.py`
-  Syslog receiver and syslog device/event processing.
+  Syslog receiver (UDP 5141) and syslog device/event processing.
 
 - `tftp_server.py`
-  TFTP receive server used for OLT backup/config uploads.
+  TFTP receive server (UDP 69) used for OLT backup/config uploads.
 
 - `olt_connector.py`
   OLT connection logic, SSH/Telnet polling, ONU parsing, uplink collection, and OLT database initialization.
@@ -60,13 +63,15 @@ Smart NOC is built around one main dashboard and several background services:
 
 ## Core Features
 
-### System Health & PC Resource Dashboard
+### Modern Watermelon UI & System Health Dashboard
 
-- Real-time diagnostic engine evaluating database status, heartbeats, memory usage, and port changes
-- Automated "Does it need a restart?" verdict banner with 1-click targeted remediation
-- 5 Live KPI cards: CPU processing power, RAM usage, storage space, network throughput, and 24/7 uptime counter
-- 4 Visual Chart.js charts: CPU & RAM historical trends, system RAM allocation, application storage breakdown, and network I/O rate
-- Background Services Matrix monitoring API, SNMP, Syslog, TFTP, and PostgreSQL with individual restart controls
+- **Watermelon UI Studio Aesthetics**: Dark studio surface (`#030712` / `slate-950`), translucent cards with subtle borders (`#1e293b` / `slate-800`), glassmorphism backdrop blur, and glowing neon accents.
+- **Diagnostic Health Engine**: Automated diagnostic banner evaluating database connectivity, process liveness, port changes, and 24/7 uptime milestones with 1-click remediation.
+- **Precision Megabyte & Kbps Telemetry**:
+  - **5-Way Storage Distribution Doughnut**: PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space in exact Megabytes (MB).
+  - **3-Way Memory Allocation Doughnut**: Smart NOC App RSS, Other Processes, and Free System Memory in exact Megabytes (MB).
+  - **Network Throughput Rate**: Measured and visualized in Kilobits per second (Kbps) across charts and KPI cards.
+- **Background Services Matrix**: Real-time status badges, PIDs, memory usage, CPU load, uptime, heartbeats, and per-service restart triggers for API, SNMP, Syslog, TFTP, and PostgreSQL.
 
 ### 24x7 Power Controls & Application Lifecycle
 
@@ -74,6 +79,12 @@ Smart NOC is built around one main dashboard and several background services:
 - Individual background daemon restarts (SNMP, Syslog, TFTP, API)
 - 6-second auto-reconnection countdown with health polling during restarts
 - Admin-gated lifecycle management without requiring host terminal access
+
+### Syslog Device Access Control & Live Monitoring
+
+- **Real-Time Status Engine**: Live device status calculation (<60s Receiving, 1–5m Standby, >5m Offline).
+- **Access Authorization**: Devices default to pending; admin controls to **Accept**, **Deny**, **Delete**, and inline **Rename** devices.
+- Filter dropdown dynamically filters only authorized devices to prevent log flooding.
 
 ### Access & User Management
 
@@ -83,17 +94,17 @@ Smart NOC is built around one main dashboard and several background services:
 - Per-user visible tab permissions for non-admin viewers
 - Global tab enable/disable controls from Settings
 - Password change flow
-- Backup and restore of operational configuration
+- Encrypted backup and restore of operational configuration (AES-256-GCM)
 
 ### Monitoring and Collection
 
-- SNMP trap receiver
-- Syslog receiver with event summaries
-- Syslog device registration with allow, deny, and delete options
-- Ping monitor with online/offline/high-latency view
-- TFTP backup receiver with file inventory
-- Log viewer for local service logs
-- ONT history lookup by serial number
+- SNMP trap receiver (UDP 162)
+- Syslog receiver with event summaries (UDP 5141)
+- Ping monitor with online/offline/high-latency view and latency history curves
+- TFTP backup receiver with MAC mapping for NAT gateways
+- Log viewer for local service logs with tail and search
+- ONT history lookup by serial number with optical distance formatting (m/km) and Rx power curves
+
 
 ### OLT and ONU Operations
 
@@ -125,14 +136,15 @@ Smart NOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.5.6.6 Highlights
+## Current v0.6.0 Highlights
 
 This version includes:
 
+- **React 19 + TypeScript + Watermelon UI Frontend**: High-performance single page application with modern glassmorphism aesthetic, responsive collapsible sidebar, role badges, and seamless route transitions.
+- **Comprehensive Light & Dark Theme Engine**: System-wide theme switcher with full class-based CSS token overrides for high-contrast visibility.
+- **Direct Live ONU Snapshot & Telemetry Viewer**: Real-time querying of PostgreSQL ONU database snapshots with optical signal telemetry (Rx Power dBm), distance calculation, and search/filter.
 - **OLT Automatic Polling Scheduler Daemon**: Reliable background daemon worker executing recurring polls (5–240 min) with past-date self-correction on job resume and per-job fault isolation.
-- **Interactive OLT Polling Progress**: Live animated spinners and elapsed counters across both Vue 3 SPA and legacy web interfaces during OLT ONU/uplink polls.
-- **Vue.js 3 Modern Frontend**: Fast, modular Single Page Application with Pinia state management and Chart.js 4 visualization.
-- **App Rebranding to Smart NOC**: Complete branding unification across all web views, daemons, task scheduler scripts, and installation packages.
+- **Interactive OLT Polling Progress**: Live animated spinners and elapsed counters across both React SPA and legacy web interfaces during OLT ONU/uplink polls.
 - **Direct Multi-Channel Alert Engine**: Global direct delivery to Discord, Email, and Telegram for all matched Syslog rules and Ping state transitions with full cross-platform encoding compatibility.
 - **System Health Dashboard**: Dedicated primary monitoring dashboard tab with live PC resource graphs (CPU, RAM, Disk, Network) and 24/7 uptime tracking.
 - **Diagnostic Engine**: "Does it need a restart?" automated health analyzer with 1-click remediation actions.
@@ -147,7 +159,7 @@ This version includes:
 - **Downtime Audit Tool**: Scan logs for historical downtime gaps (`check_downtime.py`).
 - **Threaded Backend Architecture**: Multi-threaded API to ensure UI responsiveness.
 - **Performance Optimized SQL**: High-performance indexes on syslog and trap tables.
-- **Full PostgreSQL Architecture**: Pure PostgreSQL implementation for all data modules.
+- **Pure PostgreSQL Architecture**: Standardized PostgreSQL implementation across all modules.
 
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -164,13 +176,12 @@ Typical runtime flow:
 
 ## Technology Stack
 
+- React 19 + TypeScript + Tailwind CSS 3.4 + Chart.js 4 (Modern Frontend)
 - Python 3
-- Flask
-- Flask-CORS
-- PostgreSQL
-- Paramiko
+- Flask & Flask-CORS
+- PostgreSQL 12+
+- Paramiko (SSH/Telnet OLT communication)
 - PySNMP
-- HTML/CSS/JavaScript dashboard
 - Tkinter launcher
 
 ## Supported Environment
@@ -179,6 +190,7 @@ Typical runtime flow:
 - Windows Server deployments
 - PostgreSQL 12+
 - Python 3.10+
+- Node.js 18+ (for frontend development)
 
 Administrator rights are typically required for installation and for binding to privileged ports like `69/udp` and `162/udp`.
 
@@ -188,6 +200,7 @@ Defaults come from [`noc_config.py`](noc_config.py):
 
 - Dashboard HTTP: `5000`
 - Dashboard HTTPS: `5443`
+- Modern Frontend (Dev): `3000`
 - SNMP trap listener: `162/udp`
 - Syslog listener: `5141/udp`
 - TFTP listener: `69/udp`
@@ -197,7 +210,7 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-Smart NOC v0.5.6.6 is purely PostgreSQL-based.
+Smart NOC v0.6.0 is purely PostgreSQL-based.
 
 Default app DB values:
 
@@ -305,7 +318,7 @@ Planned next-step items:
 
 ## License / Project Status
 
-This repository currently reflects an active in-house operational application build, versioned as SNOC v0.5.6.6.
+This repository currently reflects an active in-house operational application build, versioned as Smart NOC v0.6.0.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes

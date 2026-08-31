@@ -1,10 +1,10 @@
 @echo off
-title Smart NOC v0.5.6.6 - Installer
+title Smart NOC v0.6.0 - Installer
 color 0B
 echo.
-echo  ==========================================
-echo   Smart NOC v0.5.6.6 - Installation
-echo  ==========================================
+echo  =======================================================
+echo   Smart NOC v0.6.0 - Installation
+echo  =======================================================
 echo.
 
 :: Check for Admin

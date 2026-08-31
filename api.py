@@ -73,8 +73,9 @@ app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE']   = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5000", "http://127.0.0.1:5000", "http://localhost", "http://127.0.0.1"]}})
 
 from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, get_discord_config, send_discord, process_ping_alert
 
@@ -3428,8 +3429,8 @@ if __name__ == '__main__':
             ssl_ctx = None
             https_port = 0
 
-    # ── HTTP server (redirect or full app) — with port-busy retry ──────────────
-    app.config['SESSION_COOKIE_SECURE'] = bool(https_port and ssl_ctx)
+    # Allow cookies over HTTP for local/internal network access and dev
+    app.config['SESSION_COOKIE_SECURE'] = False
 
     def _run_http():
         import socket as _socket

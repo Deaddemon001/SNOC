@@ -1,11 +1,11 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Smart NOC v0.5.6.6 - PostgreSQL Setup
+title Smart NOC v0.6.0 - PostgreSQL Setup
 color 0B
 echo.
-echo  ==========================================
-echo   Smart NOC v0.5.6.6 - PostgreSQL DB Setup
-echo  ==========================================
+echo  =======================================================
+echo   Smart NOC v0.6.0 - PostgreSQL DB Setup
+echo  =======================================================
 echo.
 echo  This script creates:
 echo    Database : simplenoc
