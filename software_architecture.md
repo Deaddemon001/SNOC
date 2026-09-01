@@ -118,7 +118,7 @@ The application follows a decoupled daemon architecture where all components com
 
 ```text
 frontend/src/
-├── api.ts                     # Type-safe API client, credentials handler & 401 interceptor
+├── api.ts                     # Type-safe API client, 180s polling timeout manager & 401 interceptor
 ├── types/index.ts             # TypeScript domain schemas (Health, Syslog, OLT, ONUs, Ping)
 ├── context/
 │   ├── AuthContext.tsx        # User authentication, RBAC tab permissions & role gating
@@ -134,17 +134,17 @@ frontend/src/
 │   ├── shared/
 │   │   └── StatusMessage.tsx  # Reusable alert and status feedback pill
 │   └── olt/
-│       └── OnuModal.tsx       # Detailed ONU inventory table with search filter
+│       └── OnuModal.tsx       # ONU snapshot summary stats, PON port selector, state filter & CSV export
 └── views/
     ├── LoginView.tsx          # Studio dark login card with cyber grid glow
     ├── HealthDashboardView.tsx# 5 KPI cards, 3-way memory, 5-way MB storage, Kbps net rate
-    ├── SyslogView.tsx         # Live status, auth controls, event charts, stream table
+    ├── SyslogView.tsx         # Backend-authoritative receiving status, auth controls, event charts, stream table
     ├── OntLookupView.tsx      # Optical Rx power curve, distance in m/km, history
     ├── OltConnectView.tsx     # OLT profiles, ONU poll progress, automated scheduler
     ├── SnmpTrapsView.tsx      # Traps per OLT bar chart, trap volume, device cards
     ├── TftpBackupsView.tsx    # Backup files table, download/delete, MAC mappings
     ├── PingMonitorView.tsx    # ICMP latency bars, loss %, website launcher, history chart
-    ├── UplinkTrafficView.tsx  # Bandwidth rates (Kbps/Mbps), port status cards
+    ├── UplinkTrafficView.tsx  # Multi-interface throughput curves (Mbps), Peak/Low metrics, port status cards
     ├── AlertsView.tsx         # SMTP, Telegram, Discord, rules engine & template editor
     ├── UsersView.tsx          # User management, RBAC tab scoping, AES-256 backup/restore
     └── LogsView.tsx           # Tail line selector, search filter, terminal color output

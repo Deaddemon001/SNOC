@@ -110,6 +110,9 @@ Smart NOC is built around one main dashboard and several background services:
 
 - OLT connection profiles with SSH and Telnet auto-failover
 - Live interactive ONU inventory polling with real-time stage progress and animated spinners
+- **Enhanced ONU Modal & Live Telemetry Inspector**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp power outages, Average & Minimum Rx Power dBm, Max Fiber Span), dynamic PON Port filter dropdown (e.g., `GPON 0/1 (14 ONUs)`), Status filter, and 1-click CSV snapshot export.
+- **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**: Real-time and historical throughput charting (Mbps / Gbps / Kbps) with multi-interface line/dash rendering for all configured ports, live Peak & Low bandwidth rate metrics banner, and on-demand "Poll Uplink Now" live triggers.
+- **High-Resilience API Polling Client**: 180s (3-minute) timeout management with signal chaining for long-running SSH/Telnet polling operations, eliminating premature abort errors.
 - Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 240 min) and one-time execution
 - Multi-threaded hardware polling with per-job fault isolation
 - ONU inventory history, optical Rx/Tx dBm diagnostics, distance (meters), and state breakdown (Online, Offline, Dying Gasp)
@@ -142,7 +145,10 @@ This version includes:
 
 - **React 19 + TypeScript + Watermelon UI Frontend**: High-performance single page application with modern glassmorphism aesthetic, responsive collapsible sidebar, role badges, and seamless route transitions.
 - **Comprehensive Light & Dark Theme Engine**: System-wide theme switcher with full class-based CSS token overrides for high-contrast visibility.
-- **Direct Live ONU Snapshot & Telemetry Viewer**: Real-time querying of PostgreSQL ONU database snapshots with optical signal telemetry (Rx Power dBm), distance calculation, and search/filter.
+- **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**: Dynamic KPI summary header (Total, Online, Offline, Dying Gasp, Avg/Min Rx Power, Max Distance), dynamic PON port dropdown filter, multi-criteria filtering, and CSV export.
+- **Uplink Traffic Interface Telemetry & Bandwidth Visualizer**: Multi-interface solid/dashed bandwidth curves, live Peak & Low rate metrics, interface cards, and on-demand live polling.
+- **OLT Polling Timeout Resilience**: 180s timeout handling and proper AbortSignal chaining for long-running OLT SSH/Telnet operations.
+- **Syslog Device Security & Status Parity**: Active message streams show "Receiving" status with admin authorization controls (Accept, Deny, Delete, Rename).
 - **OLT Automatic Polling Scheduler Daemon**: Reliable background daemon worker executing recurring polls (5–240 min) with past-date self-correction on job resume and per-job fault isolation.
 - **Interactive OLT Polling Progress**: Live animated spinners and elapsed counters across both React SPA and legacy web interfaces during OLT ONU/uplink polls.
 - **Direct Multi-Channel Alert Engine**: Global direct delivery to Discord, Email, and Telegram for all matched Syslog rules and Ping state transitions with full cross-platform encoding compatibility.
@@ -151,10 +157,8 @@ This version includes:
 - **24/7 Power Controls**: In-app restart and shutdown capabilities in Dashboard and Settings with automated reconnection timers.
 - **Visual Alert Color Indications**: Instant visual indicators across Discord, Telegram, and Email (🔴 Red for DOWN / 🟢 Green for UP / 🟡 Yellow for Warning) with Discord rich embeds and multipart HTML email templates.
 - **Word-Boundary Regex Status Detection**: Whole-word regex parsing and compound tag stripping preventing false-positive DOWN alerts on PON port UP messages.
-- **Syslog Device Security**: Allow, deny, and delete controls for registered syslog devices to prevent log flooding.
 - **Admin Tab Visibility Guarantee**: Permanent access to all 11 tabs for administrators with resilient tab persistence.
 - **Auto-Restart System**: Launcher automatically detects and restarts unresponsive API processes (Self-Healing).
-- **Dashboard Resilience**: 10-second timeouts and independent module loading prevent full-page hangs.
 - **Service Heartbeats**: Background services log "Healthy" status every 5 minutes for troubleshooting.
 - **Downtime Audit Tool**: Scan logs for historical downtime gaps (`check_downtime.py`).
 - **Threaded Backend Architecture**: Multi-threaded API to ensure UI responsiveness.

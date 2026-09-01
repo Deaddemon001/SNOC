@@ -3,7 +3,7 @@
 ---
 
 ## v0.6.0 - React 19 Frontend Suite, Studio Theme Engine, Pure PostgreSQL Telemetry & Production Stabilization
-**Release date:** 2026-08-31
+**Release date:** 2026-08-31 (Updated: 2026-09-01)
 
 ### Added
 - **Modern React 19 + TypeScript + Watermelon UI Frontend (`frontend/`)**:
@@ -15,10 +15,17 @@
 - **Comprehensive Light & Dark Theme Engine**:
   - Class-based theme toggle applied at the root HTML element with persistent `localStorage` preference.
   - Complete `.light` CSS selector overrides across all navigation elements, modals, KPI metric cards, data tables, filter inputs, status badges, and chart legends for high-contrast visibility.
-- **Direct Live ONU Snapshot & Telemetry Viewer**:
-  - Fixed live ONU querying in the modern UI (`handleViewOnus`) to query latest PostgreSQL snapshots with real-time online/offline calculation, signal level (Rx Power dBm), distance (m / km), model/profile, and full-text filtering.
+- **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**:
+  - **Summary Statistics Cards**: Dynamic KPI header calculating Total ONUs, Online count & online percentage, Offline count, Dying Gasp power outage count, Average & Minimum Rx Power (dBm), and Max Fiber Span distance.
+  - **Dynamic PON Port Selector**: Automatic port discovery and count aggregation (e.g. `GPON 0/1 (14 ONUs)`, `GPON 0/2 (8 ONUs)`).
+  - **Multi-Level Filtering**: Search filter by serial number, model, name, or ONU ID alongside Status dropdown filtering (`Online Only`, `Offline Only`, `Dying Gasp`).
+  - **Direct CSV Export**: 1-click export of current filtered ONU snapshot data to formatted CSV.
+- **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**:
+  - **Multi-Interface Graphing**: Real-time and historical bandwidth curves with solid IN (Mbps) and dashed OUT (Mbps) series for all configured interfaces when "All Saved Ports" is selected.
+  - **Live Peak & Low Metrics**: Real-time calculation of Peak IN, Peak OUT, Low IN, and Low OUT bandwidth metrics across aggregated timeframes (Last 5, Last 20, 24h, 7 Days, 30 Days).
+  - **On-Demand Live Uplink Poll Trigger**: Dedicated "Poll Uplink Now" action to execute immediate hardware queries from the Uplink view.
 - **Syslog Device Authorization & Real-Time Status Engine**:
-  - Real-time device status calculation (<60s Receiving, 1–5m Standby, >5m Offline).
+  - Real-time device status calculation aligned with backend-authoritative status (`Receiving` for active streams, `Standby`, `Offline`).
   - Enforced syslog ingestion filtering and admin authorization controls (**Accept**, **Deny**, **Delete**, and inline **Rename**).
 - **Precision MB & Kbps Telemetry on Health Dashboard**:
   - 5-way breakdown doughnut chart displaying exact Megabyte (MB) values for PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space.
@@ -28,6 +35,14 @@
   - Added `@app.route('/api/olt/jobs/update')` endpoint supporting inline modification of poll type, schedule mode, start time, and interval.
 
 ### Changed & Fixed
+- **OLT Long-Running Polling Timeout & Abort Controller Fix**:
+  - Increased API client timeout from 12s to 180s (3 minutes) for all long-running SSH/Telnet polling operations (`/api/olt/poll_onu`, `/api/olt/poll_uplink`, `/api/olt/poll`, `/api/olt/test_connection`, `/api/olt/discover`, `/api/olt/raw_output`), backup archives, and service restarts.
+  - Implemented proper `AbortSignal` chaining to prevent premature `"Request failed: signal is aborted without reason"` errors.
+- **Syslog Receiving Status Parity**:
+  - Resolved status mismatch where timezone offsets on raw timestamps caused active receiving devices to display as "Offline". Status is now derived directly from backend registration (`status === 'receiving' || status === 'online'`).
+- **Uplink Traffic Chart Data Binding & Canvas Lifecycle**:
+  - Fixed Chart.js dataset mapping to properly bind `in_mbps` / `out_mbps` / `in_bps` / `out_bps` API response fields.
+  - Implemented reactive `useMemo` hooks and unique chart instance keys (`chartKey`) to ensure flawless canvas re-rendering across OLT, Port, and Range selector changes without context collisions.
 - **Session Cookie & CORS Cross-Compatibility**:
   - Configured `SESSION_COOKIE_SECURE = False` and `SESSION_COOKIE_SAMESITE = 'Lax'` with explicit CORS origin headers so session authentication works seamlessly across both HTTP (port 5000 / Vite port 3000) and HTTPS (port 5443).
 - **Pure PostgreSQL Storage Engine**:
