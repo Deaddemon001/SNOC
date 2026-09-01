@@ -80,13 +80,34 @@ export const SyslogView: React.FC = () => {
 
   usePolling(loadAll, 10000)
 
-  // Real-time device status calculation
-  const getDeviceStatus = (lastSeen: string | null) => {
-    if (!lastSeen) return { cls: 'border-slate-700 bg-slate-900/50 text-slate-500', pill: 'bg-slate-800 text-slate-400 border-slate-700', label: 'Unknown' }
-    const diffSec = (Date.now() - new Date(lastSeen).getTime()) / 1000
-    if (diffSec < 60) return { cls: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-400', pill: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', label: 'Receiving' }
-    if (diffSec < 300) return { cls: 'border-amber-500/40 bg-amber-950/10 text-amber-400', pill: 'bg-amber-500/10 text-amber-400 border-amber-500/30', label: 'Standby' }
-    return { cls: 'border-rose-500/40 bg-rose-950/10 text-rose-400', pill: 'bg-rose-500/10 text-rose-400 border-rose-500/30', label: 'Offline' }
+  // Real-time device status calculation matching legacy logic & backend status
+  const getDeviceStatus = (status?: string | null, lastSeen?: string | null) => {
+    const rawSt = (status || '').toLowerCase().trim()
+    if (rawSt === 'receiving' || rawSt === 'online') {
+      return { cls: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-400', pill: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', label: 'Receiving' }
+    }
+    if (rawSt === 'standby') {
+      return { cls: 'border-amber-500/40 bg-amber-950/10 text-amber-400', pill: 'bg-amber-500/10 text-amber-400 border-amber-500/30', label: 'Standby' }
+    }
+    if (rawSt === 'offline') {
+      return { cls: 'border-rose-500/40 bg-rose-950/10 text-rose-400', pill: 'bg-rose-500/10 text-rose-400 border-rose-500/30', label: 'Offline' }
+    }
+
+    // Fallback if status column is empty/unknown
+    if (lastSeen) {
+      const parsedTime = new Date(lastSeen).getTime()
+      if (!isNaN(parsedTime)) {
+        const diffSec = (Date.now() - parsedTime) / 1000
+        if (diffSec >= 0 && diffSec < 90) {
+          return { cls: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-400', pill: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', label: 'Receiving' }
+        } else if (diffSec >= 0 && diffSec < 3600) {
+          return { cls: 'border-amber-500/40 bg-amber-950/10 text-amber-400', pill: 'bg-amber-500/10 text-amber-400 border-amber-500/30', label: 'Standby' }
+        } else if (diffSec >= 3600) {
+          return { cls: 'border-rose-500/40 bg-rose-950/10 text-rose-400', pill: 'bg-rose-500/10 text-rose-400 border-rose-500/30', label: 'Offline' }
+        }
+      }
+    }
+    return { cls: 'border-slate-700 bg-slate-900/50 text-slate-500', pill: 'bg-slate-800 text-slate-400 border-slate-700', label: 'Unknown' }
   }
 
   const authorizedDevices = devices.filter(d => d.authorized === 1)
@@ -250,7 +271,7 @@ export const SyslogView: React.FC = () => {
             </div>
           ) : (
             devices.map(dv => {
-              const st = getDeviceStatus(dv.last_seen)
+              const st = getDeviceStatus(dv.status, dv.last_seen)
               const isAccepted = dv.authorized === 1
               const isDenied = dv.authorized === 2
               const curName = renameNames[dv.olt_hostname] ?? (dv.name && dv.name !== dv.olt_hostname ? dv.name : '')

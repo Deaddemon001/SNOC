@@ -41,13 +41,26 @@
       opts = opts || {};
       opts.credentials = 'include';
       
-      // Add 10s timeout
+      var isLongRunning = url.indexOf('/api/olt/poll') !== -1 ||
+                          url.indexOf('/api/olt/raw_output') !== -1 ||
+                          url.indexOf('/api/olt/discover') !== -1 ||
+                          url.indexOf('/api/olt/test_connection') !== -1 ||
+                          url.indexOf('/api/backup/') !== -1 ||
+                          url.indexOf('/api/system/service_action') !== -1;
+      var timeoutMs = (opts.timeout !== undefined) ? opts.timeout : (isLongRunning ? 180000 : 30000);
+
       var controller = new AbortController();
-      var timeoutId = setTimeout(function() { controller.abort(); }, 10000);
+      var timeoutId = null;
+      if (timeoutMs > 0) {
+        timeoutId = setTimeout(function() { controller.abort(); }, timeoutMs);
+      }
+      if (opts.signal) {
+        opts.signal.addEventListener('abort', function() { controller.abort(); });
+      }
       opts.signal = controller.signal;
 
       return fetch(API + url, opts).then(function (r) {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         if (r.status === 401) { window.location.href = '/login'; throw new Error('401'); }
         if (!r.ok) {
           // Try to parse JSON error body first (preserves backend error messages)
@@ -63,7 +76,7 @@
         }
         return r.json();
       }).catch(function(err) {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         throw err;
       });
     }
