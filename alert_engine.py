@@ -586,13 +586,26 @@ def process_alert(hostname, message, timestamp):
             print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")
 
 
+_ping_alert_lock = threading.Lock()
+_last_dispatched_ping_alerts = {}
+
 def process_ping_alert(hostname, source_ip, status, timestamp):
     """Called by api.py when a ping target changes state (e.g. offline/online)."""
     if status not in ('offline', 'online'):
         return
 
+    # Debounce / duplicate prevention (max 1 alert per target+status within 30s)
+    with _ping_alert_lock:
+        now_ts = time.time()
+        last_t = _last_dispatched_ping_alerts.get((source_ip, status), 0)
+        if now_ts - last_t < 30:
+            print(f"[PING ALERT] Debounce: Suppressed duplicate {status.upper()} alert for {source_ip}")
+            return
+        _last_dispatched_ping_alerts[(source_ip, status)] = now_ts
+
     rules = get_rules()
     if not rules:
+        print(f"[PING ALERT] No enabled alert rules found for {source_ip} ({status.upper()})")
         return
 
     ec = get_email_config()
@@ -602,6 +615,7 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
     tg_enabled      = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
     discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
     if not email_enabled and not tg_enabled and not discord_enabled:
+        print(f"[PING ALERT] All alert channels (Email/Telegram/Discord) are disabled in settings for {source_ip}")
         return
 
     display_host = hostname or source_ip
@@ -612,10 +626,12 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         message  = f"Ping monitor detected {display_host} ({source_ip}) is ONLINE / REACHABLE"
         severity = 'info'
 
+    matched_any = False
     for rule in rules:
         if not match_rule(rule, display_host, message, 'ping', source_ip=source_ip):
             continue
 
+        matched_any = True
         subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
             rule, display_host, source_ip, message, timestamp, severity=severity, status=status
         )
@@ -668,6 +684,9 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
             (now, rule['id']))
 
         if sent:
-            print(f"[ALERT] Sent: {rule['name']} -> {recipients_logged}")
+            print(f"[ALERT] Sent {status.upper()}: {rule['name']} -> {recipients_logged}")
         else:
-            print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")
+            print(f"[ALERT] Failed {status.upper()}: {rule['name']} -> {error_msg}")
+
+    if not matched_any:
+        print(f"[PING ALERT] No rules matched for {display_host} ({source_ip})")

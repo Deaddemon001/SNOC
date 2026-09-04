@@ -461,9 +461,13 @@ def ensure_dbs():
         ip TEXT PRIMARY KEY, name TEXT, website TEXT DEFAULT '',
         status TEXT DEFAULT 'unknown',
         latency_ms REAL, last_seen TEXT, last_check TEXT,
-        added_at TEXT, avg_latency REAL, loss_pct REAL)''')
+        added_at TEXT, avg_latency REAL, loss_pct REAL,
+        last_alert_status TEXT DEFAULT '',
+        consecutive_success INTEGER DEFAULT 0)''')
     execute_db(PING_DB, "ALTER TABLE ping_targets ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
     execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
+    execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS last_alert_status TEXT DEFAULT ''")
+    execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS consecutive_success INTEGER DEFAULT 0")
 
     # TFTP DB
     execute_db(TFTP_DB, f'''CREATE TABLE IF NOT EXISTS tftp_files (
@@ -2282,22 +2286,35 @@ def ping_db_writer():
                 now_dt = datetime.datetime.now()
                 now_iso = now_dt.isoformat()
 
-                prev_rows = query_db(PING_DB, "SELECT status, name, last_seen FROM ping_status WHERE ip=?", (ip,))
+                prev_rows = query_db(PING_DB, "SELECT status, name, last_seen, last_alert_status, consecutive_success FROM ping_status WHERE ip=?", (ip,))
                 if prev_rows:
                     prev_status = prev_rows[0].get('status') or 'unknown'
                     target_name = prev_rows[0].get('name') or ip
                     last_seen_str = prev_rows[0].get('last_seen')
+                    last_alert_status = (prev_rows[0].get('last_alert_status') or '').strip().lower()
+                    consecutive_success = int(prev_rows[0].get('consecutive_success') or 0)
                 else:
                     prev_status = 'unknown'
                     target_name = ip
                     last_seen_str = None
+                    last_alert_status = ''
+                    consecutive_success = 0
 
-                # Calculate status and last_seen reliably in Python
+                # ── State Evaluation & Flap Dampening ─────────────────────────
                 if status == 'online':
-                    new_status = 'online'
+                    consecutive_success += 1
                     last_seen = now_iso
                     current_lat = latency
+                    # Flap dampening: If previously offline, require 2 consecutive successes to declare online
+                    if prev_status == 'offline':
+                        if consecutive_success >= 2:
+                            new_status = 'online'
+                        else:
+                            new_status = 'offline'  # Confirming stability
+                    else:
+                        new_status = 'online'
                 else:
+                    consecutive_success = 0
                     current_lat = None
                     last_seen = last_seen_str
                     is_offline = False
@@ -2321,6 +2338,24 @@ def ping_db_writer():
                     else:
                         new_status = prev_status if prev_status in ('online', 'offline') else 'timeout'
 
+                # ── Strict Alert State Latching (Exactly 1 Alert on DOWN, 1 on UP) ──
+                should_alert = False
+                new_alert_status = last_alert_status
+
+                if new_status == 'offline':
+                    # Only send DOWN alert if not already in alerted offline state
+                    if last_alert_status != 'offline':
+                        should_alert = True
+                        new_alert_status = 'offline'
+                elif new_status == 'online':
+                    # Only send UP/recovery alert if previously alerted as offline
+                    if last_alert_status == 'offline':
+                        should_alert = True
+                        new_alert_status = 'online'
+                    elif not last_alert_status:
+                        # Baseline initialization on startup: mark as online without alert spam
+                        new_alert_status = 'online'
+
                 # Record ping result
                 execute_db(PING_DB,
                     "INSERT INTO ping_results (timestamp, ip, latency_ms, status) VALUES (?, ?, ?, ?)",
@@ -2334,16 +2369,15 @@ def ping_db_writer():
                 avg = (sum(online_lat) / len(online_lat)) if online_lat else None
                 loss = (len([r for r in rows if r['status'] != 'online']) / len(rows) * 100) if rows else 0
 
-                # Update status
+                # Update ping_status in DB
                 execute_db(PING_DB,
-                    "UPDATE ping_status SET status=?, latency_ms=?, last_seen=?, last_check=?, avg_latency=?, loss_pct=? WHERE ip=?",
-                    (new_status, current_lat, last_seen, now_iso, avg, loss, ip))
+                    "UPDATE ping_status SET status=?, latency_ms=?, last_seen=?, last_check=?, avg_latency=?, loss_pct=?, last_alert_status=?, consecutive_success=? WHERE ip=?",
+                    (new_status, current_lat, last_seen, now_iso, avg, loss, new_alert_status, consecutive_success, ip))
 
-                # Non-blocking alert dispatch so network timeouts never stall the ping writer
-                if new_status == 'offline' and prev_status != 'offline':
-                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_status, now_iso), daemon=True).start()
-                elif new_status == 'online' and prev_status == 'offline':
-                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_status, now_iso), daemon=True).start()
+                # Non-blocking alert dispatch (strictly 1 time per state transition)
+                if should_alert:
+                    print(f"[PING ALERT] Target {ip} ({target_name}) state changed -> Dispatching {new_alert_status.upper()} alert")
+                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_alert_status, now_iso), daemon=True).start()
 
         except __import__('queue').Empty:
             continue
