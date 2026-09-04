@@ -2235,8 +2235,9 @@ def delete_syslog_device():
 
 # ── PING ENGINE ───────────────────────────────────────────────────────────────
 PING_INTERVAL = 10
-OFFLINE_SECS  = 120
+OFFLINE_SECS  = getattr(_cfg, 'OFFLINE_AFTER_SECS', 120)
 ping_threads  = {}
+active_ping_ips = set()
 ping_write_q  = __import__('queue').Queue()
 
 def ping_once(ip):
@@ -2260,16 +2261,13 @@ def ping_once(ip):
     return None
 
 def ping_worker(ip):
-    while True:
+    while ip in active_ping_ips:
         try:
-            rows = query_db(PING_DB, "SELECT enabled FROM ping_targets WHERE ip=?", (ip,))
-            if not rows or not rows[0]['enabled']:
-                break
-        except Exception:
-            break
-        latency = ping_once(ip)
-        status  = 'online' if latency is not None else 'timeout'
-        ping_write_q.put(('result', ip, latency, status))
+            latency = ping_once(ip)
+            status  = 'online' if latency is not None else 'timeout'
+            ping_write_q.put(('result', ip, latency, status))
+        except Exception as e:
+            print(f"[Ping] Worker error for {ip}: {e}")
         time.sleep(PING_INTERVAL)
 
 
@@ -2281,47 +2279,80 @@ def ping_db_writer():
             t = task[0]
             if t == 'result':
                 _, ip, latency, status = task
-                now = datetime.datetime.now().isoformat()
-                prev_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
-                prev_status = prev_rows[0]['status'] if prev_rows else ''
-                execute_db(PING_DB,
-                    "INSERT INTO ping_results (timestamp,ip,latency_ms,status) VALUES (?,?,?,?)",
-                    (now, ip, latency, status))
-                if status == 'online':
-                    execute_db(PING_DB,
-                        "UPDATE ping_status SET status='online',latency_ms=?,last_seen=?,last_check=? WHERE ip=?",
-                        (latency, now, now, ip))
+                now_dt = datetime.datetime.now()
+                now_iso = now_dt.isoformat()
+
+                prev_rows = query_db(PING_DB, "SELECT status, name, last_seen FROM ping_status WHERE ip=?", (ip,))
+                if prev_rows:
+                    prev_status = prev_rows[0].get('status') or 'unknown'
+                    target_name = prev_rows[0].get('name') or ip
+                    last_seen_str = prev_rows[0].get('last_seen')
                 else:
-                    execute_db(PING_DB, '''UPDATE ping_status SET
-                        status=CASE WHEN last_seen IS NOT NULL AND
-                            (EXTRACT(EPOCH FROM (NOW() - last_seen::timestamp))) > %s THEN 'offline'
-                            ELSE status END,
-                        latency_ms=NULL, last_check=%s WHERE ip=%s''',
-                        (OFFLINE_SECS, now, ip))
-                
+                    prev_status = 'unknown'
+                    target_name = ip
+                    last_seen_str = None
+
+                # Calculate status and last_seen reliably in Python
+                if status == 'online':
+                    new_status = 'online'
+                    last_seen = now_iso
+                    current_lat = latency
+                else:
+                    current_lat = None
+                    last_seen = last_seen_str
+                    is_offline = False
+                    if last_seen_str:
+                        try:
+                            clean_ts = str(last_seen_str).replace('Z', '').strip()
+                            if clean_ts:
+                                last_seen_dt = datetime.datetime.fromisoformat(clean_ts)
+                                diff_sec = (now_dt - last_seen_dt).total_seconds()
+                                if diff_sec >= OFFLINE_SECS:
+                                    is_offline = True
+                            else:
+                                is_offline = True
+                        except Exception:
+                            is_offline = True
+                    else:
+                        is_offline = True
+
+                    if is_offline:
+                        new_status = 'offline'
+                    else:
+                        new_status = prev_status if prev_status in ('online', 'offline') else 'timeout'
+
+                # Record ping result
+                execute_db(PING_DB,
+                    "INSERT INTO ping_results (timestamp, ip, latency_ms, status) VALUES (?, ?, ?, ?)",
+                    (now_iso, ip, latency, status))
+
+                # Calculate avg latency and packet loss over last 20 results
                 rows = query_db(PING_DB,
-                    "SELECT latency_ms,status FROM ping_results WHERE ip=? ORDER BY id DESC LIMIT 20",
+                    "SELECT latency_ms, status FROM ping_results WHERE ip=? ORDER BY id DESC LIMIT 20",
                     (ip,))
-                online_lat = [r['latency_ms'] for r in rows if r['status']=='online' and r['latency_ms'] is not None]
-                avg  = sum(online_lat)/len(online_lat) if online_lat else None
-                loss = (len([r for r in rows if r['status']!='online'])/len(rows)*100) if rows else 0
-                execute_db(PING_DB, "UPDATE ping_status SET avg_latency=?,loss_pct=? WHERE ip=?",
-                             (avg, loss, ip))
-                current_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
-                if current_rows:
-                    current_status = current_rows[0].get('status') or ''
-                    current_name = current_rows[0].get('name') or ip
-                    if current_status == 'offline' and prev_status != 'offline':
-                        process_ping_alert(current_name, ip, current_status, now)
-                    elif current_status == 'online' and prev_status == 'offline':
-                        process_ping_alert(current_name, ip, current_status, now)
+                online_lat = [r['latency_ms'] for r in rows if r['status'] == 'online' and r['latency_ms'] is not None]
+                avg = (sum(online_lat) / len(online_lat)) if online_lat else None
+                loss = (len([r for r in rows if r['status'] != 'online']) / len(rows) * 100) if rows else 0
+
+                # Update status
+                execute_db(PING_DB,
+                    "UPDATE ping_status SET status=?, latency_ms=?, last_seen=?, last_check=?, avg_latency=?, loss_pct=? WHERE ip=?",
+                    (new_status, current_lat, last_seen, now_iso, avg, loss, ip))
+
+                # Non-blocking alert dispatch so network timeouts never stall the ping writer
+                if new_status == 'offline' and prev_status != 'offline':
+                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_status, now_iso), daemon=True).start()
+                elif new_status == 'online' and prev_status == 'offline':
+                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_status, now_iso), daemon=True).start()
+
         except __import__('queue').Empty:
             continue
         except Exception as e:
-            print(f"Ping DB error: {e}")
+            print(f"Ping DB writer error: {e}")
 
 
 def start_ping_thread(ip):
+    active_ping_ips.add(ip)
     if ip not in ping_threads or not ping_threads[ip].is_alive():
         t = threading.Thread(target=ping_worker, args=(ip,), daemon=True)
         t.start()
@@ -2330,14 +2361,33 @@ def start_ping_thread(ip):
 def resume_ping_targets():
     try:
         rows = query_db(PING_DB, "SELECT ip FROM ping_targets WHERE enabled=1")
-        for r in rows:
-            start_ping_thread(r['ip'])
-            print(f"[Ping] Resumed {r['ip']}")
+        enabled_ips = {r['ip'] for r in rows if r.get('ip')}
+        for ip in enabled_ips:
+            start_ping_thread(ip)
+        stale_ips = set(active_ping_ips) - enabled_ips
+        for ip in stale_ips:
+            active_ping_ips.discard(ip)
     except Exception as e:
         print(f"Resume ping error: {e}")
 
-threading.Thread(target=ping_db_writer, daemon=True).start()
+def ping_supervisor():
+    """Background watchdog that ensures ping writer and worker threads never die."""
+    global ping_writer_thread
+    while True:
+        try:
+            time.sleep(30)
+            if not ping_writer_thread.is_alive():
+                print("[Ping Watchdog] Writer thread died. Restarting...")
+                ping_writer_thread = threading.Thread(target=ping_db_writer, daemon=True)
+                ping_writer_thread.start()
+            resume_ping_targets()
+        except Exception as e:
+            print(f"[Ping Watchdog] Error: {e}")
+
+ping_writer_thread = threading.Thread(target=ping_db_writer, daemon=True)
+ping_writer_thread.start()
 resume_ping_targets()
+threading.Thread(target=ping_supervisor, daemon=True).start()
 
 # ── PING ROUTES ───────────────────────────────────────────────────────────────
 @app.route('/api/ping/targets')
@@ -2351,7 +2401,7 @@ def ping_targets():
 def ping_add():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
-    d    = request.json
+    d    = request.json or {}
     ip   = (d.get('ip') or '').strip()
     name = (d.get('name') or ip).strip()
     website = (d.get('website') or '').strip()
@@ -2377,6 +2427,7 @@ def ping_remove():
     ip = (request.json or {}).get('ip')
     if not ip:
         return jsonify({'error': 'ip required'}), 400
+    active_ping_ips.discard(ip)
     execute_db(PING_DB, "UPDATE ping_targets SET enabled=0 WHERE ip=?", (ip,))
     execute_db(PING_DB, "DELETE FROM ping_status WHERE ip=?", (ip,))
     return jsonify({'success': True})

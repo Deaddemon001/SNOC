@@ -408,7 +408,7 @@ def _host_excluded(rule, hostname):
     return False
 
 
-def match_rule(rule, hostname, message, source_type='syslog'):
+def match_rule(rule, hostname, message, source_type='syslog', source_ip=''):
     """Return True if the event matches this rule."""
     if (rule.get('source_type') or 'syslog') != source_type:
         return False
@@ -416,12 +416,14 @@ def match_rule(rule, hostname, message, source_type='syslog'):
     host_match = (rule.get('host_match') or '').strip()
     text_match = (rule.get('text_match') or '').strip()
     hostname = hostname or ''
+    source_ip = source_ip or ''
 
-    if _host_excluded(rule, hostname):
+    if _host_excluded(rule, hostname) or (source_ip and _host_excluded(rule, source_ip)):
         return False
 
     if host_match:
-        if host_match.lower() not in hostname.lower():
+        hm_lower = host_match.lower()
+        if hm_lower not in hostname.lower() and (not source_ip or hm_lower not in source_ip.lower()):
             return False
 
     if text_match and source_type == 'syslog':
@@ -611,7 +613,7 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         severity = 'info'
 
     for rule in rules:
-        if not match_rule(rule, display_host, message, 'ping'):
+        if not match_rule(rule, display_host, message, 'ping', source_ip=source_ip):
             continue
 
         subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
