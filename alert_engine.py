@@ -472,7 +472,7 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
         "description": f"**Message:** {message}",
         "color": status_info['color_int'],
         "fields": [
-            {"name": "Host / Target", "value": f"`{hostname}`" + (f" (`{source_ip}`)" if source_ip and source_ip != hostname else ""), "inline": True},
+            {"name": "Target Name / IP", "value": f"`{hostname}`" + (f" (`{source_ip}`)" if source_ip and source_ip != hostname else ""), "inline": True},
             {"name": "Severity", "value": (severity or 'N/A').upper(), "inline": True},
             {"name": "Timestamp", "value": timestamp, "inline": True},
         ],
@@ -480,10 +480,11 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
     }
 
     # Telegram Formatted Text
+    host_ip = f" (<code>{source_ip}</code>)" if source_ip and source_ip != hostname else ""
     tg_text = (
         f"<b>{dot} [{status_label}] Smart NOC Alert</b>\n\n"
         f"<b>Rule:</b> {rule['name']}\n"
-        f"<b>Host:</b> <code>{hostname}</code>\n"
+        f"<b>Host:</b> <code>{hostname}</code>{host_ip}\n"
         f"<b>Severity:</b> {severity or 'N/A'}\n"
         f"<b>Time:</b> {timestamp}\n"
         f"<b>Message:</b>\n<code>{message}</code>"
@@ -619,11 +620,16 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
         return
 
     display_host = hostname or source_ip
+    if hostname and hostname != source_ip:
+        display_label = f"{hostname} ({source_ip})"
+    else:
+        display_label = source_ip
+
     if status == 'offline':
-        message  = f"Ping monitor detected {display_host} ({source_ip}) as OFFLINE"
+        message  = f"Ping monitor detected {display_label} as OFFLINE"
         severity = 'critical'
     else:
-        message  = f"Ping monitor detected {display_host} ({source_ip}) is ONLINE / REACHABLE"
+        message  = f"Ping monitor detected {display_label} is ONLINE / REACHABLE"
         severity = 'info'
 
     matched_any = False
