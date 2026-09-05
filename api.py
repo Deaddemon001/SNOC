@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
-import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64
+import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64, socket
 from collections import deque
 
 # ── BACKUP ENCRYPTION (AES-256-GCM) ──────────────────────────────────────────
@@ -2245,15 +2245,17 @@ active_ping_ips = set()
 ping_write_q  = __import__('queue').Queue()
 
 def ping_once(ip):
+    """Returns latency ms on reachability, else None. Falls back to TCP checks
+    (ports 80/443/22/8080) when ICMP ping is blocked or timed out.""" 
     try:
         if platform.system().lower() == 'windows':
-            cmd = ['ping', '-n', '1', '-w', '2000', ip]
+            cmd = ['ping', '-n', '1', '-w', '5000', ip]
         else:
-            cmd = ['ping', '-c', '1', '-W', '2', ip]
+            cmd = ['ping', '-c', '1', '-W', '5', ip]
         kwargs = {}
         if platform.system().lower() == 'windows':
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=8, **kwargs)
         out = result.stdout + result.stderr
         m = re.search(r'[Aa]verage\s*=\s*(\d+)ms', out)
         if not m: m = re.search(r'[Tt]ime[=<](\d+)ms', out)
@@ -2262,6 +2264,17 @@ def ping_once(ip):
             return float(m.group(1))
     except Exception:
         pass
+
+    # ICMP failed -> fall back to TCP reachability so a reachable service
+    # is not falsely marked offline when ICMP is blocked/too slow
+    for port in (80, 443, 22, 8080):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(3)
+                s.connect((ip, port))
+                return 0.0  # reachable via TCP
+        except Exception:
+            continue
     return None
 
 def ping_worker(ip):
@@ -2307,7 +2320,7 @@ def ping_db_writer():
                     current_lat = latency
                     # Flap dampening: If previously offline, require 2 consecutive successes to declare online
                     if prev_status == 'offline':
-                        if consecutive_success >= 2:
+                        if consecutive_success >= 1:
                             new_status = 'online'
                         else:
                             new_status = 'offline'  # Confirming stability

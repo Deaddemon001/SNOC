@@ -2,6 +2,20 @@
 
 ---
 
+## v0.6.1 - Ping Reliability & Alert Label Enhancements
+**Release date:** 2026-09-05
+
+### Fixed
+- **Ping Monitor false `offline` on reachable hosts**: Raised the ICMP ping timeout from 2s to 5s (`-w 2000` → `-w 5000`, subprocess timeout 5 → 8) so slow remote sites over the internet are not incorrectly marked offline while their services remain up.
+- **TCP reachability fallback for ICMP-blocked targets**: When ICMP ping times out or is blocked, the monitor now probes common TCP ports (80, 443, 22, 8080) and treats a successful connection as reachable, preventing false `offline` states for hosts that respond to TCP but drop/deprioritize ICMP.
+- **Flap-dampening recovery lockout**: Reduced the consecutive-success requirement for transitioning back to `online` from 2 to 1, so a flaky link that only occasionally replies is no longer permanently latched `offline`.
+
+### Added
+- **Label + IP in offline/unreachable ping alerts**: Unreachable/offline alerts now include the target's label alongside its IP across Email, Telegram, and Discord. Payloads show `<label> (<ip>)` when a label exists, or fall back to the bare `ip` when the label is empty/missing (`process_ping_alert` / `build_alert_payloads` in `alert_engine.py`).
+- **Consistent "Target Name / IP" labels in Discord embeds**: Ping alert Discord embeds now display a dedicated `Target Name / IP` field, and Telegram's `Host` line includes the IP alongside the label.
+
+---
+
 ## v0.6.0 - React 19 Frontend Suite, Studio Theme Engine, Pure PostgreSQL Telemetry & Production Stabilization
 **Release date:** 2026-08-31 (Updated: 2026-09-01)
 

@@ -101,6 +101,8 @@ Smart NOC is built around one main dashboard and several background services:
 - SNMP trap receiver (UDP 162)
 - Syslog receiver with event summaries (UDP 5141)
 - Ping monitor with online/offline/high-latency view and latency history curves
+  - **Reachability detection**: Hosts are checked via ICMP ping every 10s with a 5s timeout. If ICMP times out or is blocked, the monitor falls back to probing common TCP ports (80/443/22/8080) so that reachable services are not falsely reported offline when ICMP is deprioritized/blocked. A single successful check is enough to recover a host from `offline` (preventing flap-dampening lockout on flaky links).
+  - **Alert labels**: Offline/unreachable alerts include the target's label alongside its IP (`Label (ip)`) across Email, Telegram, and Discord, falling back to the bare IP when no label is set.
 - TFTP backup receiver with MAC mapping for NAT gateways
 - Log viewer for local service logs with tail and search
 - ONT history lookup by serial number with optical distance formatting (m/km) and Rx power curves
