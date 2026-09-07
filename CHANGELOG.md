@@ -20,6 +20,7 @@
 - **TCP reachability fallback for ICMP-blocked targets**: When ICMP ping times out or is blocked, the monitor now probes common TCP ports (80, 443, 22, 8080) and treats a successful connection as reachable, preventing false `offline` states for hosts that respond to TCP but drop/deprioritize ICMP.
 - **Flap-dampening recovery lockout**: Reduced the consecutive-success requirement for transitioning back to `online` from 2 to 1, so a flaky link that only occasionally replies is no longer permanently latched `offline`.
 - **Client timeout on live OLT lookups**: Added `/api/onu/live_status` to `isLongRunning` list in `api.ts` to ensure 180s timeout window for SSH/Telnet hardware handshakes.
+- **OLT Profile SSH & Telnet port editing in modern UI**: Restored the missing SSH Port and Telnet Port input fields in the OLT Connection Profiles form (`OltConnectView.tsx`). Users can now view and update custom SSH and Telnet ports when adding or editing profiles, and see configured ports at a glance in the Registered OLTs table.
 
 ---
 

@@ -121,7 +121,12 @@ export const OltConnectView: React.FC = () => {
       setProfileMsg({ text: 'Password is required for new profiles.', ok: false })
       return
     }
-    const payload = { ...form, id: editId }
+    const payload = {
+      ...form,
+      ssh_port: form.ssh_port || '22',
+      telnet_port: form.telnet_port || '23',
+      id: editId
+    }
     if (!payload.enable_pass && payload.password) payload.enable_pass = payload.password
 
     try {
@@ -146,12 +151,16 @@ export const OltConnectView: React.FC = () => {
       ip: p.ip || '',
       olt_model: p.olt_model || 'V1600G1',
       conn_type: p.conn_type || 'auto',
-      ssh_port: p.ssh_port || '22',
-      telnet_port: p.telnet_port || '23',
+      ssh_port: String(p.ssh_port || '22'),
+      telnet_port: String(p.telnet_port || '23'),
       username: p.username || '',
       password: '',
       enable_pass: '',
       uplink_ports: p.uplink_ports || 'gigabitethernet 0/10'
+    })
+    setProfileMsg({
+      text: `Editing "${p.name || p.ip}". Leave password blank to keep current password, or enter new credentials.`,
+      ok: true
     })
     setConfigOpen(true)
   }
@@ -364,7 +373,7 @@ export const OltConnectView: React.FC = () => {
                   <select
                     value={form.olt_model}
                     onChange={e => setForm({ ...form, olt_model: e.target.value })}
-                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500"
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
                   >
                     <option value="V1600G1">V1600G1</option>
                     <option value="V1600G1B">V1600G1B</option>
@@ -375,7 +384,7 @@ export const OltConnectView: React.FC = () => {
                   <select
                     value={form.conn_type}
                     onChange={e => setForm({ ...form, conn_type: e.target.value })}
-                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500"
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
                   >
                     <option value="auto">Auto (SSH then Telnet)</option>
                     <option value="ssh">SSH only</option>
@@ -385,6 +394,26 @@ export const OltConnectView: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">SSH Port</label>
+                  <input
+                    type="number"
+                    value={form.ssh_port}
+                    onChange={e => setForm({ ...form, ssh_port: e.target.value })}
+                    placeholder="22"
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Telnet Port</label>
+                  <input
+                    type="number"
+                    value={form.telnet_port}
+                    onChange={e => setForm({ ...form, telnet_port: e.target.value })}
+                    placeholder="23"
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
                 <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Username</label>
                   <input
@@ -396,32 +425,39 @@ export const OltConnectView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={form.password}
-                    onChange={e => setForm({ ...form, password: e.target.value })}
-                    placeholder="login password"
-                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Enable Password</label>
-                  <input
-                    type="password"
-                    value={form.enable_pass}
-                    onChange={e => setForm({ ...form, enable_pass: e.target.value })}
-                    placeholder="same as password"
-                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Uplink Port(s)</label>
                   <input
                     type="text"
                     value={form.uplink_ports}
                     onChange={e => setForm({ ...form, uplink_ports: e.target.value })}
                     placeholder="gigabitethernet 0/10"
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
+                    Password {editId && <span className="text-slate-500 font-normal lowercase">(leave blank to keep current)</span>}
+                  </label>
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={e => setForm({ ...form, password: e.target.value })}
+                    placeholder={editId ? "•••••••• (leave blank to keep current)" : "login password"}
+                    className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
+                    Enable Password {editId && <span className="text-slate-500 font-normal lowercase">(leave blank to keep current)</span>}
+                  </label>
+                  <input
+                    type="password"
+                    value={form.enable_pass}
+                    onChange={e => setForm({ ...form, enable_pass: e.target.value })}
+                    placeholder={editId ? "•••••••• (leave blank to keep current)" : "same as password"}
                     className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -492,6 +528,9 @@ export const OltConnectView: React.FC = () => {
                       <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] uppercase font-bold">
                         {p.conn_type || 'auto'}
                       </span>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">
+                        SSH: {p.ssh_port || '22'} • Tel: {p.telnet_port || '23'}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-slate-300">{p.olt_model || 'V1600G1'}</td>
                     <td className="py-3 px-4 text-slate-400">{p.username || '-'}</td>
