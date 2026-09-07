@@ -1,8 +1,8 @@
-# Smart NOC v0.6.0
+# Smart NOC v0.6.1
 
 Smart NOC is a Windows-first network operations application for ISP and OLT environments. It combines a web dashboard, PostgreSQL-backed monitoring data, trap/syslog/TFTP collectors, OLT polling, ping monitoring, alerts, user management, and operational tools in one package.
 
-This repository contains the full desktop/server application used by SNOC v0.6.0
+This repository contains the full desktop/server application used by SNOC v0.6.1
 
 ## What the App Does
 
@@ -106,15 +106,20 @@ Smart NOC is built around one main dashboard and several background services:
 - TFTP backup receiver with MAC mapping for NAT gateways
 - Log viewer for local service logs with tail and search
 - ONT history lookup by serial number with optical distance formatting (m/km) and Rx power curves
+- **Real-time Live ONT status interrogation**: Query live hardware directly from the ONT Lookup tab via `POST /api/onu/live_status` for real-time link status, optical Rx/Tx power, distance, uptime, and firmware
 
 
 ### OLT and ONU Operations
 
 - OLT connection profiles with SSH and Telnet auto-failover
 - Live interactive ONU inventory polling with real-time stage progress and animated spinners
-- **Enhanced ONU Modal & Live Telemetry Inspector**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp power outages, Average & Minimum Rx Power dBm, Max Fiber Span), dynamic PON Port filter dropdown (e.g., `GPON 0/1 (14 ONUs)`), Status filter, and 1-click CSV snapshot export.
+- **Targeted Real-Time ONU Diagnostic Inspector (ONT Lookup)**:
+  - Query specific ONUs on demand directly through OLT CLI (`POST /api/onu/live_status` via `fetch_single_onu_live`) without initiating full OLT discovery or bulk inventory polling.
+  - Returns real-time link state (Online, Offline, Dying Gasp), optical Rx/Tx power (dBm), fiber distance, device uptime, and firmware version.
+  - Interactive "Get Live Status" action with instant status badge indicator, animated loading indicator, and inline enrichment of the latest historical lookup record.
+- **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp power outages, Average & Minimum Rx Power dBm, Max Fiber Span), dynamic PON Port filter dropdown (e.g., `GPON 0/1 (14 ONUs)`), Status filter, and 1-click CSV snapshot export.
 - **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**: Real-time and historical throughput charting (Mbps / Gbps / Kbps) with multi-interface line/dash rendering for all configured ports, live Peak & Low bandwidth rate metrics banner, and on-demand "Poll Uplink Now" live triggers.
-- **High-Resilience API Polling Client**: 180s (3-minute) timeout management with signal chaining for long-running SSH/Telnet polling operations, eliminating premature abort errors.
+- **High-Resilience API Polling Client**: 180s (3-minute) timeout management with signal chaining for long-running SSH/Telnet polling operations and targeted live ONT diagnostics, eliminating premature abort errors.
 - Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 240 min) and one-time execution
 - Multi-threaded hardware polling with per-job fault isolation
 - ONU inventory history, optical Rx/Tx dBm diagnostics, distance (meters), and state breakdown (Online, Offline, Dying Gasp)
@@ -141,15 +146,18 @@ Smart NOC is built around one main dashboard and several background services:
 - Session timeout control
 - HTTPS support with generated certificate files
 
-## Current v0.6.0 Highlights
+## Current v0.6.1 Highlights
 
 This version includes:
 
+- **Real-Time Live ONT Status & Diagnostic Inspector**: On-demand real-time OLT hardware interrogation directly from the ONT Lookup tab (`POST /api/onu/live_status` & `fetch_single_onu_live`). Provides live online/offline state, optical Rx/Tx dBm attenuation, fiber distance, and firmware info with instant visual feedback.
+- **Extended Polling & Live Query Resilience**: 180s timeout handling with proper AbortSignal chaining for long-running OLT SSH/Telnet operations and targeted ONT live queries.
+- **Ping Monitor Reachability & Reliability Upgrades**: 5-second ICMP ping timeout, automatic TCP reachability fallback (probing ports 80/443/22/8080) for hosts with ICMP blocked/deprioritized, and 1-ping recovery from flap dampening lockout.
+- **Context-Rich Alert Labels**: Target labels and IPs formatted together (`Label (ip)`) across Discord embeds, Telegram notifications, and HTML emails.
 - **React 19 + TypeScript + Watermelon UI Frontend**: High-performance single page application with modern glassmorphism aesthetic, responsive collapsible sidebar, role badges, and seamless route transitions.
 - **Comprehensive Light & Dark Theme Engine**: System-wide theme switcher with full class-based CSS token overrides for high-contrast visibility.
 - **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**: Dynamic KPI summary header (Total, Online, Offline, Dying Gasp, Avg/Min Rx Power, Max Distance), dynamic PON port dropdown filter, multi-criteria filtering, and CSV export.
 - **Uplink Traffic Interface Telemetry & Bandwidth Visualizer**: Multi-interface solid/dashed bandwidth curves, live Peak & Low rate metrics, interface cards, and on-demand live polling.
-- **OLT Polling Timeout Resilience**: 180s timeout handling and proper AbortSignal chaining for long-running OLT SSH/Telnet operations.
 - **Syslog Device Security & Status Parity**: Active message streams show "Receiving" status with admin authorization controls (Accept, Deny, Delete, Rename).
 - **OLT Automatic Polling Scheduler Daemon**: Reliable background daemon worker executing recurring polls (5–240 min) with past-date self-correction on job resume and per-job fault isolation.
 - **Interactive OLT Polling Progress**: Live animated spinners and elapsed counters across both React SPA and legacy web interfaces during OLT ONU/uplink polls.
@@ -216,7 +224,7 @@ The dashboard can update listener ports from Settings, and a restart is required
 
 ## Database
 
-Smart NOC v0.6.0 is purely PostgreSQL-based.
+Smart NOC v0.6.1 is purely PostgreSQL-based.
 
 Default app DB values:
 
@@ -324,7 +332,7 @@ Planned next-step items:
 
 ## License / Project Status
 
-This repository currently reflects an active in-house operational application build, versioned as Smart NOC v0.6.0.
+This repository currently reflects an active in-house operational application build, versioned as Smart NOC v0.6.1.
 
 - `START_NOC.bat` starts SNMP, syslog, and API in background console windows
 - `STOP_NOC.bat` stops the console-window processes

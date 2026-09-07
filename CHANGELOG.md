@@ -2,17 +2,24 @@
 
 ---
 
-## v0.6.1 - Ping Reliability & Alert Label Enhancements
-**Release date:** 2026-09-05
+## v0.6.1 - Real-Time Live ONT Status, Ping Reliability & Alert Label Enhancements
+**Release date:** 2026-09-07
+
+### Added
+- **Real-Time Live ONT Status & Hardware Diagnostic Inspector**:
+  - Direct on-demand OLT query for individual ONUs right from the **ONT Lookup** tab (`POST /api/onu/live_status`).
+  - Implemented `fetch_single_onu_live` in `olt_connector.py` to selectively interrogate OLT hardware (Telnet/SSH) for a targeted ONU rather than running a full, slow OLT-wide poll.
+  - Queries real-time operational status (Online, Offline, Dying Gasp), optical power (Rx/Tx dBm), distance (meters/km), uptime/online duration, and firmware/software version.
+  - Interactive **"Get Live Status"** button and rich live diagnostic summary panel in `OntLookupView.tsx` with animated polling states, live status pill badges, and real-time injection of current readings into historical result rows.
+  - Extended frontend `isLongRunning` timeout to 180 seconds for `/api/onu/live_status` in `api.ts`, preventing premature `signal is aborted without reason` DOMException errors on high-latency or slow OLT CLI prompts.
+- **Label + IP in offline/unreachable ping alerts**: Unreachable/offline alerts now include the target's label alongside its IP across Email, Telegram, and Discord. Payloads show `<label> (<ip>)` when a label exists, or fall back to the bare `ip` when the label is empty/missing (`process_ping_alert` / `build_alert_payloads` in `alert_engine.py`).
+- **Consistent "Target Name / IP" labels in Discord embeds**: Ping alert Discord embeds now display a dedicated `Target Name / IP` field, and Telegram's `Host` line includes the IP alongside the label.
 
 ### Fixed
 - **Ping Monitor false `offline` on reachable hosts**: Raised the ICMP ping timeout from 2s to 5s (`-w 2000` → `-w 5000`, subprocess timeout 5 → 8) so slow remote sites over the internet are not incorrectly marked offline while their services remain up.
 - **TCP reachability fallback for ICMP-blocked targets**: When ICMP ping times out or is blocked, the monitor now probes common TCP ports (80, 443, 22, 8080) and treats a successful connection as reachable, preventing false `offline` states for hosts that respond to TCP but drop/deprioritize ICMP.
 - **Flap-dampening recovery lockout**: Reduced the consecutive-success requirement for transitioning back to `online` from 2 to 1, so a flaky link that only occasionally replies is no longer permanently latched `offline`.
-
-### Added
-- **Label + IP in offline/unreachable ping alerts**: Unreachable/offline alerts now include the target's label alongside its IP across Email, Telegram, and Discord. Payloads show `<label> (<ip>)` when a label exists, or fall back to the bare `ip` when the label is empty/missing (`process_ping_alert` / `build_alert_payloads` in `alert_engine.py`).
-- **Consistent "Target Name / IP" labels in Discord embeds**: Ping alert Discord embeds now display a dedicated `Target Name / IP` field, and Telegram's `Host` line includes the IP alongside the label.
+- **Client timeout on live OLT lookups**: Added `/api/onu/live_status` to `isLongRunning` list in `api.ts` to ensure 180s timeout window for SSH/Telnet hardware handshakes.
 
 ---
 

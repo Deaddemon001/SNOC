@@ -1177,6 +1177,136 @@ def poll_uplink_only(profile, interfaces=None):
             'poll_time': poll_time, 'duration': duration,
             'uplink_stats': uplink_results}
 
+def fetch_single_onu_live(profile, pon_port, onu_id, serial_no=''):
+    """
+    Targeted live query for a single ONU: connects to the OLT once, runs
+    'show onu state', 'interface gpon 0/<port>', rx-power and distance
+    commands for the specific pon_port/onu_id, then returns live telemetry.
+
+    Returns:
+        dict with keys: success, online, phase_state, admin_state, omcc_state,
+                        rx_power, distance_m, poll_time, method, error
+    """
+    ip          = profile['ip']
+    name        = profile.get('name', ip)
+    olt_model   = get_olt_model(profile)
+    port        = str(pon_port)
+    onu         = str(onu_id)
+    now         = time.strftime('%Y-%m-%dT%H:%M:%S')
+
+    # --- Commands to run ---
+    metric_cmds = get_pon_metric_commands(profile, port)
+
+    # We need: show onu state, then enter PON interface for rx-power + distance
+    state_cmd     = 'show onu state'
+    iface_cmd     = metric_cmds['interface']
+    rx_cmds       = metric_cmds.get('rx_commands', ['show pon onu all rx-power'])
+    dist_cmd      = metric_cmds.get('dist', 'show onu 1-128 distance')
+
+    commands = [state_cmd, iface_cmd] + rx_cmds
+    if dist_cmd:
+        commands.append(dist_cmd)
+
+    start = time.time()
+    outputs, method, error = connect_and_run(profile, commands)
+    duration = round(time.time() - start, 1)
+
+    if error or not outputs:
+        return {
+            'success': False,
+            'error': error or 'No output from OLT',
+            'method': method,
+            'poll_time': now,
+        }
+
+    # --- Parse ONU state for this specific ONU ---
+    raw_state = outputs.get(state_cmd, '')
+    onus_state = parse_onu_state(raw_state, {})
+
+    # Look up by (port, onu_id) key
+    target_key   = (port, onu)
+    onu_data     = onus_state.get(target_key, {})
+
+    # Also try alternate GPON index format (e.g. the index could be slot/port:id)
+    if not onu_data:
+        for k, v in onus_state.items():
+            if str(k[0]) == port and str(k[1]) == onu:
+                onu_data = v
+                break
+
+    phase_state  = onu_data.get('phase_state', 'unknown')
+    admin_state  = onu_data.get('admin_state', 'unknown')
+    omcc_state   = onu_data.get('omcc_state', 'unknown')
+    online       = 1 if phase_state.lower() == 'working' else 0
+
+    # --- Parse rx_power ---
+    raw_rx = ''
+    best_rx_matches = -1
+    for rx_cmd in rx_cmds:
+        candidate_rx = outputs.get(rx_cmd, '')
+        candidate_matches = count_rx_entries(candidate_rx)
+        if candidate_matches > best_rx_matches:
+            raw_rx = candidate_rx
+            best_rx_matches = candidate_matches
+        if candidate_matches > 0:
+            break
+
+    # Build a minimal onus dict for parsing (just this one ONU)
+    temp_onus = {target_key: {
+        'onu_index': f'GPON0/{port}:{onu}',
+        'pon_port': port,
+        'onu_id': onu,
+        'serial_no': serial_no,
+    }}
+    temp_onus = parse_onu_optical(raw_rx, temp_onus, port)
+
+    rx_power = temp_onus.get(target_key, {}).get('rx_power')
+
+    # --- Parse distance ---
+    distance_m = None
+    if dist_cmd:
+        raw_dist = outputs.get(dist_cmd, '')
+        temp_onus = parse_onu_distance(raw_dist, temp_onus, port)
+        distance_m = temp_onus.get(target_key, {}).get('distance_m')
+
+    # --- Save live reading into onu_data for history continuity ---
+    try:
+        execute_db(OLT_DB,
+            '''INSERT INTO onu_data
+               (poll_time, olt_ip, olt_name, pon_slot, pon_port, onu_id, onu_index,
+                model, profile, serial_no, phase_state, admin_state, omcc_state,
+                online, rx_power, tx_power, distance_m)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (now, ip, name, '0', port, onu,
+             f'GPON0/{port}:{onu}',
+             onu_data.get('model', ''), onu_data.get('profile', ''),
+             serial_no or onu_data.get('serial_no', ''),
+             phase_state, admin_state, omcc_state,
+             online, rx_power, None, distance_m))
+    except Exception as e:
+        print(f'[ONT LIVE] DB save error: {e}')
+
+    print(f'[ONT LIVE] {name} GPON0/{port}:{onu} -> {phase_state}, '
+          f'rx={rx_power} dBm, dist={distance_m}m via {method} in {duration}s')
+
+    return {
+        'success': True,
+        'online': online,
+        'phase_state': phase_state,
+        'admin_state': admin_state,
+        'omcc_state': omcc_state,
+        'rx_power': rx_power,
+        'distance_m': distance_m,
+        'poll_time': now,
+        'method': method,
+        'duration': duration,
+        'olt_name': name,
+        'olt_ip': ip,
+        'pon_port': port,
+        'onu_id': onu,
+    }
+
+
 def _save_session(ip, name, duration, total, online, method, status, error):
     try:
         execute_db(OLT_DB,

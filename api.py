@@ -2186,7 +2186,52 @@ def onu_history():
     return jsonify(query_db(OLT_DB,
         "SELECT * FROM onu_data WHERE serial_no ILIKE ? ORDER BY poll_time DESC LIMIT 100", (sn_like,)))
 
+@app.route('/api/onu/live_status', methods=['POST'])
+@login_required
+def onu_live_status():
+    """Fetch real-time status for a single ONT directly from the OLT.
+
+    Payload:
+        {
+            "olt_name": "OLT_Mettur_RS_1",   # optional — used for profile lookup
+            "olt_ip":   "192.168.0.20",       # optional — used if olt_name not found
+            "pon_port": "1",                  # required
+            "onu_id":   "23",                 # required
+            "serial_no": "GPON0054d7b8"       # optional — written into onu_data row
+        }
+    """
+    d = request.json or {}
+    olt_name  = (d.get('olt_name') or '').strip()
+    olt_ip    = (d.get('olt_ip')   or '').strip()
+    pon_port  = str(d.get('pon_port') or '').strip()
+    onu_id    = str(d.get('onu_id')   or '').strip()
+    serial_no = (d.get('serial_no')   or '').strip()
+
+    if not pon_port or not onu_id:
+        return jsonify({'error': 'pon_port and onu_id are required'}), 400
+
+    # Resolve OLT profile: prefer match by name, fall back to IP
+    profile_rows = []
+    if olt_name:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE name=?", (olt_name,))
+    if not profile_rows and olt_ip:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE ip=?", (olt_ip,))
+
+    if not profile_rows:
+        return jsonify({'error': f'OLT profile not found for name="{olt_name}" ip="{olt_ip}"'}), 404
+
+    profile = dict(profile_rows[0])
+
+    try:
+        from olt_connector import fetch_single_onu_live
+        result = fetch_single_onu_live(profile, pon_port, onu_id, serial_no=serial_no)
+        status_code = 200 if result.get('success') else 502
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
+
 @app.route('/api/syslog/devices')
 @login_required
 def syslog_devices():

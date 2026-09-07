@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smart NOC v0.6.0 - Software Architecture Document</title>
+<title>Smart NOC v0.6.1 - Software Architecture Document</title>
 <style>
   @page {
     size: A4 portrait;
@@ -217,7 +217,7 @@
         <div class="doc-title">Smart NOC Architecture</div>
         <div class="doc-subtitle">System Design, Data Flow Pipelines & Technical Interdependency Specification</div>
       </div>
-      <div class="doc-badge">Release v0.6.0</div>
+      <div class="doc-badge">Release v0.6.1</div>
     </div>
     <div class="meta-grid">
       <div class="meta-item"><strong>Target Platform</strong>Windows 10 / 11 / Server</div>
@@ -370,14 +370,14 @@
       <tr>
         <td><strong>api.py</strong></td>
         <td><span class="badge-proto">HTTP 5000</span> <span class="badge-proto">HTTPS 5443</span></td>
-        <td>Flask REST API core; session auth; Ping Engine; Retention Cleaner; OLT Polling Scheduler (<code>olt_job_scheduler</code>); Health Diagnostics; Power Management (Restart/Shutdown).</td>
-        <td>Serves React 19 SPA and legacy UI; triggers <code>alert_engine.py</code> on ping changes; calls <code>olt_connector.py</code> for live scans and background scheduled polls.</td>
+        <td>Flask REST API core; session auth; Ping Engine (ICMP + TCP fallback reachability); Retention Cleaner; OLT Polling Scheduler (<code>olt_job_scheduler</code>); Targeted Live ONT Status (<code>/api/onu/live_status</code>); Health Diagnostics; Power Management (Restart/Shutdown).</td>
+        <td>Serves React 19 SPA and legacy UI; triggers <code>alert_engine.py</code> on ping changes with formatted labels; calls <code>olt_connector.py</code> for targeted live scans, manual polls, and background scheduled jobs.</td>
       </tr>
       <tr>
         <td><strong>frontend/</strong></td>
         <td><span class="badge-proto">React 19 SPA</span></td>
-        <td>Modern Single Page Application built with React 19, TypeScript, Tailwind CSS 3.4, Lucide icons, and Watermelon UI design system; 11 operational modules; 180s polling timeout manager; Chart.js 4 telemetry graphs.</td>
-        <td>Served directly by <code>api.py</code> from <code>frontend/dist/</code> at <code>/</code> and <code>/login</code>.</td>
+        <td>Modern Single Page Application built with React 19, TypeScript, Tailwind CSS 3.4, Lucide icons, and Watermelon UI design system; 11 operational modules; Targeted Real-Time ONT Live Status Inspector; 180s polling timeout manager; Chart.js 4 telemetry graphs.</td>
+        <td>Served directly by <code>api.py</code> from <code>frontend/dist/</code> at <code>/</code> and <code>/login</code>; communicates via JSON REST calls with <code>api.py</code>.</td>
       </tr>
       <tr>
         <td><strong>dashboard.html</strong></td>
@@ -388,7 +388,7 @@
       <tr>
         <td><strong>alert_engine.py</strong></td>
         <td><span class="badge-proto">Outbound REST/SMTP</span></td>
-        <td>Direct multi-channel rule matcher; visual status renderer (🔴 Red / 🟢 Green / 🟡 Yellow); Discord embed creator; Telegram bot dispatcher; HTML email sender.</td>
+        <td>Direct multi-channel rule matcher; visual status renderer (🔴 Red / 🟢 Green / 🟡 Yellow); Label + IP target formatting; Discord embed creator; Telegram bot dispatcher; HTML email sender.</td>
         <td>Invoked by <code>syslog_server.py</code> and <code>api.py</code> (Ping Worker); logs dispatched alerts to PostgreSQL <code>alert_log</code> table.</td>
       </tr>
 
@@ -413,8 +413,8 @@
       <tr>
         <td><strong>olt_connector.py</strong></td>
         <td><span class="badge-proto">SSH / Telnet</span></td>
-        <td>Paramiko automation library for VSOL, ZTE, Huawei, and Fiberhome OLTs; extracts ONUs, optical power (Rx/Tx), and uplink traffic.</td>
-        <td>Invoked on-demand by <code>api.py</code> and background scheduler; updates <code>onu_data</code> and <code>olt_data</code>.</td>
+        <td>Paramiko automation library for VSOL, ZTE, Huawei, and Fiberhome OLTs; extracts ONUs, optical power (Rx/Tx), uplink traffic, and targeted real-time single-ONU diagnostics (<code>fetch_single_onu_live</code>).</td>
+        <td>Invoked on-demand by <code>api.py</code> (live lookups and manual scans) and background scheduler; updates <code>onu_data</code> and <code>olt_data</code>.</td>
       </tr>
     </tbody>
   </table>
@@ -535,6 +535,55 @@
       <text x="485" y="108" font-family="sans-serif" font-size="7.5" fill="#14532d">• Auto-restores telemetry without reload</text>
     </svg>
     <div class="diagram-caption">Figure 3.0: Diagnostic Analyzer &amp; In-App Power Recovery Pipeline</div>
+  </div>
+
+  <h3>3.3. Real-Time Targeted ONT Diagnostic Pipeline (Live Hardware Interrogation)</h3>
+  <p>
+    Rather than requiring slow, full-chassis OLT discovery polls to verify a single subscriber's optical signal and registration, Smart NOC implements an on-demand targeted diagnostic pipeline. When an operator triggers <strong>Get Live Status</strong> from the ONT Lookup tab, the request is dispatched with an isolated 180s client timeout and directly interrogates only the specific PON slot/port and ONU index on the target OLT.
+  </p>
+
+  <!-- DIAGRAM 4: REAL-TIME ONT LIVE STATUS -->
+  <div class="diagram-box">
+    <svg width="680" height="140" viewBox="0 0 680 140" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="15" width="125" height="110" rx="4" fill="#f8fafc" stroke="#cbd5e1"/>
+      <text x="72" y="35" font-family="sans-serif" font-size="8.5" font-weight="700" fill="#0f172a" text-anchor="middle">Operator Trigger</text>
+      <text x="18" y="55" font-family="sans-serif" font-size="7.5" fill="#334155">• Enters MAC / Serial</text>
+      <text x="18" y="69" font-family="sans-serif" font-size="7.5" fill="#334155">• Clicks "Get Live Status"</text>
+      <text x="18" y="83" font-family="sans-serif" font-size="7.5" fill="#334155">• OntLookupView.tsx</text>
+      <text x="18" y="97" font-family="sans-serif" font-size="7.5" fill="#334155">• Animated loading state</text>
+      <text x="18" y="111" font-family="sans-serif" font-size="7.5" fill="#0284c7" font-weight="600">Timeout: 180s Guard</text>
+
+      <path d="M 135 70 L 165 70" stroke="#0284c7" stroke-width="2" fill="none"/>
+
+      <rect x="165" y="15" width="145" height="110" rx="4" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="237" y="35" font-family="sans-serif" font-size="8.5" font-weight="700" fill="#0284c7" text-anchor="middle">Flask API Gateway</text>
+      <text x="175" y="55" font-family="sans-serif" font-size="7.5" fill="#0369a1">• POST /api/onu/live_status</text>
+      <text x="175" y="69" font-family="sans-serif" font-size="7.5" fill="#0369a1">• Resolves OLT profile</text>
+      <text x="175" y="83" font-family="sans-serif" font-size="7.5" fill="#0369a1">• Extracts slot/port &amp; onu_id</text>
+      <text x="175" y="97" font-family="sans-serif" font-size="7.5" fill="#0369a1">• Spawns isolated worker</text>
+      <text x="175" y="111" font-family="sans-serif" font-size="7.5" fill="#0369a1">• JSON response formatting</text>
+
+      <path d="M 310 70 L 340 70" stroke="#0284c7" stroke-width="2" fill="none"/>
+
+      <rect x="340" y="15" width="160" height="110" rx="4" fill="#fdf4ff" stroke="#f5d0fe"/>
+      <text x="420" y="35" font-family="sans-serif" font-size="8.5" font-weight="700" fill="#a21caf" text-anchor="middle">Targeted OLT Poller</text>
+      <text x="350" y="55" font-family="sans-serif" font-size="7.5" fill="#701a75">• fetch_single_onu_live()</text>
+      <text x="350" y="69" font-family="sans-serif" font-size="7.5" fill="#701a75">• Telnet / SSH Connection</text>
+      <text x="350" y="83" font-family="sans-serif" font-size="7.5" fill="#701a75">• Direct single-ONU commands</text>
+      <text x="350" y="97" font-family="sans-serif" font-size="7.5" fill="#701a75">• Parses Rx/Tx dBm &amp; distance</text>
+      <text x="350" y="111" font-family="sans-serif" font-size="7.5" fill="#701a75">• Extracts uptime &amp; firmware</text>
+
+      <path d="M 500 70 L 530 70" stroke="#0284c7" stroke-width="2" fill="none"/>
+
+      <rect x="530" y="15" width="140" height="110" rx="4" fill="#f0fdf4" stroke="#bbf7d0"/>
+      <text x="600" y="35" font-family="sans-serif" font-size="8.5" font-weight="700" fill="#15803d" text-anchor="middle">Live Telemetry UI</text>
+      <text x="540" y="55" font-family="sans-serif" font-size="7.5" fill="#14532d">• Real-time status badge</text>
+      <text x="540" y="69" font-family="sans-serif" font-size="7.5" fill="#14532d">• Optical Rx/Tx dBm cards</text>
+      <text x="540" y="83" font-family="sans-serif" font-size="7.5" fill="#14532d">• Fiber distance &amp; Uptime</text>
+      <text x="540" y="97" font-family="sans-serif" font-size="7.5" fill="#14532d">• Software version tag</text>
+      <text x="540" y="111" font-family="sans-serif" font-size="7.5" fill="#15803d" font-weight="600">Enriches Lookup Table</text>
+    </svg>
+    <div class="diagram-caption">Figure 4.0: Targeted Real-Time ONT Live Status Interrogation Flow</div>
   </div>
 
   <!-- SECTION 4: DATABASE ARCHITECTURE -->
