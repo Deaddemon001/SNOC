@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react'
-import { Search, X, Radio, Activity, Compass, Gauge, AlertCircle, Zap, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Search, X, Radio, Activity, Compass, Gauge, AlertCircle, Zap, RefreshCw, Wifi, WifiOff, Layers, Cpu } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -10,7 +10,7 @@ import {
   Filler,
   Tooltip
 } from 'chart.js'
-import { apiFetch } from '../api'
+import { apiFetch, apiPost } from '../api'
 import { useTheme } from '../context/ThemeContext'
 import { StatusMessage } from '../components/shared/StatusMessage'
 
@@ -37,7 +37,17 @@ interface LiveResult {
 export const OntLookupView: React.FC = () => {
   const { theme } = useTheme()
 
+  // Search mode state: 'serial' | 'vlan'
+  const [searchMode, setSearchMode] = useState<'serial' | 'vlan'>('serial')
+  
+  // Serial search states
   const [serial, setSerial] = useState('')
+  
+  // VLAN search states
+  const [oltProfiles, setOltProfiles] = useState<any[]>([])
+  const [selectedOltId, setSelectedOltId] = useState<string>('')
+  const [vlanId, setVlanId] = useState('')
+
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [statusMsg, setStatusMsg] = useState({ text: '', ok: false })
@@ -47,7 +57,23 @@ export const OntLookupView: React.FC = () => {
   const [liveLoading, setLiveLoading] = useState(false)
   const [liveError, setLiveError] = useState('')
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  // Load OLT profiles for VLAN search mode dropdown
+  const loadOltProfiles = async () => {
+    try {
+      const data = await apiFetch('/api/olt/profiles')
+      const list = Array.isArray(data) ? data : []
+      setOltProfiles(list)
+      if (list.length > 0 && !selectedOltId) {
+        setSelectedOltId(String(list[0].id))
+      }
+    } catch (_) {}
+  }
+
+  useEffect(() => {
+    loadOltProfiles()
+  }, [])
+
+  const handleSerialSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     const sn = serial.trim()
     if (!sn) {
@@ -65,7 +91,7 @@ export const OntLookupView: React.FC = () => {
       if (!list.length) {
         setStatusMsg({ text: `No polling history found for serial "${sn}".`, ok: false })
       } else {
-        setStatusMsg({ text: `${list.length} historical records retrieved for ${sn}`, ok: true })
+        setStatusMsg({ text: `${list.length} historical records retrieved for serial "${sn}"`, ok: true })
       }
     } catch (err: any) {
       setStatusMsg({ text: err.message || 'Lookup failed', ok: false })
@@ -74,8 +100,53 @@ export const OntLookupView: React.FC = () => {
     }
   }
 
+  const handleVlanSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const vlan = vlanId.trim()
+    if (!vlan) {
+      setStatusMsg({ text: 'Please enter a VLAN number.', ok: false })
+      return
+    }
+    if (!selectedOltId) {
+      setStatusMsg({ text: 'Please select an OLT profile.', ok: false })
+      return
+    }
+
+    const olt = oltProfiles.find(p => String(p.id) === String(selectedOltId))
+    setLoading(true)
+    setStatusMsg({ text: '', ok: false })
+    setLiveResult(null)
+    setLiveError('')
+
+    try {
+      const res = await apiPost('/api/onu/vlan_lookup', {
+        olt_id: selectedOltId,
+        olt_name: olt?.name || '',
+        olt_ip: olt?.ip || '',
+        vlan_id: vlan
+      })
+
+      if (res.success) {
+        const list = Array.isArray(res.onus) ? res.onus : []
+        setRows(list)
+        if (!list.length) {
+          setStatusMsg({ text: `No connected ONUs found on VLAN ${vlan} for OLT ${olt?.name || olt?.ip}.`, ok: false })
+        } else {
+          setStatusMsg({ text: `Found ${list.length} ONUs connected to VLAN ${vlan} on ${olt?.name || olt?.ip} via ${res.method || 'CLI'}.`, ok: true })
+        }
+      } else {
+        setStatusMsg({ text: res.error || 'VLAN lookup failed', ok: false })
+      }
+    } catch (err: any) {
+      setStatusMsg({ text: err.backendError || err.message || 'VLAN lookup failed', ok: false })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleClear = () => {
     setSerial('')
+    setVlanId('')
     setRows([])
     setStatusMsg({ text: '', ok: false })
     setLiveResult(null)
@@ -165,7 +236,7 @@ export const OntLookupView: React.FC = () => {
 
   const chartData = {
     labels: [...rows].reverse().map(r =>
-      new Date(r.poll_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      r.poll_time ? new Date(r.poll_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Live'
     ),
     datasets: [
       {
@@ -198,42 +269,119 @@ export const OntLookupView: React.FC = () => {
     <div className="space-y-6">
       {/* Search Bar Panel */}
       <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
-        <div>
-          <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-            <Search className="w-4 h-4 text-cyan-400" />
-            ONT Serial Number Lookup
-          </h2>
-          <p className="text-xs font-mono text-slate-400">Query stored optical levels, distance measurements, and online states</p>
-        </div>
-
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={serial}
-              onChange={e => setSerial(e.target.value)}
-              placeholder="e.g. VSOL12345678 or HWTC..."
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono"
-            />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <Search className="w-4 h-4 text-cyan-400" />
+              ONT Telemetry &amp; Inventory Lookup
+            </h2>
+            <p className="text-xs font-mono text-slate-400">Search by GPON Serial Number or correlate MAC addresses by OLT VLAN</p>
           </div>
-          <div className="flex gap-2">
+
+          {/* Mode Switcher Buttons */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-xl">
             <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2.5 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 tracking-wider uppercase transition-all shadow-md shadow-cyan-500/20"
+              type="button"
+              onClick={() => {
+                setSearchMode('serial')
+                handleClear()
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${searchMode === 'serial' ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              {loading ? 'Searching...' : 'Search'}
+              <Cpu className="w-3.5 h-3.5" />
+              <span>By Serial Number</span>
             </button>
             <button
               type="button"
-              onClick={handleClear}
-              className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              onClick={() => {
+                setSearchMode('vlan')
+                handleClear()
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${searchMode === 'vlan' ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              Clear
+              <Layers className="w-3.5 h-3.5" />
+              <span>By OLT VLAN</span>
             </button>
           </div>
-        </form>
+        </div>
+
+        {/* Search Mode Forms */}
+        {searchMode === 'serial' ? (
+          <form onSubmit={handleSerialSearch} className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={serial}
+                onChange={e => setSerial(e.target.value)}
+                placeholder="Enter full GPON serial number (e.g. VSOL12345678, GPON0054D7B8...)"
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 tracking-wider uppercase transition-all shadow-md shadow-cyan-500/20"
+              >
+                {loading ? 'Searching...' : 'Search Serial'}
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              >
+                Clear
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleVlanSearch} className="flex flex-col sm:flex-row gap-3">
+            {/* Select OLT */}
+            <div className="min-w-[200px]">
+              <select
+                value={selectedOltId}
+                onChange={e => setSelectedOltId(e.target.value)}
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono"
+              >
+                {oltProfiles.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || p.ip} ({p.ip})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* VLAN Input */}
+            <div className="relative flex-1">
+              <Layers className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={vlanId}
+                onChange={e => setVlanId(e.target.value)}
+                placeholder="Enter VLAN ID (e.g. 100, 1001, 20...)"
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 tracking-wider uppercase transition-all shadow-md shadow-cyan-500/20"
+              >
+                {loading ? 'Polling VLAN...' : 'Search VLAN'}
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+              >
+                Clear
+              </button>
+            </div>
+          </form>
+        )}
 
         <StatusMessage msg={statusMsg.text} ok={statusMsg.ok} />
       </div>
@@ -241,7 +389,8 @@ export const OntLookupView: React.FC = () => {
       {/* KPI Cards + Live Status */}
       {latest && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Status */}
             <div className={`p-4 rounded-2xl border space-y-1 ${isOnline(latest) ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-rose-950/20 border-rose-500/30'}`}>
               <div className="text-[10px] font-mono uppercase text-slate-400">Latest Status</div>
               <div className="text-xl font-bold font-mono flex items-center gap-2">
@@ -258,6 +407,18 @@ export const OntLookupView: React.FC = () => {
               </div>
             </div>
 
+            {/* FULL GPON SERIAL NUMBER DISPLAY (Bug 4 Fix) */}
+            <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <div className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+                <Cpu className="w-3.5 h-3.5 text-cyan-400" /><span>GPON Serial Number</span>
+              </div>
+              <div className="text-base font-bold font-mono text-cyan-300 truncate" title={latest.serial_no || serial.trim()}>
+                {latest.serial_no || serial.trim() || '—'}
+              </div>
+              <div className="text-xs font-mono text-slate-500">Full Hardware Serial</div>
+            </div>
+
+            {/* Distance */}
             <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
               <div className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
                 <Compass className="w-3.5 h-3.5 text-amber-400" /><span>Optical Distance</span>
@@ -266,6 +427,7 @@ export const OntLookupView: React.FC = () => {
               <div className="text-xs font-mono text-slate-500">last optical measurement</div>
             </div>
 
+            {/* Optical Rx Power */}
             <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
               <div className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
                 <Gauge className="w-3.5 h-3.5 text-cyan-400" /><span>Optical Rx Power</span>
@@ -276,6 +438,7 @@ export const OntLookupView: React.FC = () => {
               <div className="text-xs font-mono text-slate-500">Rx sensitivity level</div>
             </div>
 
+            {/* OLT & Port */}
             <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
               <div className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
                 <Radio className="w-3.5 h-3.5 text-emerald-400" /><span>OLT &amp; Port</span>
@@ -401,18 +564,22 @@ export const OntLookupView: React.FC = () => {
             <Line data={chartData} options={chartOpts} />
           ) : (
             <div className="h-full flex items-center justify-center text-xs font-mono text-slate-500">
-              No data yet. Search for an ONT serial above.
+              No data yet. Search by ONT serial or OLT VLAN above.
             </div>
           )}
         </div>
       </div>
 
-      {/* History Table */}
+      {/* History & Results Table */}
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold tracking-wide text-slate-100">Measurement History</h3>
-            <p className="text-xs font-mono text-slate-400">Full audit log of optical measurements</p>
+            <h3 className="text-sm font-bold tracking-wide text-slate-100">
+              {searchMode === 'vlan' ? 'VLAN Discovered ONUs & Telemetry' : 'Measurement History'}
+            </h3>
+            <p className="text-xs font-mono text-slate-400">
+              {searchMode === 'vlan' ? 'Matched ONUs on OLT MAC address table' : 'Full audit log of optical measurements'}
+            </p>
           </div>
           <span className="text-xs font-mono text-slate-400">{rows.length} records</span>
         </div>
@@ -421,6 +588,7 @@ export const OntLookupView: React.FC = () => {
             <thead className="sticky top-0 bg-slate-950 border-b border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400">
               <tr>
                 <th className="py-3 px-4">Poll Time</th>
+                <th className="py-3 px-4">GPON Serial Number</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Optical Rx</th>
                 <th className="py-3 px-4">Distance</th>
@@ -432,17 +600,21 @@ export const OntLookupView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {!rows.length ? (
-                <tr><td colSpan={8} className="py-8 text-center text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-slate-500">No records found.</td></tr>
               ) : (
                 rows.slice(0, 300).map((r, i) => (
                   <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${r._live ? 'bg-violet-950/10' : ''}`}>
                     <td className="py-2.5 px-4 text-slate-300">
                       <span className="flex items-center gap-1.5">
-                        {r.poll_time ? new Date(r.poll_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' }) : '—'}
+                        {r.poll_time ? new Date(r.poll_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' }) : 'Live'}
                         {r._live && (
                           <span className="px-1 py-0.5 text-[9px] bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded font-bold leading-none">LIVE</span>
                         )}
                       </span>
+                    </td>
+                    {/* FULL GPON SERIAL COLUMN (Bug 4 Fix) */}
+                    <td className="py-2.5 px-4 font-bold text-cyan-300">
+                      {r.serial_no || serial.trim() || '—'}
                     </td>
                     <td className="py-2.5 px-4">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1.5 ${isOnline(r) ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>

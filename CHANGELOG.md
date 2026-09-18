@@ -2,6 +2,24 @@
 
 ---
 
+## [Unreleased] - Bug Fixes & ONT Lookup via VLAN Feature
+
+### Added
+- **ONT Lookup via OLT VLAN**:
+  - Added OLT VLAN search mode in **ONT Lookup** tab (`OntLookupView.tsx`).
+  - Implemented `lookup_onu_by_vlan` in `olt_connector.py` to query OLT MAC address table by VLAN ID (`show mac-address-table vlan <vlan>`), parse connected GPON ports, and correlate learned MAC addresses with ONU inventory and optical levels.
+  - Added `POST /api/onu/vlan_lookup` backend endpoint in `api.py`.
+- **OLT Historical Poll Snapshot Picker in View ONUs Modal**:
+  - Added Poll Date and Poll Time dropdown selectors in `OnuModal.tsx`.
+  - Enables viewing any past historical poll snapshot for an OLT via `/api/olt/poll_dates` and `/api/olt/poll_times`.
+
+### Fixed
+- **Syslog Event Endless Scroll (Bug 1)**: Set default event limit to 10 events per page in `SyslogView.tsx` with page size selector dropdown (10, 25, 50) and page navigation controls.
+- **TFTP Backups Stats Cards (Bug 2)**: Added `total_files` and `ok_files` keys to `/api/tftp/stats` response in `api.py` and updated `TftpBackupsView.tsx` fallback accessors so "Files Received", "Successful", and "Total Size" render correctly.
+- **Full GPON Serial Number Display (Bug 4)**: Added dedicated GPON Serial Number summary metric card and table column in `OntLookupView.tsx` so the full serial number is always rendered.
+
+---
+
 ## v0.6.1 - Real-Time Live ONT Status, Ping Reliability & Alert Label Enhancements
 **Release date:** 2026-09-07
 

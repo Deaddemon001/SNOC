@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { X, Search, Radio, RefreshCw, Download, Activity, Wifi, WifiOff, Zap } from 'lucide-react'
+import { X, Search, Radio, RefreshCw, Download, Activity, Wifi, WifiOff, Zap, Calendar, Clock } from 'lucide-react'
 import { apiFetch } from '../../api'
 
 interface OnuModalProps {
@@ -18,21 +18,62 @@ export const OnuModal: React.FC<OnuModalProps> = ({ name, ip, onus: initialOnus,
   const [selectedPon, setSelectedPon] = useState<string>('')
   const [selectedStatus, setSelectedStatus] = useState<string>('')
 
-  const fetchOnus = async () => {
+  // Historical poll snapshot picker states
+  const [pollDates, setPollDates] = useState<any[]>([])
+  const [selectedDate, setSelectedDate] = useState<string>('')
+  const [pollTimes, setPollTimes] = useState<any[]>([])
+  const [selectedTime, setSelectedTime] = useState<string>('')
+
+  const fetchPollDates = async () => {
+    if (!ip) return
+    try {
+      const dates = await apiFetch(`/api/olt/poll_dates?ip=${encodeURIComponent(ip)}`)
+      const list = Array.isArray(dates) ? dates : []
+      setPollDates(list)
+      if (list.length > 0 && !selectedDate) {
+        const topDate = list[0].poll_date
+        setSelectedDate(topDate)
+        fetchPollTimes(topDate)
+      }
+    } catch (_) {}
+  }
+
+  const fetchPollTimes = async (dateStr: string) => {
+    if (!ip) return
+    try {
+      const times = await apiFetch(`/api/olt/poll_times?ip=${encodeURIComponent(ip)}&date=${encodeURIComponent(dateStr)}`)
+      const list = Array.isArray(times) ? times : []
+      setPollTimes(list)
+    } catch (_) {}
+  }
+
+  const fetchOnusForTime = async (pt?: string) => {
     if (!ip) return
     setLoading(true)
     try {
-      const res = await apiFetch(`/api/olt/onus?ip=${encodeURIComponent(ip)}`)
+      const targetTime = pt !== undefined ? pt : selectedTime
+      const url = targetTime ? `/api/olt/onus?ip=${encodeURIComponent(ip)}&poll_time=${encodeURIComponent(targetTime)}` : `/api/olt/onus?ip=${encodeURIComponent(ip)}`
+      const res = await apiFetch(url)
       const list = Array.isArray(res) ? res : []
       setOnus(list)
       if (list.length > 0 && list[0].poll_time) {
         setPollTime(list[0].poll_time)
+      } else if (targetTime) {
+        setPollTime(targetTime)
       }
     } catch (_) {}
     finally {
       setLoading(false)
     }
   }
+
+  const fetchOnus = async () => {
+    fetchOnusForTime('')
+  }
+
+  useEffect(() => {
+    fetchPollDates()
+  }, [ip])
 
   useEffect(() => {
     if (!initialOnus || initialOnus.length === 0) {
@@ -328,6 +369,59 @@ export const OnuModal: React.FC<OnuModalProps> = ({ name, ip, onus: initialOnus,
 
         {/* Filter Bar */}
         <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Historical Poll Selector Dropdowns */}
+          <div className="flex flex-wrap items-center gap-2 border-r border-slate-800 pr-3">
+            {/* Poll Date Dropdown */}
+            <div className="flex items-center gap-1 text-xs font-mono text-slate-400">
+              <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+              <select
+                value={selectedDate}
+                onChange={e => {
+                  const dt = e.target.value
+                  setSelectedDate(dt)
+                  setSelectedTime('')
+                  if (dt) {
+                    fetchPollTimes(dt)
+                  } else {
+                    setPollTimes([])
+                    fetchOnusForTime('')
+                  }
+                }}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-mono cursor-pointer"
+              >
+                <option value="">Latest Poll</option>
+                {pollDates.map(d => (
+                  <option key={d.poll_date} value={d.poll_date}>
+                    {d.poll_date} ({d.polls} polls)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Poll Time Dropdown (shows when a date is selected) */}
+            {selectedDate && pollTimes.length > 0 && (
+              <div className="flex items-center gap-1 text-xs font-mono text-slate-400">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <select
+                  value={selectedTime}
+                  onChange={e => {
+                    const tm = e.target.value
+                    setSelectedTime(tm)
+                    fetchOnusForTime(tm)
+                  }}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-cyan-500 font-mono cursor-pointer"
+                >
+                  <option value="">Select Time...</option>
+                  {pollTimes.map(t => (
+                    <option key={t.poll_time} value={t.poll_time}>
+                      {new Date(t.poll_time).toLocaleTimeString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           {/* Text search */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -342,7 +436,7 @@ export const OnuModal: React.FC<OnuModalProps> = ({ name, ip, onus: initialOnus,
 
           {/* PON Port Filter Dropdown */}
           <div className="flex items-center gap-2">
-            <div className="relative min-w-[170px]">
+            <div className="relative min-w-[150px]">
               <select
                 value={selectedPon}
                 onChange={e => setSelectedPon(e.target.value)}
@@ -358,7 +452,7 @@ export const OnuModal: React.FC<OnuModalProps> = ({ name, ip, onus: initialOnus,
             </div>
 
             {/* Status Filter Dropdown */}
-            <div className="relative min-w-[140px]">
+            <div className="relative min-w-[130px]">
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}

@@ -2230,6 +2230,41 @@ def onu_live_status():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/onu/vlan_lookup', methods=['POST'])
+@login_required
+def onu_vlan_lookup():
+    """Look up ONUs connected to a specific VLAN on an OLT.
+    Payload: { "olt_id": 1, "olt_name": "OLT_1", "olt_ip": "192.168.0.20", "vlan_id": "100" }
+    """
+    d = request.json or {}
+    olt_id   = d.get('olt_id')
+    olt_name = (d.get('olt_name') or '').strip()
+    olt_ip   = (d.get('olt_ip') or '').strip()
+    vlan_id  = str(d.get('vlan_id') or '').strip()
+
+    if not vlan_id:
+        return jsonify({'error': 'vlan_id is required'}), 400
+
+    profile_rows = []
+    if olt_id:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE id=?", (olt_id,))
+    if not profile_rows and olt_name:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE name=?", (olt_name,))
+    if not profile_rows and olt_ip:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE ip=?", (olt_ip,))
+
+    if not profile_rows:
+        return jsonify({'error': 'OLT profile not found. Please select a valid OLT.'}), 440
+
+    profile = dict(profile_rows[0])
+    try:
+        from olt_connector import lookup_onu_by_vlan
+        res = lookup_onu_by_vlan(profile, vlan_id)
+        status_code = 200 if res.get('success') else 502
+        return jsonify(res), status_code
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
 
 @app.route('/api/syslog/devices')
@@ -2969,8 +3004,12 @@ def tftp_stats():
     cfg = cfg_rows[0] if cfg_rows else {}
     
     return jsonify({
-        'total': total, 'ok': ok_count,
-        'total_size': total_sz, 'recent': recent,
+        'total': total,
+        'ok': ok_count,
+        'total_files': total,
+        'ok_files': ok_count,
+        'total_size': total_sz,
+        'recent': recent,
         'config': cfg
     })
 

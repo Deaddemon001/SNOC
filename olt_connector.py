@@ -1314,3 +1314,129 @@ def _save_session(ip, name, duration, total, online, method, status, error):
             (ip, name, time.strftime('%Y-%m-%dT%H:%M:%S'), duration, total, online, method, status, error))
     except Exception as e:
         print(f"[OLT SESSION] Failed to save poll session for {ip}: {e}")
+
+
+def lookup_onu_by_vlan(profile, vlan_id):
+    """
+    Queries OLT MAC address table for a specific VLAN ID, extracts connected GPON ports / ONUs,
+    and matches them against database inventory & live optical telemetry.
+    """
+    vlan_str = str(vlan_id).strip()
+    if not vlan_str:
+        return {'success': False, 'error': 'vlan_id is required'}
+
+    ip          = profile['ip']
+    port_ssh    = profile.get('ssh_port', 22)
+    port_telnet = profile.get('telnet_port', 23)
+    username    = profile['username']
+    password    = profile['password']
+    enable_pass = profile.get('enable_pass') or password
+    conn_type   = profile.get('conn_type', 'auto').lower()
+    name        = profile.get('name') or ip
+
+    cmds = [
+        f'show mac-address-table vlan {vlan_str}',
+        'show mac-address-table',
+        f'show mac vlan {vlan_str}'
+    ]
+
+    t0 = time.time()
+    outputs = None; method = None; error = None
+
+    if conn_type in ('ssh', 'auto'):
+        outputs, error = _try_ssh(ip, port_ssh, username, password, enable_pass, cmds)
+        if outputs: method = 'SSH'
+
+    if not outputs and conn_type in ('telnet', 'auto'):
+        outputs, error = _try_telnet(ip, port_telnet, username, password, enable_pass, cmds)
+        if outputs: method = 'Telnet'
+
+    if not outputs:
+        return {'success': False, 'error': f'Failed to connect to OLT {name}: {error or "Unknown error"}'}
+
+    # Aggregate MAC outputs
+    combined_raw = '\n'.join(filter(None, [outputs.get(c, '') for c in cmds]))
+    cleaned = clean_output(combined_raw)
+
+    # Regex patterns for MAC address & GPON ports
+    # Format:  VLAN  MAC Address         Type     Port
+    # Example: 100   34:e6:ad:12:34:56  dynamic  gpon0/1:2
+    mac_port_pattern = re.compile(
+        r'(?:vlan\s+)?(\d+)?\s+([0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2})\s+\S+\s+(?:gpon)?\s*(\d+)/(\d+):(\d+)',
+        re.IGNORECASE
+    )
+    port_pattern = re.compile(
+        r'(?:gpon)?\s*0?/(\d+):(\d+)',
+        re.IGNORECASE
+    )
+
+    matched_targets = set()
+    mac_mappings = {}
+
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Check if line contains requested vlan_str or matches MAC table row
+        if vlan_str in stripped or 'mac' in stripped.lower() or 'gpon' in stripped.lower():
+            m = mac_port_pattern.search(stripped)
+            if m:
+                found_vlan = m.group(1)
+                mac_addr = m.group(2)
+                pon_port = m.group(4)
+                onu_id = m.group(5)
+                if not found_vlan or found_vlan == vlan_str:
+                    key = (str(pon_port), str(onu_id))
+                    matched_targets.add(key)
+                    mac_mappings[key] = mac_addr
+            else:
+                pm = port_pattern.search(stripped)
+                if pm:
+                    pon_port = pm.group(1)
+                    onu_id = pm.group(2)
+                    key = (str(pon_port), str(onu_id))
+                    matched_targets.add(key)
+
+    # Fetch matching ONU records from database
+    results = []
+    for (pon_port, onu_id) in matched_targets:
+        db_rows = query_db(
+            OLT_DB,
+            "SELECT * FROM onu_data WHERE olt_ip=? AND pon_port=? AND onu_id=? ORDER BY poll_time DESC LIMIT 1",
+            (ip, pon_port, onu_id)
+        )
+        if db_rows:
+            r = dict(db_rows[0])
+            if key in mac_mappings:
+                r['learned_mac'] = mac_mappings[(pon_port, onu_id)]
+            r['vlan_id'] = vlan_str
+            results.append(r)
+        else:
+            # Entry discovered on CLI but not in DB yet
+            results.append({
+                'olt_ip': ip,
+                'olt_name': name,
+                'pon_port': pon_port,
+                'onu_id': onu_id,
+                'vlan_id': vlan_str,
+                'serial_no': 'Discovered on OLT',
+                'online': 1,
+                'phase_state': 'working',
+                'learned_mac': mac_mappings.get((pon_port, onu_id), ''),
+                'rx_power': None,
+                'distance_m': None,
+            })
+
+    duration = round(time.time() - t0, 2)
+    return {
+        'success': True,
+        'vlan_id': vlan_str,
+        'olt_name': name,
+        'olt_ip': ip,
+        'count': len(results),
+        'onus': results,
+        'method': method,
+        'duration': duration,
+        'raw_output': cleaned[:2000]
+    }
+

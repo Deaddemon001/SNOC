@@ -105,8 +105,9 @@ Smart NOC is built around one main dashboard and several background services:
   - **Alert labels**: Offline/unreachable alerts include the target's label alongside its IP (`Label (ip)`) across Email, Telegram, and Discord, falling back to the bare IP when no label is set.
 - TFTP backup receiver with MAC mapping for NAT gateways
 - Log viewer for local service logs with tail and search
-- ONT history lookup by serial number with optical distance formatting (m/km) and Rx power curves
+- ONT lookup by GPON serial number or OLT VLAN ID (`POST /api/onu/vlan_lookup`) with full serial display, optical distance formatting (m/km), and Rx power curves
 - **Real-time Live ONT status interrogation**: Query live hardware directly from the ONT Lookup tab via `POST /api/onu/live_status` for real-time link status, optical Rx/Tx power, distance, uptime, and firmware
+- **ONT Search via OLT VLAN**: Select an OLT profile and query OLT MAC address table by VLAN ID (`show mac-address-table vlan <vlan>`) to correlate learned MACs on GPON ports with ONU inventory and optical levels.
 
 
 ### OLT and ONU Operations
@@ -117,7 +118,7 @@ Smart NOC is built around one main dashboard and several background services:
   - Query specific ONUs on demand directly through OLT CLI (`POST /api/onu/live_status` via `fetch_single_onu_live`) without initiating full OLT discovery or bulk inventory polling.
   - Returns real-time link state (Online, Offline, Dying Gasp), optical Rx/Tx power (dBm), fiber distance, device uptime, and firmware version.
   - Interactive "Get Live Status" action with instant status badge indicator, animated loading indicator, and inline enrichment of the latest historical lookup record.
-- **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp power outages, Average & Minimum Rx Power dBm, Max Fiber Span), dynamic PON Port filter dropdown (e.g., `GPON 0/1 (14 ONUs)`), Status filter, and 1-click CSV snapshot export.
+- **Enhanced ONU Modal & Historical Poll Snapshot Inspector (View ONUs)**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp, Avg/Min Rx Power, Max Fiber Span), Poll Date and Poll Time dropdown selectors to view any historical poll snapshot (`/api/olt/poll_dates` & `/api/olt/poll_times`), dynamic PON Port filter dropdown, Status filter, and 1-click CSV snapshot export.
 - **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**: Real-time and historical throughput charting (Mbps / Gbps / Kbps) with multi-interface line/dash rendering for all configured ports, live Peak & Low bandwidth rate metrics banner, and on-demand "Poll Uplink Now" live triggers.
 - **High-Resilience API Polling Client**: 180s (3-minute) timeout management with signal chaining for long-running SSH/Telnet polling operations and targeted live ONT diagnostics, eliminating premature abort errors.
 - Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 240 min) and one-time execution

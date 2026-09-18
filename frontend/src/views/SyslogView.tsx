@@ -44,7 +44,7 @@ export const SyslogView: React.FC = () => {
 
   const [oltFilter, setOltFilter] = useState('')
   const [offset, setOffset] = useState(0)
-  const limit = 50
+  const [limit, setLimit] = useState(10)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [renameNames, setRenameNames] = useState<Record<string, string>>({})
   const [statusMsg, setStatusMsg] = useState({ text: '', ok: true })
@@ -77,6 +77,10 @@ export const SyslogView: React.FC = () => {
       setAllSyslog(Array.isArray(sys) ? sys : [])
     } catch (_) {}
   }
+
+  useEffect(() => {
+    loadAll()
+  }, [offset, limit, oltFilter])
 
   usePolling(loadAll, 10000)
 
@@ -428,22 +432,41 @@ export const SyslogView: React.FC = () => {
             <h3 className="text-sm font-bold tracking-wide text-slate-100">OLT Uplink &amp; Login Events</h3>
             <p className="text-xs font-mono text-slate-400">Structured event extraction with details</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
+              <span>Show:</span>
+              <select
+                value={limit}
+                onChange={e => {
+                  setLimit(Number(e.target.value))
+                  setOffset(0)
+                }}
+                className="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-cyan-300 focus:outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
             <span className="text-xs font-mono text-slate-400">Page {Math.floor(offset / limit) + 1}</span>
-            <button
-              onClick={() => setOffset(prev => Math.max(0, prev - limit))}
-              disabled={offset === 0}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setOffset(prev => prev + limit)}
-              disabled={events.length < limit}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setOffset(prev => Math.max(0, prev - limit))}
+                disabled={offset === 0}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setOffset(prev => prev + limit)}
+                disabled={events.length < limit}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 

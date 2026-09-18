@@ -137,12 +137,12 @@ export const TftpBackupsView: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
           <div className="text-[10px] font-mono uppercase text-slate-500">Files Received</div>
-          <div className="text-2xl font-bold font-mono text-emerald-400">{stats.total_files ?? '-'}</div>
+          <div className="text-2xl font-bold font-mono text-emerald-400">{stats.total_files ?? stats.total ?? '-'}</div>
           <div className="text-[10px] text-slate-500">all time stored</div>
         </div>
         <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
           <div className="text-[10px] font-mono uppercase text-slate-500">Successful</div>
-          <div className="text-2xl font-bold font-mono text-cyan-400">{stats.ok_files ?? '-'}</div>
+          <div className="text-2xl font-bold font-mono text-cyan-400">{stats.ok_files ?? stats.ok ?? '-'}</div>
           <div className="text-[10px] text-slate-500">completed transfers</div>
         </div>
         <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
