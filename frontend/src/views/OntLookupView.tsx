@@ -596,6 +596,7 @@ export const OntLookupView: React.FC = () => {
                 <th className="py-3 px-4">OLT IP</th>
                 <th className="py-3 px-4">PON Port</th>
                 <th className="py-3 px-4">ONU ID</th>
+                {searchMode === 'vlan' && <th className="py-3 px-4">Learned MAC</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -630,6 +631,11 @@ export const OntLookupView: React.FC = () => {
                     <td className="py-2.5 px-4 text-cyan-400">{r.olt_ip || '—'}</td>
                     <td className="py-2.5 px-4 text-slate-300">{r.pon_port != null ? `PON ${r.pon_port}` : '—'}</td>
                     <td className="py-2.5 px-4 text-slate-400">{r.onu_id ?? '—'}</td>
+                    {searchMode === 'vlan' && (
+                      <td className="py-2.5 px-4 font-mono text-violet-300 text-[11px]">
+                        {r.learned_mac || '—'}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

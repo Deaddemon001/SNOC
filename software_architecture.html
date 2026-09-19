@@ -380,12 +380,6 @@
         <td>Served directly by <code>api.py</code> from <code>frontend/dist/</code> at <code>/</code> and <code>/login</code>; communicates via JSON REST calls with <code>api.py</code>.</td>
       </tr>
       <tr>
-        <td><strong>dashboard.html</strong></td>
-        <td><span class="badge-proto">Client UI (Legacy)</span></td>
-        <td>Classic single-page UI with 11 functional tabs; Chart.js visual graphs; drag-drop tab order; power control modals; diagnostic verdict banner.</td>
-        <td>Fallback UI served when <code>/?legacy=1</code> is requested; communicates via JSON REST calls with <code>api.py</code>.</td>
-      </tr>
-      <tr>
         <td><strong>alert_engine.py</strong></td>
         <td><span class="badge-proto">Outbound REST/SMTP</span></td>
         <td>Direct multi-channel rule matcher; visual status renderer (🔴 Red / 🟢 Green / 🟡 Yellow); Label + IP target formatting; Discord embed creator; Telegram bot dispatcher; HTML email sender.</td>
@@ -670,8 +664,6 @@
 ├── check_downtime.py         # Historical Service Uptime Gap Audit Tool
 ├── setup.py                  # Windows Installation & Service Configuration Engine
 ├── init_postgres.sql         # PostgreSQL Base Database Initialization Script
-├── dashboard.html            # Legacy Single-File Web UI (/?legacy=1 fallback)
-├── login.html                # Legacy Login Page
 ├── frontend/                 # React 19 + TypeScript + Tailwind CSS Source
 │   ├── src/                  # Components, Contexts, Hooks, Views
 │   ├── dist/                 # Production Bundled Assets (Vite)

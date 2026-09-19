@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Settings, X, Save, RotateCw, Power, ExternalLink, ShieldCheck, Database, Sliders, Clock } from 'lucide-react'
+import { Settings, X, Save, RotateCw, Power, ShieldCheck, Database, Sliders, Clock } from 'lucide-react'
 import { apiFetch, apiPost } from '../../api'
 import { useAuth, SETTINGS_TAB_OPTIONS } from '../../context/AuthContext'
 import { StatusMessage } from '../shared/StatusMessage'
@@ -108,10 +108,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenRes
     setSelectedTabs(prev =>
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     )
-  }
-
-  const switchToLegacy = () => {
-    window.location.href = '/?legacy=1'
   }
 
   return (
@@ -283,21 +279,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onOpenRes
               </div>
             </section>
           )}
-
-          {/* UI Version Toggle */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-wider">
-              <ExternalLink className="w-4 h-4" />
-              <span>UI Version Switcher</span>
-            </div>
-            <p className="text-xs text-slate-400">Switch to the classic single-file legacy dashboard interface (<code>/?legacy=1</code>).</p>
-            <button
-              onClick={switchToLegacy}
-              className="px-4 py-2 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-all flex items-center gap-2"
-            >
-              ⏮ Switch to Legacy Version
-            </button>
-          </section>
         </div>
 
         {/* Footer */}

@@ -25,12 +25,6 @@ Smart NOC is built around one main dashboard and several background services:
 - `api.py`
   Main Flask server, authentication, settings APIs, ping engine, dashboard endpoints, backup/restore, OLT APIs, retention helpers, and static bundle delivery (`frontend/dist/`).
 
-- `dashboard.html` / `legacy_dashboard_js.js`
-  Classic legacy single-file dashboard interface, accessible anytime via `/?legacy=1` for fallback and validation.
-
-- `login.html`
-  Legacy authentication view fallback.
-
 - `alert_engine.py`
   Alert rule storage, matching, email sending, Telegram sending, Discord webhooks, template rendering, and alert logging.
 
@@ -107,7 +101,7 @@ Smart NOC is built around one main dashboard and several background services:
 - Log viewer for local service logs with tail and search
 - ONT lookup by GPON serial number or OLT VLAN ID (`POST /api/onu/vlan_lookup`) with full serial display, optical distance formatting (m/km), and Rx power curves
 - **Real-time Live ONT status interrogation**: Query live hardware directly from the ONT Lookup tab via `POST /api/onu/live_status` for real-time link status, optical Rx/Tx power, distance, uptime, and firmware
-- **ONT Search via OLT VLAN**: Select an OLT profile and query OLT MAC address table by VLAN ID (`show mac-address-table vlan <vlan>`) to correlate learned MACs on GPON ports with ONU inventory and optical levels.
+- **ONT Search via OLT VLAN**: Select an OLT profile and query OLT MAC address table by VLAN ID (`show mac address-table vlan <vlan>`) to correlate learned MACs on GPON ports with ONU inventory, optical levels, and display the Learned MAC in results. Supports standard 2-char MAC formats, VSOL 4-char MAC formats (`14a7:2b41:38fb`), and bare GPON port correlation.
 
 
 ### OLT and ONU Operations
@@ -291,8 +285,7 @@ python api.py
 Smart NOC/
 â”œâ”€â”€ api.py
 â”œâ”€â”€ alert_engine.py
-â”œâ”€â”€ dashboard.html
-â”œâ”€â”€ login.html
+â”œâ”€â”€ frontend/
 â”œâ”€â”€ launcher.pyw
 â”œâ”€â”€ noc_config.py
 â”œâ”€â”€ olt_connector.py

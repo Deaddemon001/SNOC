@@ -824,17 +824,7 @@ threading.Thread(target=retention_cleanup_worker, daemon=True, name="retention-c
 threading.Thread(target=heartbeat_worker, args=("API Server",), daemon=True, name="api-heartbeat").start()
 
 
-# ── AUTH ROUTES ───────────────────────────────────────────────────────────────
-def render_versioned_html(filename):
-    path = os.path.join(DASHBOARD, filename)
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    content = content.replace('__APP_VERSION__', APP_VERSION)
-    from flask import Response
-    return Response(content, mimetype='text/html')
-
-
-# ─── Vue.js Frontend Serving (with legacy fallback) ──────────────────────────
+# ─── React / Vite Frontend Serving ──────────────────────────────────────────
 VUE_DIST = os.path.join(BASE_DIR, 'frontend', 'dist')
 
 
@@ -844,6 +834,17 @@ def _vue_built():
 
 def render_vue_index():
     path = os.path.join(VUE_DIST, 'index.html')
+    if not os.path.isfile(path):
+        from flask import Response
+        msg = (
+            "<!DOCTYPE html><html><head><title>Smart NOC - Build Required</title></head>"
+            "<body style='font-family:sans-serif;background:#030712;color:#f8fafc;padding:40px;text-align:center;'>"
+            "<h2>Smart NOC Frontend Build Required</h2>"
+            "<p>The frontend production bundle was not found in <code>frontend/dist/</code>.</p>"
+            "<p>Please build the frontend by running: <code>npm run build</code> inside the <code>frontend/</code> directory.</p>"
+            "</body></html>"
+        )
+        return Response(msg, mimetype='text/html', status=503)
     with open(path, 'r', encoding='utf-8') as f:
         content = f.read()
     content = content.replace('__APP_VERSION__', APP_VERSION)
@@ -872,9 +873,7 @@ def favicon_svg():
 def login_page():
     if is_logged_in():
         return redirect('/')
-    if _vue_built() and request.args.get('legacy') != '1':
-        return render_vue_index()
-    return render_versioned_html('login.html')
+    return render_vue_index()
 
 
 def log_user_auth(username, event_type, ip_address, status):
@@ -1984,10 +1983,7 @@ def api_system_service_action():
 @app.route('/')
 @login_required
 def index():
-    # Vue.js SPA (default). Append ?legacy=1 for the original vanilla-JS dashboard.
-    if _vue_built() and request.args.get('legacy') != '1':
-        return render_vue_index()
-    return render_versioned_html('dashboard.html')
+    return render_vue_index()
 
 # ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
 @app.route('/api/logs/list')

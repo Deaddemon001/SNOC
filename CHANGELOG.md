@@ -7,16 +7,39 @@
 ### Added
 - **ONT Lookup via OLT VLAN**:
   - Added OLT VLAN search mode in **ONT Lookup** tab (`OntLookupView.tsx`).
-  - Implemented `lookup_onu_by_vlan` in `olt_connector.py` to query OLT MAC address table by VLAN ID (`show mac-address-table vlan <vlan>`), parse connected GPON ports, and correlate learned MAC addresses with ONU inventory and optical levels.
+  - Implemented `lookup_onu_by_vlan` in `olt_connector.py` to query OLT MAC address table by VLAN ID (`show mac address-table vlan <vlan>`), parse connected GPON ports, and correlate learned MAC addresses with ONU inventory and optical levels.
   - Added `POST /api/onu/vlan_lookup` backend endpoint in `api.py`.
 - **OLT Historical Poll Snapshot Picker in View ONUs Modal**:
   - Added Poll Date and Poll Time dropdown selectors in `OnuModal.tsx`.
   - Enables viewing any past historical poll snapshot for an OLT via `/api/olt/poll_dates` and `/api/olt/poll_times`.
 
+### Changed
+- **Deprecated and Retired Legacy UI Fallback**: The application now exclusively delivers the modern React 19 Single-Page Application (`frontend/dist/`). Cleaned up routing in `api.py` so `/` and `/login` serve the React SPA directly without dual-mode fallback logic, rendering a friendly administrator guidance page if assets are ever missing.
+- **Top Bar & Settings Simplification**: Removed the `⏮ Legacy UI` switcher button from `AppLayout.tsx` and the legacy dashboard switcher block from `SettingsModal.tsx`.
+- **Packaging Simplification**: Removed `dashboard.html` and `login.html` from `setup.py` copy list, relying purely on `frontend/dist/`.
+
+### Removed
+- **Legacy UI Static Files**: Permanently removed `dashboard.html` (~338 KB), `legacy_dashboard_js.js` (~222 KB), and `login.html` (~12 KB).
+- **Legacy Route Flags**: Retired `/?legacy=1` URL query parameter handling and obsolete `render_versioned_html` helper in `api.py`.
+
 ### Fixed
 - **Syslog Event Endless Scroll (Bug 1)**: Set default event limit to 10 events per page in `SyslogView.tsx` with page size selector dropdown (10, 25, 50) and page navigation controls.
 - **TFTP Backups Stats Cards (Bug 2)**: Added `total_files` and `ok_files` keys to `/api/tftp/stats` response in `api.py` and updated `TftpBackupsView.tsx` fallback accessors so "Files Received", "Successful", and "Total Size" render correctly.
 - **Full GPON Serial Number Display (Bug 4)**: Added dedicated GPON Serial Number summary metric card and table column in `OntLookupView.tsx` so the full serial number is always rendered.
+- **VLAN ONU Lookup — VSOL 4-Char MAC Format Not Matched (Bug 5)**:
+  - Root cause: VSOL/BSNL OLTs output MAC addresses in 4-char group format (`14a7:2b41:38fb`) but the parser regex only matched standard 2-char groups (`34:e6:ad:12:34:56`), causing zero results for valid GPON VLANs.
+  - Root cause 2: When the OLT port column is bare `GPON` (no `0/slot:onu_id` locator), the existing regex produced no ONU match even if the MAC parsed correctly.
+  - Root cause 3: Stale `key` loop variable in DB lookup caused `mac_mappings` to be checked with the wrong key.
+  - **Fix**: Rewrote `lookup_onu_by_vlan` in `olt_connector.py` with three layered parse strategies:
+    1. Standard 2-char MAC + full `slot/port:onu_id` locator — exact DB lookup (unchanged for other OLTs).
+    2. VSOL 4-char MAC + bare `GPON` port — MAC→serial hex-overlap correlation via new `_match_serial_by_mac` helper.
+    3. Standard 2-char MAC + bare `GPON` port — same correlation.
+  - Added `_match_serial_by_mac(olt_ip, raw_mac, min_overlap=5)` helper: finds the `onu_data` serial whose hex representation shares a ≥5-char contiguous run with the learned MAC (VSOL GPON serial numbers embed the device MAC-derived identifier).
+  - Added uplink GE/Ethernet interface filtering so VLAN search skips non-ONU entries.
+  - Changed CLI command priority to try `show mac address-table vlan <N>` (spaced, VSOL native) before the hyphenated variant.
+  - Fixed stale `key` variable: replaced `if key in mac_mappings` with `mac_mappings.get((pon_port, onu_id), '')`.
+  - Added `/api/onu/vlan_lookup` to `isLongRunning` URL list in `api.ts` so OLT SSH + DB scan operations use the 180s timeout.
+  - Added **Learned MAC** column to the VLAN results table in `OntLookupView.tsx` (violet, monospace), surfacing the OLT-learned MAC that was used to correlate to the GPON serial.
 
 ---
 

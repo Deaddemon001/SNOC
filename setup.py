@@ -124,8 +124,6 @@ def copy_files():
         "syslog_server.py",
         "vsol_mib.py",
         "noc_config.py",
-        "dashboard.html",
-        "login.html",
         "launcher.pyw",
         "gen_cert.py",
         "alert_engine.py",

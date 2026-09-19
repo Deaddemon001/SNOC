@@ -47,7 +47,6 @@ graph TD
 
     subgraph Presentation Layer [User Interfaces]
         SPA[React 19 + TypeScript SPA<br/>Watermelon UI / Tailwind CSS<br/>frontend/dist/]
-        LEGACY[dashboard.html / login.html<br/>Vanilla JS Legacy Fallback<br/>/?legacy=1]
     end
 
     %% Network flows
@@ -86,7 +85,6 @@ graph TD
     API <-->|SQL Queries / Connection Pool| PG
     API <-->|Read / Write Backups & Logs| FS
     API -->|Serves React SPA Bundle| SPA
-    API -->|Serves Legacy Fallback| LEGACY
 ```
 
 ---
@@ -99,10 +97,8 @@ The application follows a decoupled daemon architecture where all components com
 | :--- | :--- | :--- | :--- |
 | [`noc_config.py`](file:///h:/Github/SNOC/noc_config.py) | **Configuration** | Central configuration repository, port mappings, retention parameters, and PostgreSQL connection pool initialization (`query_db`, `execute_db`, `get_db_connection`). | Imported by **all** Python modules (`api.py`, `alert_engine.py`, `trap_receiver.py`, `syslog_server.py`, `tftp_server.py`, `olt_connector.py`, `launcher.pyw`). |
 | [`launcher.pyw`](file:///h:/Github/SNOC/launcher.pyw) | **Supervisor GUI** | Process orchestrator, Tkinter tray/window controller, service heartbeat monitor, and self-healing watchdog (auto-restarts hanging API instances). | Spawns `api.py`, `trap_receiver.py`, `syslog_server.py`, `tftp_server.py`; communicates via HTTP health checks. |
-| [`api.py`](file:///h:/Github/SNOC/api.py) | **Web Server & Core API** | Flask application (HTTP 5000 / HTTPS 5443), PBKDF2 authentication, RBAC session handling, REST API endpoints, background Ping Worker, Retention Cleaner, Diagnostic Health Engine, OLT Polling Scheduler (`olt_job_scheduler`), and Power Lifecycle handlers (`/api/system/restart`, `/api/system/shutdown`). | Reads/writes PostgreSQL via `noc_config.py`; serves React 19 SPA and legacy UI; executes `alert_engine.py` for ping triggers; calls `olt_connector.py` for live scans and background scheduled polls. |
+| [`api.py`](file:///h:/Github/SNOC/api.py) | **Web Server & Core API** | Flask application (HTTP 5000 / HTTPS 5443), PBKDF2 authentication, RBAC session handling, REST API endpoints, background Ping Worker, Retention Cleaner, Diagnostic Health Engine, OLT Polling Scheduler (`olt_job_scheduler`), and Power Lifecycle handlers (`/api/system/restart`, `/api/system/shutdown`). | Reads/writes PostgreSQL via `noc_config.py`; serves React 19 SPA (`frontend/dist/`); executes `alert_engine.py` for ping triggers; calls `olt_connector.py` for live scans and background scheduled polls. |
 | [`frontend/`](file:///h:/Github/SNOC/frontend/) | **React 19 + TypeScript SPA** | Modern Single Page Application built with React 19, TypeScript, Tailwind CSS 3.4, Lucide icons, and Watermelon UI design system ([ui.watermelon.sh](https://ui.watermelon.sh)). Provides 11 operational modules, polling hooks, Chart.js 4 telemetry graphs, and studio modal controls. | Served directly by `api.py` from `frontend/dist/` at `/` and `/login`. |
-| [`dashboard.html`](file:///h:/Github/SNOC/dashboard.html) | **Presentation SPA (Legacy Fallback)** | Classic single-page UI with 11 operational tabs, Chart.js real-time graphing, drag-and-drop tab ordering, and modal management. | Fallback UI served when `/?legacy=1` is requested. |
-| [`login.html`](file:///h:/Github/SNOC/login.html) | **Authentication UI (Legacy)** | Standalone login page handling credentials and session establishment. | Submits authentication requests to `api.py` (`POST /api/auth/login`). |
 | [`alert_engine.py`](file:///h:/Github/SNOC/alert_engine.py) | **Alerting Service** | Direct multi-channel rule matching engine for Syslog events and Ping state changes; builds color-coded notifications (🔴 Red for DOWN, 🟢 Green for UP, 🟡 Yellow for Warning) and dispatches directly via Discord Embeds, Telegram Bot API, and SMTP HTML emails. | Invoked by `syslog_server.py`, `trap_receiver.py`, and `api.py` (Ping Worker); writes alert logs to PostgreSQL table `alert_log`. |
 | [`syslog_server.py`](file:///h:/Github/SNOC/syslog_server.py) | **UDP Ingestion Daemon** | Listens on UDP port 5141, parses RFC 3164/5424 syslog streams, enforces Device Security Registration (Allow/Deny/Delete), persists to `syslog` table, and triggers rule checks in `alert_engine.py`. | Uses `noc_config.py` for DB connection and settings; calls `alert_engine.process_alert()`. |
 | [`trap_receiver.py`](file:///h:/Github/SNOC/trap_receiver.py) | **UDP Ingestion Daemon** | Listens on UDP port 162, decodes SNMP v1/v2c trap payloads via PySNMP, translates enterprise OIDs via `vsol_mib.py`, persists records in `traps` table, and flags event alerts. | Uses `vsol_mib.py` for OID translation; uses `noc_config.py` for database persistence. |
@@ -187,8 +183,6 @@ SNOC/
 ├── check_downtime.py         # Log & Uptime Gap Audit Tool
 ├── setup.py                  # Installation & Maintenance Engine
 ├── init_postgres.sql         # Base PostgreSQL Database DDL
-├── dashboard.html            # Legacy Single-File Web UI (/?legacy=1 fallback)
-├── login.html                # Legacy Login Page
 ├── frontend/                 # React 19 + TypeScript + Tailwind CSS Source
 │   ├── src/                  # Components, Contexts, Hooks, Views
 │   ├── dist/                 # Production Bundled Assets

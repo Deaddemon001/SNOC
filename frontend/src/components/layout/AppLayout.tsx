@@ -18,7 +18,6 @@ import {
   Menu,
   X,
   RadioTower,
-  ExternalLink,
   ChevronRight
 } from 'lucide-react'
 import { useAuth, ALL_TABS, roleLabel } from '../../context/AuthContext'
@@ -60,10 +59,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, onSelectTab, c
 
   const activeTabs = ALL_TABS.filter(t => (isAdmin ? true : visibleTabs.includes(t.id)))
   const currentTabObj = ALL_TABS.find(t => t.id === currentTab) || ALL_TABS[0]
-
-  const switchToLegacy = () => {
-    window.location.href = '/?legacy=1'
-  }
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
@@ -201,16 +196,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, onSelectTab, c
 
           {/* Actions & Utilities */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Legacy switch button */}
-            <button
-              onClick={switchToLegacy}
-              title="Switch to Legacy Single-File Dashboard"
-              className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-300 bg-slate-900 border border-slate-700/80 hover:border-cyan-500/40 hover:text-cyan-300 transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              <span>⏮ Legacy UI</span>
-              <ExternalLink className="w-3 h-3 text-slate-500 hidden sm:inline" />
-            </button>
-
             {/* Settings button */}
             <button
               onClick={() => setSettingsOpen(true)}

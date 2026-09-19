@@ -1316,10 +1316,74 @@ def _save_session(ip, name, duration, total, online, method, status, error):
         print(f"[OLT SESSION] Failed to save poll session for {ip}: {e}")
 
 
+def _match_serial_by_mac(olt_ip: str, raw_mac: str, min_overlap: int = 5):
+    """
+    Finds the most recent ONU record in onu_data whose serial number shares a
+    contiguous >=min_overlap-char hex substring with the learned MAC address.
+
+    Background: VSOL GPON ONUs embed their MAC-derived identifier inside the
+    GPON serial number (e.g. MAC 14a7:2b41:38fb <-> serial GPON004138F6 share
+    the 5-char hex run '4138f').
+
+    Args:
+        olt_ip:      IP of the OLT to scope the search.
+        raw_mac:     Raw learned MAC string from the OLT (any separator/format).
+        min_overlap: Minimum hex character run that must appear in both strings.
+                     Default 5 avoids false matches while covering VSOL serials.
+
+    Returns:
+        dict of the matching onu_data row (latest poll), or None if not found.
+    """
+    # Strip all non-hex chars from MAC
+    clean_mac = ''.join(c for c in raw_mac.lower() if c in '0123456789abcdef')
+    if len(clean_mac) < min_overlap:
+        return None
+
+    # Fetch distinct serials for this OLT from the database
+    serial_rows = query_db(
+        OLT_DB,
+        "SELECT DISTINCT serial_no FROM onu_data WHERE olt_ip=?",
+        (olt_ip,)
+    )
+
+    best_serial = None
+    for row in serial_rows:
+        sn = row.get('serial_no') or ''
+        clean_sn = ''.join(c for c in sn.lower() if c in '0123456789abcdef')
+        if len(clean_sn) < min_overlap:
+            continue
+        # Check for a contiguous hex run of length >= min_overlap in clean_sn
+        # that also appears in clean_mac
+        for i in range(len(clean_sn) - min_overlap + 1):
+            substr = clean_sn[i:i + min_overlap]
+            if substr in clean_mac:
+                best_serial = sn
+                break
+        if best_serial:
+            break  # Take first match (serials are unique per OLT)
+
+    if not best_serial:
+        return None
+
+    db_rows = query_db(
+        OLT_DB,
+        "SELECT * FROM onu_data WHERE olt_ip=? AND serial_no=? ORDER BY poll_time DESC LIMIT 1",
+        (olt_ip, best_serial)
+    )
+    return dict(db_rows[0]) if db_rows else None
+
+
 def lookup_onu_by_vlan(profile, vlan_id):
     """
     Queries OLT MAC address table for a specific VLAN ID, extracts connected GPON ports / ONUs,
     and matches them against database inventory & live optical telemetry.
+
+    Supports two OLT MAC table formats:
+      1. Standard 2-char groups:  34:e6:ad:12:34:56  with port  GPON0/1:2
+      2. VSOL 4-char groups:      14a7:2b41:38fb     with port  GPON  (no ONU locator)
+
+    For format (2), uses _match_serial_by_mac to correlate the learned MAC against
+    stored serial numbers by finding a >=5-char hex substring overlap.
     """
     vlan_str = str(vlan_id).strip()
     if not vlan_str:
@@ -1334,10 +1398,11 @@ def lookup_onu_by_vlan(profile, vlan_id):
     conn_type   = profile.get('conn_type', 'auto').lower()
     name        = profile.get('name') or ip
 
+    # Try spaced form first (VSOL/BSNL), then hyphenated (other vendors), then generic
     cmds = [
+        f'show mac address-table vlan {vlan_str}',
         f'show mac-address-table vlan {vlan_str}',
-        'show mac-address-table',
-        f'show mac vlan {vlan_str}'
+        f'show mac vlan {vlan_str}',
     ]
 
     t0 = time.time()
@@ -1354,50 +1419,75 @@ def lookup_onu_by_vlan(profile, vlan_id):
     if not outputs:
         return {'success': False, 'error': f'Failed to connect to OLT {name}: {error or "Unknown error"}'}
 
-    # Aggregate MAC outputs
+    # Aggregate all command outputs
     combined_raw = '\n'.join(filter(None, [outputs.get(c, '') for c in cmds]))
     cleaned = clean_output(combined_raw)
 
-    # Regex patterns for MAC address & GPON ports
-    # Format:  VLAN  MAC Address         Type     Port
-    # Example: 100   34:e6:ad:12:34:56  dynamic  gpon0/1:2
-    mac_port_pattern = re.compile(
-        r'(?:vlan\s+)?(\d+)?\s+([0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2})\s+\S+\s+(?:gpon)?\s*(\d+)/(\d+):(\d+)',
+    # ── MAC patterns ──────────────────────────────────────────────────────────
+    # Standard 2-char groups with slot/port:onu_id locator
+    # e.g.  100   34:e6:ad:12:34:56  Dynamic  GPON0/1:2
+    mac_with_locator = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2}[:\-]'
+        r'[0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2})\s+'
+        r'\S+\s+'
+        r'(?:gpon\s*)?(\d+)/(\d+):(\d+)',
         re.IGNORECASE
     )
-    port_pattern = re.compile(
-        r'(?:gpon)?\s*0?/(\d+):(\d+)',
+    # VSOL 4-char groups, bare GPON port (no ONU locator)
+    # e.g.  199   14a7:2b41:38fb   Dynamic   GPON   Aging
+    mac_4char_gpon = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{4}[:\-][0-9a-f]{4}[:\-][0-9a-f]{4})\s+'
+        r'\S+\s+'
+        r'(gpon)\b',
         re.IGNORECASE
     )
+    # Standard 2-char format with bare GPON port (some vendor variants)
+    mac_std_gpon = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2}[:\-]'
+        r'[0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2})\s+'
+        r'\S+\s+'
+        r'(gpon)\b',
+        re.IGNORECASE
+    )
+    # Skip uplink GE / Ethernet interfaces
+    uplink_re = re.compile(r'\bge\b|\bethernet\b|\bge\s*0/\d', re.IGNORECASE)
 
-    matched_targets = set()
-    mac_mappings = {}
+    matched_targets = set()   # (pon_port, onu_id) for locator-style rows
+    mac_mappings    = {}      # (pon_port, onu_id) -> raw MAC string
+    gpon_macs       = []      # learned MACs for bare-GPON rows (no locator)
 
     for line in cleaned.splitlines():
         stripped = line.strip()
-        if not stripped:
+        if not stripped or vlan_str not in stripped:
             continue
-        # Check if line contains requested vlan_str or matches MAC table row
-        if vlan_str in stripped or 'mac' in stripped.lower() or 'gpon' in stripped.lower():
-            m = mac_port_pattern.search(stripped)
-            if m:
-                found_vlan = m.group(1)
-                mac_addr = m.group(2)
-                pon_port = m.group(4)
-                onu_id = m.group(5)
-                if not found_vlan or found_vlan == vlan_str:
-                    key = (str(pon_port), str(onu_id))
-                    matched_targets.add(key)
-                    mac_mappings[key] = mac_addr
-            else:
-                pm = port_pattern.search(stripped)
-                if pm:
-                    pon_port = pm.group(1)
-                    onu_id = pm.group(2)
-                    key = (str(pon_port), str(onu_id))
-                    matched_targets.add(key)
+        if uplink_re.search(stripped):
+            continue
 
-    # Fetch matching ONU records from database
+        # Try full locator match first (slot/port:onu_id)
+        m = mac_with_locator.search(stripped)
+        if m and m.group(1) == vlan_str:
+            pon_port = m.group(4)
+            onu_id   = m.group(5)
+            key      = (str(pon_port), str(onu_id))
+            matched_targets.add(key)
+            mac_mappings[key] = m.group(2)
+            continue
+
+        # Try VSOL 4-char bare GPON
+        m = mac_4char_gpon.search(stripped)
+        if m and m.group(1) == vlan_str:
+            gpon_macs.append(m.group(2))
+            continue
+
+        # Try standard 2-char bare GPON
+        m = mac_std_gpon.search(stripped)
+        if m and m.group(1) == vlan_str:
+            gpon_macs.append(m.group(2))
+
+    # ── Phase 1: Exact DB lookup for locator-style matches ────────────────────
     results = []
     for (pon_port, onu_id) in matched_targets:
         db_rows = query_db(
@@ -1407,36 +1497,63 @@ def lookup_onu_by_vlan(profile, vlan_id):
         )
         if db_rows:
             r = dict(db_rows[0])
-            if key in mac_mappings:
-                r['learned_mac'] = mac_mappings[(pon_port, onu_id)]
-            r['vlan_id'] = vlan_str
+            r['learned_mac'] = mac_mappings.get((pon_port, onu_id), '')
+            r['vlan_id']     = vlan_str
             results.append(r)
         else:
             # Entry discovered on CLI but not in DB yet
             results.append({
-                'olt_ip': ip,
-                'olt_name': name,
-                'pon_port': pon_port,
-                'onu_id': onu_id,
-                'vlan_id': vlan_str,
-                'serial_no': 'Discovered on OLT',
-                'online': 1,
+                'olt_ip':      ip,
+                'olt_name':    name,
+                'pon_port':    pon_port,
+                'onu_id':      onu_id,
+                'vlan_id':     vlan_str,
+                'serial_no':   'Discovered on OLT',
+                'online':      1,
                 'phase_state': 'working',
                 'learned_mac': mac_mappings.get((pon_port, onu_id), ''),
-                'rx_power': None,
-                'distance_m': None,
+                'rx_power':    None,
+                'distance_m':  None,
             })
+
+    # ── Phase 2: MAC→Serial correlation for bare-GPON rows ───────────────────
+    seen_serials = {r.get('serial_no') for r in results}
+    for raw_mac in gpon_macs:
+        db_row = _match_serial_by_mac(ip, raw_mac, min_overlap=5)
+        if db_row and db_row.get('serial_no') not in seen_serials:
+            db_row['learned_mac'] = raw_mac
+            db_row['vlan_id']     = vlan_str
+            results.append(db_row)
+            seen_serials.add(db_row.get('serial_no'))
+        elif not db_row:
+            # No DB record yet — report discovery stub
+            stub_key = f'gpon_mac_{raw_mac}'
+            if stub_key not in seen_serials:
+                results.append({
+                    'olt_ip':      ip,
+                    'olt_name':    name,
+                    'pon_port':    None,
+                    'onu_id':      None,
+                    'vlan_id':     vlan_str,
+                    'serial_no':   f'Discovered (MAC {raw_mac})',
+                    'online':      1,
+                    'phase_state': 'working',
+                    'learned_mac': raw_mac,
+                    'rx_power':    None,
+                    'distance_m':  None,
+                })
+                seen_serials.add(stub_key)
 
     duration = round(time.time() - t0, 2)
     return {
-        'success': True,
-        'vlan_id': vlan_str,
-        'olt_name': name,
-        'olt_ip': ip,
-        'count': len(results),
-        'onus': results,
-        'method': method,
-        'duration': duration,
-        'raw_output': cleaned[:2000]
+        'success':    True,
+        'vlan_id':    vlan_str,
+        'olt_name':   name,
+        'olt_ip':     ip,
+        'count':      len(results),
+        'onus':       results,
+        'method':     method,
+        'duration':   duration,
+        'raw_output': cleaned[:2000],
     }
 
