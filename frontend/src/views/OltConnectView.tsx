@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Clock,
   RotateCw,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react'
 import { apiFetch, apiPost } from '../api'
 import { useAuth } from '../context/AuthContext'
@@ -216,6 +217,28 @@ export const OltConnectView: React.FC = () => {
     } catch (_) {}
   }
 
+  // Poll Running Config (PPPoE / Landline)
+  const handlePollConfig = async (p: any) => {
+    setPollingId(p.id)
+    setActionMsg({ text: `Connecting to ${p.name || p.ip}... Polling running-config for all ONUs (PPPoE/Landline)`, ok: true, loading: true })
+    try {
+      const res = await apiPost('/api/onu/poll_config', { id: p.id })
+      setPollingId(null)
+      if (res.success) {
+        setActionMsg({
+          text: `Config poll success: ${res.saved ?? 0} ONU configs saved to database for ${p.name || p.ip}`,
+          ok: true,
+          loading: false
+        })
+        loadData()
+      } else {
+        setActionMsg({ text: `Config poll failed: ${res.error || 'Unknown error'}`, ok: false, loading: false })
+      }
+    } catch (e: any) {
+      setPollingId(null)
+      setActionMsg({ text: `Request failed: ${e.message}`, ok: false, loading: false })
+    }
+  }
 
   // Poll Uplink
   const handlePollUplink = async (p: any) => {
@@ -566,6 +589,15 @@ export const OltConnectView: React.FC = () => {
                           View ONUs
                         </button>
                         <button
+                          onClick={() => handlePollConfig(p)}
+                          disabled={pollingId === p.id}
+                          className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 transition-all disabled:opacity-40"
+                          title="Poll running-config (PPPoE / Landline) and save to database"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>Poll Config</span>
+                        </button>
+                        <button
                           onClick={() => handlePollUplink(p)}
                           disabled={pollingId === p.id}
                           className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
@@ -633,11 +665,16 @@ export const OltConnectView: React.FC = () => {
               <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">Poll Type</label>
               <select
                 value={job.poll_type}
-                onChange={e => setJob({ ...job, poll_type: e.target.value })}
+                onChange={e => {
+                  const pt = e.target.value
+                  const newInterval = pt === 'config' && job.interval_min === '60' ? '1440' : job.interval_min
+                  setJob({ ...job, poll_type: pt, interval_min: newInterval })
+                }}
                 className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500"
               >
                 <option value="onu">ONU List</option>
                 <option value="uplink">Uplink Traffic</option>
+                <option value="config">Running Config (PPPoE/Landline)</option>
                 <option value="full">Full Poll</option>
               </select>
             </div>

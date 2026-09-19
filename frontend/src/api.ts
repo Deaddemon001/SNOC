@@ -22,6 +22,7 @@ export async function apiFetch<T = any>(url: string, opts: ApiFetchOptions = {})
     url.includes('/api/olt/test_connection') ||
     url.includes('/api/onu/live_status') ||
     url.includes('/api/onu/vlan_lookup') ||
+    url.includes('/api/onu/poll_config') ||
     url.includes('/api/backup/') ||
     url.includes('/api/system/service_action')
 

@@ -1557,3 +1557,360 @@ def lookup_onu_by_vlan(profile, vlan_id):
         'raw_output': cleaned[:2000],
     }
 
+
+# ── ONU CONFIGS (PPPoE / Landline) ────────────────────────────────────────────
+
+def init_onu_configs_table():
+    """Create onu_configs table if it does not exist (idempotent)."""
+    execute_db(OLT_DB, """CREATE TABLE IF NOT EXISTS onu_configs (
+        id            SERIAL PRIMARY KEY,
+        olt_id        TEXT NOT NULL,
+        onu_id        TEXT NOT NULL,
+        pon_port      TEXT DEFAULT '',
+        serial_number TEXT DEFAULT '',
+        description   TEXT DEFAULT '',
+        pppoe_id      TEXT DEFAULT '',
+        landline      TEXT DEFAULT '',
+        wan_vlan      TEXT DEFAULT '',
+        line_profile  TEXT DEFAULT '',
+        srv_profile   TEXT DEFAULT '',
+        raw_config    TEXT DEFAULT '',
+        polled_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (olt_id, onu_id)
+    )""")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_pppoe    ON onu_configs (pppoe_id)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_landline ON onu_configs (landline)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_serial   ON onu_configs (serial_number)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_olt      ON onu_configs (olt_id)")
+
+
+try:
+    init_onu_configs_table()
+except Exception as _onu_cfg_err:
+    print(f"[OLT] onu_configs table init warning: {_onu_cfg_err}")
+
+
+def store_onu_config(olt_id, onu_id, pon_port, record: dict):
+    """Upsert a single ONU config row into onu_configs."""
+    execute_db(OLT_DB, """
+        INSERT INTO onu_configs
+            (olt_id, onu_id, pon_port, serial_number, description,
+             pppoe_id, landline, wan_vlan, line_profile, srv_profile,
+             raw_config, polled_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+        ON CONFLICT (olt_id, onu_id)
+        DO UPDATE SET
+            pon_port      = EXCLUDED.pon_port,
+            serial_number = EXCLUDED.serial_number,
+            description   = EXCLUDED.description,
+            pppoe_id      = EXCLUDED.pppoe_id,
+            landline      = EXCLUDED.landline,
+            wan_vlan      = EXCLUDED.wan_vlan,
+            line_profile  = EXCLUDED.line_profile,
+            srv_profile   = EXCLUDED.srv_profile,
+            raw_config    = EXCLUDED.raw_config,
+            polled_at     = CURRENT_TIMESTAMP
+    """, (
+        str(olt_id), str(onu_id), str(pon_port),
+        record.get('serial_number', ''),
+        record.get('description', ''),
+        record.get('pppoe_id', ''),
+        record.get('landline', ''),
+        record.get('wan_vlan', ''),
+        record.get('line_profile', ''),
+        record.get('srv_profile', ''),
+        record.get('raw_config', ''),
+    ))
+
+
+def _parse_running_config(raw: str) -> dict:
+    """
+    Parse 'show running-config onu N' output.
+    Returns dict with pppoe_id, landline, wan_vlan, line_profile,
+    srv_profile, description, serial_number extracted from the text.
+    """
+    cleaned = clean_output(raw)
+    result = {
+        'pppoe_id': '', 'landline': '', 'wan_vlan': '',
+        'line_profile': '', 'srv_profile': '', 'description': '',
+        'serial_number': '', 'raw_config': cleaned,
+    }
+    for line in cleaned.splitlines():
+        s = line.strip()
+        # Description: "onu 2 desc Ollapatti_Room/1:2"
+        m = re.search(r'\bonu\s+\d+\s+desc\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['description'] = m.group(1)
+        # PPPoE user: "... route ipv4 pppoe ... user <ID> pwd ..."
+        m = re.search(r'\buser\s+(\S+)\s+pwd\b', s, re.IGNORECASE)
+        if m:
+            full_user = m.group(1)
+            result['pppoe_id'] = full_user
+            num_m = re.search(r'(?:pe|pppoe)?(\d{7,12})', full_user, re.IGNORECASE)
+            if num_m:
+                result['landline'] = num_m.group(1)
+        # VLAN tag: "... vlan tag wan_vlan 199 0"
+        m = re.search(r'\bwan_vlan\s+(\d+)', s, re.IGNORECASE)
+        if m:
+            result['wan_vlan'] = m.group(1)
+        # Line profile: "onu 2 profile line BSNL_194_204_1831"
+        m = re.search(r'\bprofile\s+line\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['line_profile'] = m.group(1)
+        # Service profile: "onu 2 profile srv FOR_WIFI"
+        m = re.search(r'\bprofile\s+srv\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['srv_profile'] = m.group(1)
+        # Equipment ID / serial: "onu 2 pri equid MONUH113"
+        m = re.search(r'\bequid\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['serial_number'] = m.group(1)
+    return result
+
+
+def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
+    """
+    Connect to OLT, iterate 'show running-config onu N' for every ONU on
+    every PON port, parse PPPoE/landline/VLAN info and upsert into onu_configs.
+    Returns dict with success, saved count, error.
+    """
+    if ports is None:
+        ports = list(range(1, 9))
+
+    ip          = profile['ip']
+    ssh_port    = int(profile.get('ssh_port', 22) or 22)
+    telnet_port = int(profile.get('telnet_port', 23) or 23)
+    username    = profile['username']
+    password    = profile['password']
+    enable_pass = profile.get('enable_pass', '') or password
+    conn_type   = (profile.get('conn_type', 'auto') or 'auto').lower()
+    olt_id      = str(profile.get('id', ip))
+    name        = profile.get('name', ip) or ip
+    model       = get_olt_model(profile)
+
+    _progress(progress_callback, 'Connecting', f'SSH/Telnet to {name} ({ip})')
+
+    saved = 0
+
+    # ── SSH path ──────────────────────────────────────────────────────────────
+    def _run_ssh():
+        nonlocal saved
+        try:
+            import paramiko
+        except (ImportError, ModuleNotFoundError):
+            return False, 'paramiko not available'
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(ip, port=ssh_port, username=username, password=password,
+                           timeout=15, look_for_keys=False, allow_agent=False)
+            shell = client.invoke_shell(width=512, height=2000)
+            time.sleep(1.5)
+            if shell.recv_ready():
+                shell.recv(65535)
+
+            PAGER_R = re.compile(
+                r'(-{0,3}\s*more\s*-{0,3}|press\s+(space|enter|any\s+key)|--\s*more\s*--|'
+                r'<\s*space\s*>|continue\?\s*\[y/n\])', re.IGNORECASE)
+            PROMPT_R = re.compile(r'[#>]\s*$', re.MULTILINE)
+
+            def sc(cmd, wait=1.5, timeout=20):
+                shell.send(cmd + '\n')
+                time.sleep(wait)
+                out = ''
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    if shell.recv_ready():
+                        chunk = shell.recv(65535).decode('utf-8', errors='replace')
+                        out += chunk
+                        if PAGER_R.search(chunk):
+                            shell.send(' '); time.sleep(0.4); continue
+                        time.sleep(0.2)
+                        if PROMPT_R.search(out.split('\n')[-1]):
+                            break
+                    else:
+                        time.sleep(0.4)
+                        if not shell.recv_ready():
+                            break
+                return out
+
+            sc('en', wait=1.0); sc(enable_pass, wait=1.0)
+            sc('configure terminal', wait=1.0)
+            sc('terminal length 0', wait=0.8)
+            sc('screen-length 0 temporary', wait=0.8)
+
+            for port_n in ports:
+                iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
+                sc(iface_cmd, wait=1.2)
+                _progress(progress_callback, f'Polling PON {port_n}', 'Fetching ONU list...')
+                info_out = sc('show onu info', wait=2.5, timeout=20)
+                onus_on_port = sorted(set(
+                    m.group(1)
+                    for line in clean_output(info_out).splitlines()
+                    for m in [re.search(r'(?:GPON)?\d+/\d+:(\d+)', line)]
+                    if m
+                ))
+                for onu_n in onus_on_port:
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n}')
+                    cfg_out = sc(f'show running-config onu {onu_n}', wait=2.0, timeout=25)
+                    parsed = _parse_running_config(cfg_out)
+                    store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
+                    saved += 1
+                sc('exit', wait=0.8)
+
+            client.close()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    # ── Telnet path ───────────────────────────────────────────────────────────
+    def _run_telnet():
+        nonlocal saved
+        IAC = bytes([255]); DONT = bytes([254]); DO = bytes([253])
+        WONT = bytes([252]); WILL = bytes([251])
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(15); sock.connect((ip, telnet_port)); sock.settimeout(0.5)
+            buf = b''
+            PAGER_T = re.compile(
+                r'(-{0,3}\s*more\s*-{0,3}|press\s+(space|enter|any\s+key)|--\s*more\s*--|'
+                r'<\s*space\s*>|continue\?\s*\[y/n\])', re.IGNORECASE)
+
+            def recv_until(prompts, timeout=10):
+                nonlocal buf
+                if isinstance(prompts, str): prompts = [prompts]
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    try:
+                        chunk = sock.recv(4096)
+                        if chunk:
+                            clean_b = b''; i = 0
+                            while i < len(chunk):
+                                if chunk[i:i+1] == IAC and i + 2 < len(chunk):
+                                    cb = chunk[i+1:i+2]; opt = chunk[i+2:i+3]
+                                    if cb == DO: sock.send(IAC + WONT + opt)
+                                    elif cb == WILL: sock.send(IAC + DONT + opt)
+                                    i += 3
+                                else:
+                                    clean_b += chunk[i:i+1]; i += 1
+                            buf += clean_b
+                    except socket.timeout:
+                        pass
+                    decoded = buf.decode('utf-8', errors='replace')
+                    if PAGER_T.search(decoded):
+                        sock.send(b' '); time.sleep(0.4); continue
+                    for p in prompts:
+                        if p.lower() in decoded.lower():
+                            return decoded
+                    time.sleep(0.2)
+                return buf.decode('utf-8', errors='replace')
+
+            def sl(text):
+                sock.send((text + '\r\n').encode('utf-8')); time.sleep(0.3)
+
+            recv_until(['Login:', 'login:', 'Username:']); buf = b''; sl(username)
+            recv_until(['Password:', 'password:']); buf = b''; sl(password)
+            time.sleep(1.5); recv_until(['>', '#']); buf = b''
+            sl('en'); out = recv_until(['Password:', 'password:', '#'], timeout=5)
+            if 'assword' in out:
+                buf = b''; sl(enable_pass); time.sleep(1); recv_until(['#']); buf = b''
+            sl('configure terminal'); time.sleep(1.5); recv_until(['(config)#', '#'])
+            for nc in ['terminal length 0', 'screen-length 0 temporary']:
+                buf = b''; sl(nc); time.sleep(0.8); recv_until(['(config)#', '#'], timeout=4)
+            buf = b''
+
+            for port_n in ports:
+                iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
+                buf = b''; sl(iface_cmd); time.sleep(1.2)
+                recv_until(['(config-pon', '#'], timeout=8)
+                _progress(progress_callback, f'Polling PON {port_n}', 'Fetching ONU list...')
+                buf = b''; sl('show onu info'); time.sleep(2.5)
+                info_out = recv_until(['(config-pon', '#'], timeout=20)
+                onus_on_port = sorted(set(
+                    m.group(1)
+                    for line in clean_output(info_out).splitlines()
+                    for m in [re.search(r'(?:GPON)?\d+/\d+:(\d+)', line)]
+                    if m
+                ))
+                for onu_n in onus_on_port:
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n}')
+                    buf = b''; sl(f'show running-config onu {onu_n}'); time.sleep(2.5)
+                    cfg_out = recv_until(['(config-pon', '#'], timeout=30)
+                    parsed = _parse_running_config(cfg_out)
+                    store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
+                    saved += 1; buf = b''
+                buf = b''; sl('exit'); time.sleep(0.8); recv_until(['(config)#', '#'], timeout=5)
+
+            sock.close()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    ok = False; err_msg = ''
+    if conn_type in ('ssh', 'auto'):
+        ok, err_msg = _run_ssh()
+    if not ok and conn_type in ('telnet', 'auto'):
+        _progress(progress_callback, 'Trying Telnet', f'{ip}:{telnet_port}')
+        ok, err_msg = _run_telnet()
+
+    _progress(progress_callback, 'Done' if ok else 'Failed',
+              f'{saved} ONU configs saved' if ok else err_msg)
+    return {'success': ok, 'saved': saved, 'error': err_msg if not ok else ''}
+
+
+def pppoe_lookup_from_db(query: str) -> list:
+    """
+    Search onu_configs by PPPoE ID or numeric subscriber ID (landline).
+    Accepts full strings like 'pe4290290469_sid@ftth.bsnl.in' or numeric '4290290469'.
+    Returns list of matching rows joined with latest onu_data optical readings.
+    """
+    q = str(query).strip()
+    if not q:
+        return []
+    num_m = re.search(r'(\d{7,12})', q)
+    numeric = num_m.group(1) if num_m else None
+
+    rows = query_db(OLT_DB, """
+        SELECT c.*,
+               COALESCE(NULLIF(c.serial_number, ''), d.serial_no) AS serial_no,
+               d.rx_power, d.distance_m, d.online, d.phase_state,
+               d.admin_state, d.omcc_state, d.poll_time,
+               p.name AS olt_name, p.ip AS olt_ip
+        FROM onu_configs c
+        LEFT JOIN LATERAL (
+            SELECT serial_no, rx_power, distance_m, online, phase_state,
+                   admin_state, omcc_state, poll_time
+            FROM onu_data
+            WHERE olt_ip = (SELECT ip FROM olt_profiles WHERE CAST(id AS TEXT)=c.olt_id LIMIT 1)
+              AND onu_id = SPLIT_PART(c.onu_id, ':', 2)
+              AND CAST(pon_port AS TEXT) = c.pon_port
+            ORDER BY poll_time DESC LIMIT 1
+        ) d ON TRUE
+        LEFT JOIN olt_profiles p ON CAST(p.id AS TEXT) = c.olt_id
+        WHERE c.pppoe_id ILIKE ? OR c.pppoe_id ILIKE ?
+        LIMIT 50
+    """, (f'%{q}%', f'%{numeric}%' if numeric else f'%{q}%'))
+
+    if not rows and numeric:
+        rows = query_db(OLT_DB, """
+            SELECT c.*,
+                   COALESCE(NULLIF(c.serial_number, ''), d.serial_no) AS serial_no,
+                   d.rx_power, d.distance_m, d.online, d.phase_state,
+                   d.admin_state, d.omcc_state, d.poll_time,
+                   p.name AS olt_name, p.ip AS olt_ip
+            FROM onu_configs c
+            LEFT JOIN LATERAL (
+                SELECT serial_no, rx_power, distance_m, online, phase_state,
+                       admin_state, omcc_state, poll_time
+                FROM onu_data
+                WHERE olt_ip = (SELECT ip FROM olt_profiles WHERE CAST(id AS TEXT)=c.olt_id LIMIT 1)
+                  AND onu_id = SPLIT_PART(c.onu_id, ':', 2)
+                  AND CAST(pon_port AS TEXT) = c.pon_port
+                ORDER BY poll_time DESC LIMIT 1
+            ) d ON TRUE
+            LEFT JOIN olt_profiles p ON CAST(p.id AS TEXT) = c.olt_id
+            WHERE c.landline ILIKE ?
+            LIMIT 50
+        """, (f'%{numeric}%',))
+
+    return [dict(r) for r in rows] if rows else []

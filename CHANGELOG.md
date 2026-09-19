@@ -5,6 +5,21 @@
 ## [Unreleased] - Bug Fixes & ONT Lookup via VLAN Feature
 
 ### Added
+- **Database-First PPPoE / Landline ONT Lookup (`POST /api/onu/pppoe_lookup`)**:
+  - Search ONTs by PPPoE subscriber username (e.g. `pe4290290469_sid@ftth.bsnl.in`) or numeric subscriber phone number (e.g. `4290290469`).
+  - Queries strictly against the PostgreSQL `onu_configs` table with `LATERAL JOIN` to latest `onu_data` optical readings — zero live OLT CLI queries during search.
+  - Added "By PPPoE / Phone" search mode in `OntLookupView.tsx` with detailed results table (Subscriber/PPPoE, Description, WAN VLAN, Optical Rx, Distance, OLT, PON/ONU, Serial, Profiles) and instant KPI cards.
+- **Manual "Poll Config" Button in Registered OLTs**:
+  - Added a dedicated "Poll Config" button next to "View ONUs" in `OltConnectView.tsx` and quick trigger in `OntLookupView.tsx`.
+  - Connects to OLT via SSH/Telnet, iterates all configured PON ports, issues `show running-config onu <N>`, parses PPPoE credentials, WAN VLAN, profiles, description, and stores them into `onu_configs`.
+  - Added backend route `POST /api/onu/poll_config` (and `POST /api/olt/poll_config`).
+- **Automated Poll Scheduler "config" Poll Type**:
+  - Added `config` (Running Config) option in the Automated Poll Scheduler dropdown in `OltConnectView.tsx`.
+  - Defaults to daily (1440 min) background polling of running configurations.
+  - Extended `run_olt_job()` in `api.py` to trigger `poll_onu_running_configs()` for scheduled config jobs.
+- **`onu_configs` Database Table**:
+  - Schema defined in `init_postgres.sql` and auto-created idempotently on startup via `init_onu_configs_table()` in `olt_connector.py`.
+  - Stores `olt_id`, `onu_id`, `pon_port`, `serial_number`, `description`, `pppoe_id`, `landline`, `wan_vlan`, `line_profile`, `srv_profile`, `raw_config`, and `polled_at` with composite indexes.
 - **ONT Lookup via OLT VLAN**:
   - Added OLT VLAN search mode in **ONT Lookup** tab (`OntLookupView.tsx`).
   - Implemented `lookup_onu_by_vlan` in `olt_connector.py` to query OLT MAC address table by VLAN ID (`show mac address-table vlan <vlan>`), parse connected GPON ports, and correlate learned MAC addresses with ONU inventory and optical levels.

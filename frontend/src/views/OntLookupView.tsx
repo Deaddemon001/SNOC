@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, X, Radio, Activity, Compass, Gauge, AlertCircle, Zap, RefreshCw, Wifi, WifiOff, Layers, Cpu } from 'lucide-react'
+import { Search, X, Radio, Activity, Compass, Gauge, AlertCircle, Zap, RefreshCw, Wifi, WifiOff, Layers, Cpu, User, Phone, FileText } from 'lucide-react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -37,12 +37,18 @@ interface LiveResult {
 export const OntLookupView: React.FC = () => {
   const { theme } = useTheme()
 
-  // Search mode state: 'serial' | 'vlan'
-  const [searchMode, setSearchMode] = useState<'serial' | 'vlan'>('serial')
+  // Search mode state: 'serial' | 'vlan' | 'pppoe'
+  const [searchMode, setSearchMode] = useState<'serial' | 'vlan' | 'pppoe'>('serial')
   
   // Serial search states
   const [serial, setSerial] = useState('')
   
+  // PPPoE / Phone search states
+  const [pppoeQuery, setPppoeQuery] = useState('')
+  const [pollConfigOltId, setPollConfigOltId] = useState('')
+  const [pollConfigLoading, setPollConfigLoading] = useState(false)
+  const [pollConfigMsg, setPollConfigMsg] = useState('')
+
   // VLAN search states
   const [oltProfiles, setOltProfiles] = useState<any[]>([])
   const [selectedOltId, setSelectedOltId] = useState<string>('')
@@ -144,9 +150,64 @@ export const OntLookupView: React.FC = () => {
     }
   }
 
+  const handlePppoeSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const q = pppoeQuery.trim()
+    if (!q) {
+      setStatusMsg({ text: 'Please enter a PPPoE username or subscriber phone number.', ok: false })
+      return
+    }
+    setLoading(true)
+    setStatusMsg({ text: '', ok: false })
+    setLiveResult(null)
+    try {
+      const res = await apiPost('/api/onu/pppoe_lookup', { pppoe: q })
+      const list = Array.isArray(res.results) ? res.results : []
+      setRows(list)
+      if (!list.length) {
+        setStatusMsg({
+          text: `No ONT found for subscriber query "${q}". (If this is a newly provisioned ONT, click "Poll Config Now" below to refresh the database).`,
+          ok: false
+        })
+      } else {
+        setStatusMsg({
+          text: `Found ${list.length} matching ONT configuration${list.length > 1 ? 's' : ''} for "${q}"`,
+          ok: true
+        })
+      }
+    } catch (err: any) {
+      setStatusMsg({ text: err.message || 'Lookup failed', ok: false })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDirectPollConfig = async (oltId: string) => {
+    if (!oltId) return
+    setPollConfigLoading(true)
+    setPollConfigMsg('Connecting to OLT and reading running-configs...')
+    try {
+      const res = await apiPost('/api/onu/poll_config', { id: oltId })
+      if (res.success) {
+        setPollConfigMsg(`Config poll complete! ${res.saved ?? 0} ONT configs saved to database.`)
+        if (pppoeQuery.trim()) {
+          handlePppoeSearch()
+        }
+      } else {
+        setPollConfigMsg(`Config poll failed: ${res.error || 'Unknown error'}`)
+      }
+    } catch (e: any) {
+      setPollConfigMsg(`Poll error: ${e.message}`)
+    } finally {
+      setPollConfigLoading(false)
+    }
+  }
+
   const handleClear = () => {
     setSerial('')
     setVlanId('')
+    setPppoeQuery('')
+    setPollConfigMsg('')
     setRows([])
     setStatusMsg({ text: '', ok: false })
     setLiveResult(null)
@@ -162,11 +223,13 @@ export const OntLookupView: React.FC = () => {
     setLiveResult(null)
 
     try {
+      const onuStr = String(latest.onu_id ?? '')
+      const cleanOnuId = onuStr.includes(':') ? onuStr.split(':')[1] : onuStr
       const payload = {
         olt_name:  latest.olt_name  || '',
         olt_ip:    latest.olt_ip    || '',
         pon_port:  String(latest.pon_port  ?? ''),
-        onu_id:    String(latest.onu_id    ?? ''),
+        onu_id:    cleanOnuId,
         serial_no: latest.serial_no || serial.trim(),
       }
       const result: LiveResult = await apiFetch('/api/onu/live_status', {
@@ -275,7 +338,7 @@ export const OntLookupView: React.FC = () => {
               <Search className="w-4 h-4 text-cyan-400" />
               ONT Telemetry &amp; Inventory Lookup
             </h2>
-            <p className="text-xs font-mono text-slate-400">Search by GPON Serial Number or correlate MAC addresses by OLT VLAN</p>
+            <p className="text-xs font-mono text-slate-400">Search by GPON Serial Number, PPPoE / Subscriber ID, or correlate MAC addresses by OLT VLAN</p>
           </div>
 
           {/* Mode Switcher Buttons */}
@@ -290,6 +353,17 @@ export const OntLookupView: React.FC = () => {
             >
               <Cpu className="w-3.5 h-3.5" />
               <span>By Serial Number</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchMode('pppoe')
+                handleClear()
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${searchMode === 'pppoe' ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>By PPPoE / Phone</span>
             </button>
             <button
               type="button"
@@ -335,6 +409,70 @@ export const OntLookupView: React.FC = () => {
               </button>
             </div>
           </form>
+        ) : searchMode === 'pppoe' ? (
+          <div className="space-y-3">
+            <form onSubmit={handlePppoeSearch} className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={pppoeQuery}
+                  onChange={e => setPppoeQuery(e.target.value)}
+                  placeholder="Enter PPPoE username or landline/phone (e.g. 4290290469, pe4290290469_sid@ftth.bsnl.in...)"
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2.5 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 tracking-wider uppercase transition-all shadow-md shadow-cyan-500/20"
+                >
+                  {loading ? 'Searching DB...' : 'Search PPPoE'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+                >
+                  Clear
+                </button>
+              </div>
+            </form>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl text-xs font-mono text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold">⚡ Database-First:</span>
+                <span>Fast search from local running-config database (zero live OLT CLI overhead).</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={pollConfigOltId}
+                  onChange={e => setPollConfigOltId(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-cyan-300 text-xs rounded-lg px-2 py-1 focus:outline-none"
+                >
+                  <option value="">- Refresh OLT Config -</option>
+                  {oltProfiles.map(p => (
+                    <option key={p.id} value={p.id}>{p.name || p.ip}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleDirectPollConfig(pollConfigOltId)}
+                  disabled={!pollConfigOltId || pollConfigLoading}
+                  className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg font-bold text-xs flex items-center gap-1 disabled:opacity-40 transition-all"
+                >
+                  <RefreshCw className={`w-3 h-3 ${pollConfigLoading ? 'animate-spin' : ''}`} />
+                  <span>{pollConfigLoading ? 'Polling...' : 'Poll Config Now'}</span>
+                </button>
+              </div>
+            </div>
+            {pollConfigMsg && (
+              <div className="text-xs font-mono text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                {pollConfigMsg}
+              </div>
+            )}
+          </div>
         ) : (
           <form onSubmit={handleVlanSearch} className="flex flex-col sm:flex-row gap-3">
             {/* Select OLT */}
@@ -407,15 +545,18 @@ export const OntLookupView: React.FC = () => {
               </div>
             </div>
 
-            {/* FULL GPON SERIAL NUMBER DISPLAY (Bug 4 Fix) */}
+            {/* Hardware Serial or PPPoE Info */}
             <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
               <div className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-                <Cpu className="w-3.5 h-3.5 text-cyan-400" /><span>GPON Serial Number</span>
+                {searchMode === 'pppoe' ? <User className="w-3.5 h-3.5 text-cyan-400" /> : <Cpu className="w-3.5 h-3.5 text-cyan-400" />}
+                <span>{searchMode === 'pppoe' ? 'Subscriber / PPPoE' : 'GPON Serial Number'}</span>
               </div>
-              <div className="text-base font-bold font-mono text-cyan-300 truncate" title={latest.serial_no || serial.trim()}>
-                {latest.serial_no || serial.trim() || '—'}
+              <div className="text-base font-bold font-mono text-cyan-300 truncate" title={searchMode === 'pppoe' ? (latest.pppoe_id || latest.landline) : (latest.serial_no || serial.trim())}>
+                {searchMode === 'pppoe' ? (latest.pppoe_id || latest.landline || '—') : (latest.serial_no || serial.trim() || '—')}
               </div>
-              <div className="text-xs font-mono text-slate-500">Full Hardware Serial</div>
+              <div className="text-xs font-mono text-slate-500">
+                {searchMode === 'pppoe' ? (latest.landline ? `Phone: ${latest.landline} · VLAN ${latest.wan_vlan || '—'}` : `VLAN: ${latest.wan_vlan || '—'}`) : 'Full Hardware Serial'}
+              </div>
             </div>
 
             {/* Distance */}
@@ -575,10 +716,10 @@ export const OntLookupView: React.FC = () => {
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold tracking-wide text-slate-100">
-              {searchMode === 'vlan' ? 'VLAN Discovered ONUs & Telemetry' : 'Measurement History'}
+              {searchMode === 'vlan' ? 'VLAN Discovered ONUs & Telemetry' : (searchMode === 'pppoe' ? 'PPPoE / Subscriber Database Results' : 'Measurement History')}
             </h3>
             <p className="text-xs font-mono text-slate-400">
-              {searchMode === 'vlan' ? 'Matched ONUs on OLT MAC address table' : 'Full audit log of optical measurements'}
+              {searchMode === 'vlan' ? 'Matched ONUs on OLT MAC address table' : (searchMode === 'pppoe' ? 'Matched ONT running-configurations and optical status' : 'Full audit log of optical measurements')}
             </p>
           </div>
           <span className="text-xs font-mono text-slate-400">{rows.length} records</span>
@@ -586,57 +727,111 @@ export const OntLookupView: React.FC = () => {
         <div className="overflow-x-auto max-h-[400px]">
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 bg-slate-950 border-b border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400">
-              <tr>
-                <th className="py-3 px-4">Poll Time</th>
-                <th className="py-3 px-4">GPON Serial Number</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Optical Rx</th>
-                <th className="py-3 px-4">Distance</th>
-                <th className="py-3 px-4">OLT Name</th>
-                <th className="py-3 px-4">OLT IP</th>
-                <th className="py-3 px-4">PON Port</th>
-                <th className="py-3 px-4">ONU ID</th>
-                {searchMode === 'vlan' && <th className="py-3 px-4">Learned MAC</th>}
-              </tr>
+              {searchMode === 'pppoe' ? (
+                <tr>
+                  <th className="py-3 px-4">Subscriber / PPPoE</th>
+                  <th className="py-3 px-4">Description</th>
+                  <th className="py-3 px-4">WAN VLAN</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Optical Rx</th>
+                  <th className="py-3 px-4">Distance</th>
+                  <th className="py-3 px-4">OLT Name</th>
+                  <th className="py-3 px-4">OLT IP</th>
+                  <th className="py-3 px-4">PON / ONU</th>
+                  <th className="py-3 px-4">Serial Number</th>
+                  <th className="py-3 px-4">Profiles</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th className="py-3 px-4">Poll Time</th>
+                  <th className="py-3 px-4">GPON Serial Number</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Optical Rx</th>
+                  <th className="py-3 px-4">Distance</th>
+                  <th className="py-3 px-4">OLT Name</th>
+                  <th className="py-3 px-4">OLT IP</th>
+                  <th className="py-3 px-4">PON Port</th>
+                  <th className="py-3 px-4">ONU ID</th>
+                  {searchMode === 'vlan' && <th className="py-3 px-4">Learned MAC</th>}
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {!rows.length ? (
-                <tr><td colSpan={9} className="py-8 text-center text-slate-500">No records found.</td></tr>
+                <tr><td colSpan={searchMode === 'pppoe' ? 11 : 10} className="py-8 text-center text-slate-500">No records found.</td></tr>
               ) : (
                 rows.slice(0, 300).map((r, i) => (
-                  <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${r._live ? 'bg-violet-950/10' : ''}`}>
-                    <td className="py-2.5 px-4 text-slate-300">
-                      <span className="flex items-center gap-1.5">
-                        {r.poll_time ? new Date(r.poll_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' }) : 'Live'}
-                        {r._live && (
-                          <span className="px-1 py-0.5 text-[9px] bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded font-bold leading-none">LIVE</span>
-                        )}
-                      </span>
-                    </td>
-                    {/* FULL GPON SERIAL COLUMN (Bug 4 Fix) */}
-                    <td className="py-2.5 px-4 font-bold text-cyan-300">
-                      {r.serial_no || serial.trim() || '—'}
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1.5 ${isOnline(r) ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isOnline(r) ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                        {isOnline(r) ? 'ONLINE' : 'OFFLINE'}
-                      </span>
-                    </td>
-                    <td className={`py-2.5 px-4 font-bold ${rxColor(r.rx_power)}`}>
-                      {r.rx_power != null ? `${Number(r.rx_power).toFixed(2)} dBm` : '—'}
-                    </td>
-                    <td className="py-2.5 px-4 text-amber-400">{formatDistance(r.distance_m ?? r.distance)}</td>
-                    <td className="py-2.5 px-4 text-slate-200">{r.olt_name || '—'}</td>
-                    <td className="py-2.5 px-4 text-cyan-400">{r.olt_ip || '—'}</td>
-                    <td className="py-2.5 px-4 text-slate-300">{r.pon_port != null ? `PON ${r.pon_port}` : '—'}</td>
-                    <td className="py-2.5 px-4 text-slate-400">{r.onu_id ?? '—'}</td>
-                    {searchMode === 'vlan' && (
-                      <td className="py-2.5 px-4 font-mono text-violet-300 text-[11px]">
-                        {r.learned_mac || '—'}
+                  searchMode === 'pppoe' ? (
+                    <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${r._live ? 'bg-violet-950/10' : ''}`}>
+                      <td className="py-2.5 px-4 font-bold text-cyan-300">
+                        <div>{r.pppoe_id || '—'}</div>
+                        {r.landline && <div className="text-[10px] text-amber-400 font-mono">Tel: {r.landline}</div>}
                       </td>
-                    )}
-                  </tr>
+                      <td className="py-2.5 px-4 text-slate-200">
+                        {r.description || '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-violet-300 font-bold">
+                        {r.wan_vlan ? `VLAN ${r.wan_vlan}` : '—'}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1.5 ${isOnline(r) ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isOnline(r) ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                          {isOnline(r) ? 'ONLINE' : 'OFFLINE'}
+                        </span>
+                      </td>
+                      <td className={`py-2.5 px-4 font-bold ${rxColor(r.rx_power)}`}>
+                        {r.rx_power != null ? `${Number(r.rx_power).toFixed(2)} dBm` : '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-amber-400">{formatDistance(r.distance_m ?? r.distance)}</td>
+                      <td className="py-2.5 px-4 text-slate-200">{r.olt_name || '—'}</td>
+                      <td className="py-2.5 px-4 text-cyan-400">{r.olt_ip || '—'}</td>
+                      <td className="py-2.5 px-4 text-slate-300">
+                        {r.pon_port != null ? `PON ${r.pon_port} / #${r.onu_id}` : (r.onu_id ?? '—')}
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-300 font-mono">
+                        {r.serial_no || r.serial_number || '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-[11px] text-slate-400 font-mono">
+                        {r.line_profile && <div>Line: {r.line_profile}</div>}
+                        {r.srv_profile && <div>Srv: {r.srv_profile}</div>}
+                        {!r.line_profile && !r.srv_profile && '—'}
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={i} className={`hover:bg-slate-800/30 transition-colors ${r._live ? 'bg-violet-950/10' : ''}`}>
+                      <td className="py-2.5 px-4 text-slate-300">
+                        <span className="flex items-center gap-1.5">
+                          {r.poll_time ? new Date(r.poll_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' }) : 'Live'}
+                          {r._live && (
+                            <span className="px-1 py-0.5 text-[9px] bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded font-bold leading-none">LIVE</span>
+                          )}
+                        </span>
+                      </td>
+                      {/* FULL GPON SERIAL COLUMN (Bug 4 Fix) */}
+                      <td className="py-2.5 px-4 font-bold text-cyan-300">
+                        {r.serial_no || serial.trim() || '—'}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1.5 ${isOnline(r) ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isOnline(r) ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                          {isOnline(r) ? 'ONLINE' : 'OFFLINE'}
+                        </span>
+                      </td>
+                      <td className={`py-2.5 px-4 font-bold ${rxColor(r.rx_power)}`}>
+                        {r.rx_power != null ? `${Number(r.rx_power).toFixed(2)} dBm` : '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-amber-400">{formatDistance(r.distance_m ?? r.distance)}</td>
+                      <td className="py-2.5 px-4 text-slate-200">{r.olt_name || '—'}</td>
+                      <td className="py-2.5 px-4 text-cyan-400">{r.olt_ip || '—'}</td>
+                      <td className="py-2.5 px-4 text-slate-300">{r.pon_port != null ? `PON ${r.pon_port}` : '—'}</td>
+                      <td className="py-2.5 px-4 text-slate-400">{r.onu_id ?? '—'}</td>
+                      {searchMode === 'vlan' && (
+                        <td className="py-2.5 px-4 font-mono text-violet-300 text-[11px]">
+                          {r.learned_mac || '—'}
+                        </td>
+                      )}
+                    </tr>
+                  )
                 ))
               )}
             </tbody>

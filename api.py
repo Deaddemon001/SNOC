@@ -224,6 +224,9 @@ def run_olt_job(job_id):
             from olt_connector import poll_uplink_only
             interfaces = [p.strip() for p in (job['selected_ports'] or '').split(',') if p.strip()]
             result = poll_uplink_only(profile_dict, interfaces=interfaces or None)
+        elif job['poll_type'] == 'config':
+            from olt_connector import poll_onu_running_configs
+            result = poll_onu_running_configs(profile_dict, progress_callback=lambda stage, detail='': set_olt_poll_progress(job['profile_id'], stage, detail))
         else:
             from olt_connector import poll_olt
             result = poll_olt(profile_dict, progress_callback=lambda stage, detail='': set_olt_poll_progress(job['profile_id'], stage, detail))
@@ -2259,6 +2262,59 @@ def onu_vlan_lookup():
         status_code = 200 if res.get('success') else 502
         return jsonify(res), status_code
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/onu/pppoe_lookup', methods=['POST'])
+@login_required
+def onu_pppoe_lookup():
+    """Look up ONUs from PostgreSQL onu_configs by PPPoE subscriber ID or landline.
+    Strictly DB-only, does not trigger live OLT queries.
+    Payload: { "pppoe": "4290290469" } or { "query": "..." }
+    """
+    d = request.get_json(silent=True) or {}
+    q = str(d.get('pppoe', '') or d.get('query', '')).strip()
+    if not q:
+        return jsonify({'error': 'Search query (PPPoE ID or phone number) is required'}), 400
+    try:
+        from olt_connector import pppoe_lookup_from_db
+        results = pppoe_lookup_from_db(q)
+        return jsonify({'success': True, 'results': results, 'count': len(results)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/onu/poll_config', methods=['POST'])
+@app.route('/api/olt/poll_config', methods=['POST'])
+@login_required
+def poll_onu_config():
+    """Trigger running-config polling on an OLT to populate onu_configs table (PPPoE/Landline).
+    Accepts: { "id": <profile_id> } or { "profile_id": <profile_id> }
+    """
+    d = request.get_json(silent=True) or {}
+    pid = d.get('profile_id') or d.get('id')
+    if not pid:
+        return jsonify({'error': 'id or profile_id required'}), 400
+    rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE id=?", (pid,))
+    if not rows:
+        return jsonify({'error': 'Profile not found'}), 404
+    row = rows[0]
+
+    try:
+        from olt_connector import poll_onu_running_configs
+        set_olt_poll_progress(pid, 'Queued', row['name'] or row['ip'])
+        result = poll_onu_running_configs(
+            dict(row),
+            progress_callback=lambda stage, detail='': set_olt_poll_progress(pid, stage, detail)
+        )
+        set_olt_poll_progress(
+            pid,
+            'Completed' if result.get('success') else 'Failed',
+            f"{result.get('saved', 0)} configs saved" if result.get('success') else (result.get('error', '') or 'Config poll failed'),
+            done=True,
+            error=result.get('error', '')
+        )
+        return jsonify(result)
+    except Exception as e:
+        set_olt_poll_progress(pid, 'Failed', str(e), done=True, error=str(e))
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────

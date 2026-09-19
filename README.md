@@ -99,7 +99,8 @@ Smart NOC is built around one main dashboard and several background services:
   - **Alert labels**: Offline/unreachable alerts include the target's label alongside its IP (`Label (ip)`) across Email, Telegram, and Discord, falling back to the bare IP when no label is set.
 - TFTP backup receiver with MAC mapping for NAT gateways
 - Log viewer for local service logs with tail and search
-- ONT lookup by GPON serial number or OLT VLAN ID (`POST /api/onu/vlan_lookup`) with full serial display, optical distance formatting (m/km), and Rx power curves
+- ONT lookup by GPON serial number, subscriber phone/PPPoE username, or OLT VLAN ID (`POST /api/onu/pppoe_lookup`, `POST /api/onu/vlan_lookup`) with full serial display, optical distance formatting (m/km), and Rx power curves
+- **Database-First PPPoE / Subscriber ONT Search**: Search ONTs by PPPoE username (e.g. `pe4290290469_sid@ftth.bsnl.in`) or numeric subscriber phone number (e.g. `4290290469`). Evaluated entirely against PostgreSQL `onu_configs` joined with optical telemetry — zero CLI overhead during search.
 - **Real-time Live ONT status interrogation**: Query live hardware directly from the ONT Lookup tab via `POST /api/onu/live_status` for real-time link status, optical Rx/Tx power, distance, uptime, and firmware
 - **ONT Search via OLT VLAN**: Select an OLT profile and query OLT MAC address table by VLAN ID (`show mac address-table vlan <vlan>`) to correlate learned MACs on GPON ports with ONU inventory, optical levels, and display the Learned MAC in results. Supports standard 2-char MAC formats, VSOL 4-char MAC formats (`14a7:2b41:38fb`), and bare GPON port correlation.
 
@@ -108,6 +109,7 @@ Smart NOC is built around one main dashboard and several background services:
 
 - OLT connection profiles with SSH and Telnet auto-failover
 - Live interactive ONU inventory polling with real-time stage progress and animated spinners
+- **Running-Configuration Polling (PPPoE / Landline / VLAN)**: On-demand "Poll Config" button in Registered OLTs and automated background collection (`poll_type: config`, defaulting to daily) pulls `show running-config onu <N>` across all PON ports and stores extracted credentials, WAN VLANs, descriptions, and profiles to PostgreSQL `onu_configs`.
 - **Targeted Real-Time ONU Diagnostic Inspector (ONT Lookup)**:
   - Query specific ONUs on demand directly through OLT CLI (`POST /api/onu/live_status` via `fetch_single_onu_live`) without initiating full OLT discovery or bulk inventory polling.
   - Returns real-time link state (Online, Offline, Dying Gasp), optical Rx/Tx power (dBm), fiber distance, device uptime, and firmware version.
@@ -115,7 +117,7 @@ Smart NOC is built around one main dashboard and several background services:
 - **Enhanced ONU Modal & Historical Poll Snapshot Inspector (View ONUs)**: Summary statistics cards (Total ONUs, Online ONUs count & %, Offline ONUs, Dying Gasp, Avg/Min Rx Power, Max Fiber Span), Poll Date and Poll Time dropdown selectors to view any historical poll snapshot (`/api/olt/poll_dates` & `/api/olt/poll_times`), dynamic PON Port filter dropdown, Status filter, and 1-click CSV snapshot export.
 - **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**: Real-time and historical throughput charting (Mbps / Gbps / Kbps) with multi-interface line/dash rendering for all configured ports, live Peak & Low bandwidth rate metrics banner, and on-demand "Poll Uplink Now" live triggers.
 - **High-Resilience API Polling Client**: 180s (3-minute) timeout management with signal chaining for long-running SSH/Telnet polling operations and targeted live ONT diagnostics, eliminating premature abort errors.
-- Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 240 min) and one-time execution
+- Automatic background polling scheduler (`olt_job_scheduler` daemon) supporting configurable recurring intervals (5 to 1440 min) and one-time execution for ONU list, uplink traffic, and running-config collection
 - Multi-threaded hardware polling with per-job fault isolation
 - ONU inventory history, optical Rx/Tx dBm diagnostics, distance (meters), and state breakdown (Online, Offline, Dying Gasp)
 - Interface uplink bandwidth statistics collection and charting
