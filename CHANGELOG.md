@@ -38,6 +38,10 @@
 - **Legacy Route Flags**: Retired `/?legacy=1` URL query parameter handling and obsolete `render_versioned_html` helper in `api.py`.
 
 ### Fixed
+- **PPPoE WAN VLAN Overwrite Fix**: In `olt_connector.py` `_parse_running_config()`, WAN parameters are now grouped by index (`wan_adv index <N>`), mapping the WAN VLAN to the specific index configuring PPPoE/Internet (e.g. VLAN 148), avoiding overwrite by later VoIP/DHCP services (e.g. VLAN 1831). Rejoined wrapped PPPoE usernames with whitespace collapsed and extracted phone numbers across standard prefixes.
+- **Poll Config Timeout & Abort Fix**: In `olt_connector.py`, overhauled `poll_onu_running_configs` CLI execution to read prompt responses immediately in 50ms intervals instead of waiting static 2.0s sleeps per command, cutting polling time from ~4 minutes to ~15-25 seconds. Extended frontend request timeout to 300s in `api.ts` and improved abort error messaging.
+- **Scheduler "config" Validation Fix**: Updated job creation and update routes in `api.py` (`save_olt_job`, `update_olt_job`) to accept `'config'` alongside `'full'`, `'uplink'`, and `'onu'`. Added `24 hrs (Daily)` (`1440` min) option to scheduler interval dropdown in `OltConnectView.tsx`.
+- **Poll Config UI State & Real-Time Progress**: Separated `configPollingId` in `OltConnectView.tsx` so the spinner renders specifically on the Poll Config button, and added live stage progress polling (`/api/olt/poll_progress`) in both `OltConnectView.tsx` and `OntLookupView.tsx`.
 - **Syslog Event Endless Scroll (Bug 1)**: Set default event limit to 10 events per page in `SyslogView.tsx` with page size selector dropdown (10, 25, 50) and page navigation controls.
 - **TFTP Backups Stats Cards (Bug 2)**: Added `total_files` and `ok_files` keys to `/api/tftp/stats` response in `api.py` and updated `TftpBackupsView.tsx` fallback accessors so "Files Received", "Successful", and "Total Size" render correctly.
 - **Full GPON Serial Number Display (Bug 4)**: Added dedicated GPON Serial Number summary metric card and table column in `OntLookupView.tsx` so the full serial number is always rendered.

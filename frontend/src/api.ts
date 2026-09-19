@@ -15,6 +15,7 @@ export async function apiFetch<T = any>(url: string, opts: ApiFetchOptions = {})
   const controller = new AbortController()
 
   // Default timeout: 30s for standard requests, 180s (3 min) for long-running OLT polling, backups, and actions
+  const isConfigPoll = url.includes('/api/onu/poll_config') || url.includes('/api/olt/poll_config')
   const isLongRunning =
     url.includes('/api/olt/poll') ||
     url.includes('/api/olt/raw_output') ||
@@ -22,16 +23,16 @@ export async function apiFetch<T = any>(url: string, opts: ApiFetchOptions = {})
     url.includes('/api/olt/test_connection') ||
     url.includes('/api/onu/live_status') ||
     url.includes('/api/onu/vlan_lookup') ||
-    url.includes('/api/onu/poll_config') ||
+    isConfigPoll ||
     url.includes('/api/backup/') ||
     url.includes('/api/system/service_action')
 
-  const effectiveTimeout = timeout !== undefined ? timeout : (isLongRunning ? 180000 : 30000)
+  const effectiveTimeout = timeout !== undefined ? timeout : (isConfigPoll ? 300000 : (isLongRunning ? 180000 : 30000))
 
   let timeoutId: any = null
   if (effectiveTimeout > 0) {
     timeoutId = setTimeout(() => {
-      controller.abort()
+      controller.abort(new Error(`Request timed out after ${Math.round(effectiveTimeout / 1000)}s on ${url}`))
     }, effectiveTimeout)
   }
 

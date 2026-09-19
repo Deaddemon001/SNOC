@@ -33,6 +33,7 @@ export const OltConnectView: React.FC = () => {
   const [configOpen, setConfigOpen] = useState(true)
   const [editId, setEditId] = useState<string>('')
   const [pollingId, setPollingId] = useState<number | null>(null)
+  const [configPollingId, setConfigPollingId] = useState<number | null>(null)
 
   // Profile Form
   const emptyForm = {
@@ -219,11 +220,26 @@ export const OltConnectView: React.FC = () => {
 
   // Poll Running Config (PPPoE / Landline)
   const handlePollConfig = async (p: any) => {
-    setPollingId(p.id)
+    setConfigPollingId(p.id)
     setActionMsg({ text: `Connecting to ${p.name || p.ip}... Polling running-config for all ONUs (PPPoE/Landline)`, ok: true, loading: true })
+
+    const progressTimer = setInterval(async () => {
+      try {
+        const prog = await apiFetch(`/api/olt/poll_progress?id=${p.id}`)
+        if (prog && prog.stage && prog.stage !== 'Idle') {
+          setActionMsg({
+            text: `${p.name || p.ip}: ${prog.stage}${prog.detail ? ` - ${prog.detail}` : ''}`,
+            ok: !prog.error,
+            loading: !prog.done
+          })
+        }
+      } catch (_) {}
+    }, 1000)
+
     try {
       const res = await apiPost('/api/onu/poll_config', { id: p.id })
-      setPollingId(null)
+      clearInterval(progressTimer)
+      setConfigPollingId(null)
       if (res.success) {
         setActionMsg({
           text: `Config poll success: ${res.saved ?? 0} ONU configs saved to database for ${p.name || p.ip}`,
@@ -235,7 +251,8 @@ export const OltConnectView: React.FC = () => {
         setActionMsg({ text: `Config poll failed: ${res.error || 'Unknown error'}`, ok: false, loading: false })
       }
     } catch (e: any) {
-      setPollingId(null)
+      clearInterval(progressTimer)
+      setConfigPollingId(null)
       setActionMsg({ text: `Request failed: ${e.message}`, ok: false, loading: false })
     }
   }
@@ -576,7 +593,7 @@ export const OltConnectView: React.FC = () => {
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         <button
                           onClick={() => handlePollOnu(p)}
-                          disabled={pollingId === p.id}
+                          disabled={pollingId === p.id || configPollingId === p.id}
                           className="px-2.5 py-1 rounded-lg text-xs font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-40 transition-all flex items-center gap-1"
                         >
                           {pollingId === p.id ? <RotateCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
@@ -590,16 +607,16 @@ export const OltConnectView: React.FC = () => {
                         </button>
                         <button
                           onClick={() => handlePollConfig(p)}
-                          disabled={pollingId === p.id}
+                          disabled={pollingId === p.id || configPollingId === p.id}
                           className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 transition-all disabled:opacity-40"
                           title="Poll running-config (PPPoE / Landline) and save to database"
                         >
-                          <FileText className="w-3 h-3" />
-                          <span>Poll Config</span>
+                          {configPollingId === p.id ? <RotateCw className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                          <span>{configPollingId === p.id ? 'Polling Config...' : 'Poll Config'}</span>
                         </button>
                         <button
                           onClick={() => handlePollUplink(p)}
-                          disabled={pollingId === p.id}
+                          disabled={pollingId === p.id || configPollingId === p.id}
                           className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                         >
                           Uplink
@@ -696,8 +713,17 @@ export const OltConnectView: React.FC = () => {
                 onChange={e => setJob({ ...job, interval_min: e.target.value })}
                 className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-cyan-300 focus:outline-none focus:border-cyan-500"
               >
-                {[5, 10, 15, 30, 60, 120, 240].map(m => (
-                  <option key={m} value={String(m)}>{m} min</option>
+                {[
+                  { val: '5', label: '5 min' },
+                  { val: '10', label: '10 min' },
+                  { val: '15', label: '15 min' },
+                  { val: '30', label: '30 min' },
+                  { val: '60', label: '60 min' },
+                  { val: '120', label: '120 min' },
+                  { val: '240', label: '240 min' },
+                  { val: '1440', label: '24 hrs (Daily)' }
+                ].map(opt => (
+                  <option key={opt.val} value={opt.val}>{opt.label}</option>
                 ))}
               </select>
             </div>

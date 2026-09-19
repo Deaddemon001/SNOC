@@ -186,8 +186,19 @@ export const OntLookupView: React.FC = () => {
     if (!oltId) return
     setPollConfigLoading(true)
     setPollConfigMsg('Connecting to OLT and reading running-configs...')
+
+    const progressTimer = setInterval(async () => {
+      try {
+        const prog = await apiFetch(`/api/olt/poll_progress?id=${oltId}`)
+        if (prog && prog.stage && prog.stage !== 'Idle') {
+          setPollConfigMsg(`${prog.stage}${prog.detail ? `: ${prog.detail}` : ''}`)
+        }
+      } catch (_) {}
+    }, 1000)
+
     try {
       const res = await apiPost('/api/onu/poll_config', { id: oltId })
+      clearInterval(progressTimer)
       if (res.success) {
         setPollConfigMsg(`Config poll complete! ${res.saved ?? 0} ONT configs saved to database.`)
         if (pppoeQuery.trim()) {
@@ -197,6 +208,7 @@ export const OntLookupView: React.FC = () => {
         setPollConfigMsg(`Config poll failed: ${res.error || 'Unknown error'}`)
       }
     } catch (e: any) {
+      clearInterval(progressTimer)
       setPollConfigMsg(`Poll error: ${e.message}`)
     } finally {
       setPollConfigLoading(false)

@@ -1628,6 +1628,7 @@ def _parse_running_config(raw: str) -> dict:
     Parse 'show running-config onu N' output.
     Returns dict with pppoe_id, landline, wan_vlan, line_profile,
     srv_profile, description, serial_number extracted from the text.
+    Correctly associates the WAN VLAN with the PPPoE connection index.
     """
     cleaned = clean_output(raw)
     result = {
@@ -1635,36 +1636,110 @@ def _parse_running_config(raw: str) -> dict:
         'line_profile': '', 'srv_profile': '', 'description': '',
         'serial_number': '', 'raw_config': cleaned,
     }
+    wan_indexes = {}
+    general_vlans = []
+
     for line in cleaned.splitlines():
         s = line.strip()
+        if not s:
+            continue
+
         # Description: "onu 2 desc Ollapatti_Room/1:2"
         m = re.search(r'\bonu\s+\d+\s+desc\s+(\S+)', s, re.IGNORECASE)
         if m:
             result['description'] = m.group(1)
-        # PPPoE user: "... route ipv4 pppoe ... user <ID> pwd ..."
-        m = re.search(r'\buser\s+(\S+)\s+pwd\b', s, re.IGNORECASE)
-        if m:
-            full_user = m.group(1)
-            result['pppoe_id'] = full_user
-            num_m = re.search(r'(?:pe|pppoe)?(\d{7,12})', full_user, re.IGNORECASE)
-            if num_m:
-                result['landline'] = num_m.group(1)
-        # VLAN tag: "... vlan tag wan_vlan 199 0"
-        m = re.search(r'\bwan_vlan\s+(\d+)', s, re.IGNORECASE)
-        if m:
-            result['wan_vlan'] = m.group(1)
+
         # Line profile: "onu 2 profile line BSNL_194_204_1831"
         m = re.search(r'\bprofile\s+line\s+(\S+)', s, re.IGNORECASE)
         if m:
             result['line_profile'] = m.group(1)
+
         # Service profile: "onu 2 profile srv FOR_WIFI"
         m = re.search(r'\bprofile\s+srv\s+(\S+)', s, re.IGNORECASE)
         if m:
             result['srv_profile'] = m.group(1)
+
         # Equipment ID / serial: "onu 2 pri equid MONUH113"
         m = re.search(r'\bequid\s+(\S+)', s, re.IGNORECASE)
         if m:
             result['serial_number'] = m.group(1)
+
+        # Track WAN settings by index: "onu 20 pri wan_adv index 1 ..."
+        m_idx = re.search(r'\bwan_adv\s+index\s+(\d+)\b', s, re.IGNORECASE)
+        if m_idx:
+            idx = m_idx.group(1)
+            if idx not in wan_indexes:
+                wan_indexes[idx] = {'user': '', 'wan_vlan': '', 'is_pppoe': False, 'mode': ''}
+
+            # PPPoE user on this index: "... user sv4290292735_sid@ ftth.bsnl.in pwd ..."
+            m_user = re.search(r'\buser\s+(.*?)\s+pwd\b', s, re.IGNORECASE)
+            if m_user:
+                cleaned_user = re.sub(r'\s+', '', m_user.group(1))
+                wan_indexes[idx]['user'] = cleaned_user
+                wan_indexes[idx]['is_pppoe'] = True
+
+            if re.search(r'\broute\s+ipv4\s+pppoe\b', s, re.IGNORECASE):
+                wan_indexes[idx]['is_pppoe'] = True
+
+            m_vlan = re.search(r'\bwan_vlan\s+(\d+)\b', s, re.IGNORECASE)
+            if m_vlan:
+                wan_indexes[idx]['wan_vlan'] = m_vlan.group(1)
+
+            m_mode = re.search(r'\bmode\s+(\S+)\b', s, re.IGNORECASE)
+            if m_mode:
+                wan_indexes[idx]['mode'] = m_mode.group(1)
+        else:
+            # Fallback for configs not using "wan_adv index N"
+            m_user = re.search(r'\buser\s+(.*?)\s+pwd\b', s, re.IGNORECASE)
+            if m_user and not result['pppoe_id']:
+                result['pppoe_id'] = re.sub(r'\s+', '', m_user.group(1))
+            m_vlan = re.search(r'\bwan_vlan\s+(\d+)\b', s, re.IGNORECASE)
+            if m_vlan:
+                general_vlans.append(m_vlan.group(1))
+
+    # Match the PPPoE WAN index
+    pppoe_vlan = ''
+    pppoe_user = ''
+    if wan_indexes:
+        # Priority 1: Index with both user and pppoe flag
+        for idx, data in wan_indexes.items():
+            if data['user'] and data['is_pppoe']:
+                pppoe_user = data['user']
+                pppoe_vlan = data['wan_vlan']
+                break
+        # Priority 2: Index with user
+        if not pppoe_user:
+            for idx, data in wan_indexes.items():
+                if data['user']:
+                    pppoe_user = data['user']
+                    pppoe_vlan = data['wan_vlan']
+                    break
+        # Priority 3: Index with internet/pppoe mode
+        if not pppoe_vlan:
+            for idx, data in wan_indexes.items():
+                if 'internet' in data['mode'].lower() or data['is_pppoe']:
+                    pppoe_vlan = data['wan_vlan']
+                    break
+        # Priority 4: First WAN index with any vlan
+        if not pppoe_vlan:
+            for idx, data in wan_indexes.items():
+                if data['wan_vlan']:
+                    pppoe_vlan = data['wan_vlan']
+                    break
+
+    if pppoe_user:
+        result['pppoe_id'] = pppoe_user
+    if pppoe_vlan:
+        result['wan_vlan'] = pppoe_vlan
+    elif general_vlans:
+        result['wan_vlan'] = general_vlans[0]
+
+    # Extract landline (7 to 12 digits) from PPPoE ID
+    if result['pppoe_id']:
+        num_m = re.search(r'(\d{7,12})', result['pppoe_id'])
+        if num_m:
+            result['landline'] = num_m.group(1)
+
     return result
 
 
@@ -1714,36 +1789,41 @@ def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
                 r'<\s*space\s*>|continue\?\s*\[y/n\])', re.IGNORECASE)
             PROMPT_R = re.compile(r'[#>]\s*$', re.MULTILINE)
 
-            def sc(cmd, wait=1.5, timeout=20):
+            def sc(cmd, timeout=12):
                 shell.send(cmd + '\n')
-                time.sleep(wait)
                 out = ''
                 deadline = time.time() + timeout
+                last_recv = time.time()
                 while time.time() < deadline:
                     if shell.recv_ready():
                         chunk = shell.recv(65535).decode('utf-8', errors='replace')
                         out += chunk
+                        last_recv = time.time()
                         if PAGER_R.search(chunk):
-                            shell.send(' '); time.sleep(0.4); continue
-                        time.sleep(0.2)
-                        if PROMPT_R.search(out.split('\n')[-1]):
+                            shell.send(' ')
+                            time.sleep(0.05)
+                            continue
+                        lines = [l.strip() for l in out.splitlines() if l.strip()]
+                        if len(lines) > 1 and PROMPT_R.search(lines[-1]):
                             break
                     else:
-                        time.sleep(0.4)
-                        if not shell.recv_ready():
-                            break
+                        if out and (time.time() - last_recv > 0.15):
+                            lines = [l.strip() for l in out.splitlines() if l.strip()]
+                            if lines and PROMPT_R.search(lines[-1]):
+                                break
+                        time.sleep(0.02)
                 return out
 
-            sc('en', wait=1.0); sc(enable_pass, wait=1.0)
-            sc('configure terminal', wait=1.0)
-            sc('terminal length 0', wait=0.8)
-            sc('screen-length 0 temporary', wait=0.8)
+            sc('en'); sc(enable_pass)
+            sc('configure terminal')
+            sc('terminal length 0')
+            sc('screen-length 0 temporary')
 
             for port_n in ports:
                 iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
-                sc(iface_cmd, wait=1.2)
-                _progress(progress_callback, f'Polling PON {port_n}', 'Fetching ONU list...')
-                info_out = sc('show onu info', wait=2.5, timeout=20)
+                sc(iface_cmd)
+                _progress(progress_callback, f'Polling PON {port_n}', f'Checking ONUs on PON {port_n}...')
+                info_out = sc('show onu info', timeout=15)
                 onus_on_port = sorted(set(
                     m.group(1)
                     for line in clean_output(info_out).splitlines()
@@ -1751,12 +1831,12 @@ def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
                     if m
                 ))
                 for onu_n in onus_on_port:
-                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n}')
-                    cfg_out = sc(f'show running-config onu {onu_n}', wait=2.0, timeout=25)
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n} ({saved + 1} saved)')
+                    cfg_out = sc(f'show running-config onu {onu_n}', timeout=15)
                     parsed = _parse_running_config(cfg_out)
                     store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
                     saved += 1
-                sc('exit', wait=0.8)
+                sc('exit')
 
             client.close()
             return True, None
@@ -1780,6 +1860,7 @@ def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
                 nonlocal buf
                 if isinstance(prompts, str): prompts = [prompts]
                 deadline = time.time() + timeout
+                last_recv = time.time()
                 while time.time() < deadline:
                     try:
                         chunk = sock.recv(4096)
@@ -1794,38 +1875,43 @@ def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
                                 else:
                                     clean_b += chunk[i:i+1]; i += 1
                             buf += clean_b
+                            last_recv = time.time()
                     except socket.timeout:
                         pass
                     decoded = buf.decode('utf-8', errors='replace')
                     if PAGER_T.search(decoded):
-                        sock.send(b' '); time.sleep(0.4); continue
+                        sock.send(b' '); time.sleep(0.05); continue
                     for p in prompts:
                         if p.lower() in decoded.lower():
                             return decoded
-                    time.sleep(0.2)
+                    if buf and (time.time() - last_recv > 0.15):
+                        for p in prompts:
+                            if p.lower() in decoded.lower():
+                                return decoded
+                    time.sleep(0.02)
                 return buf.decode('utf-8', errors='replace')
 
             def sl(text):
-                sock.send((text + '\r\n').encode('utf-8')); time.sleep(0.3)
+                sock.send((text + '\r\n').encode('utf-8'))
 
             recv_until(['Login:', 'login:', 'Username:']); buf = b''; sl(username)
             recv_until(['Password:', 'password:']); buf = b''; sl(password)
-            time.sleep(1.5); recv_until(['>', '#']); buf = b''
+            time.sleep(1.0); recv_until(['>', '#']); buf = b''
             sl('en'); out = recv_until(['Password:', 'password:', '#'], timeout=5)
             if 'assword' in out:
-                buf = b''; sl(enable_pass); time.sleep(1); recv_until(['#']); buf = b''
-            sl('configure terminal'); time.sleep(1.5); recv_until(['(config)#', '#'])
+                buf = b''; sl(enable_pass); time.sleep(0.5); recv_until(['#']); buf = b''
+            sl('configure terminal'); time.sleep(0.8); recv_until(['(config)#', '#'])
             for nc in ['terminal length 0', 'screen-length 0 temporary']:
-                buf = b''; sl(nc); time.sleep(0.8); recv_until(['(config)#', '#'], timeout=4)
+                buf = b''; sl(nc); time.sleep(0.4); recv_until(['(config)#', '#'], timeout=4)
             buf = b''
 
             for port_n in ports:
                 iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
-                buf = b''; sl(iface_cmd); time.sleep(1.2)
-                recv_until(['(config-pon', '#'], timeout=8)
-                _progress(progress_callback, f'Polling PON {port_n}', 'Fetching ONU list...')
-                buf = b''; sl('show onu info'); time.sleep(2.5)
-                info_out = recv_until(['(config-pon', '#'], timeout=20)
+                buf = b''; sl(iface_cmd)
+                recv_until(['(config-pon', '#'], timeout=6)
+                _progress(progress_callback, f'Polling PON {port_n}', f'Checking ONUs on PON {port_n}...')
+                buf = b''; sl('show onu info')
+                info_out = recv_until(['(config-pon', '#'], timeout=15)
                 onus_on_port = sorted(set(
                     m.group(1)
                     for line in clean_output(info_out).splitlines()
@@ -1833,13 +1919,13 @@ def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
                     if m
                 ))
                 for onu_n in onus_on_port:
-                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n}')
-                    buf = b''; sl(f'show running-config onu {onu_n}'); time.sleep(2.5)
-                    cfg_out = recv_until(['(config-pon', '#'], timeout=30)
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n} ({saved + 1} saved)')
+                    buf = b''; sl(f'show running-config onu {onu_n}')
+                    cfg_out = recv_until(['(config-pon', '#'], timeout=15)
                     parsed = _parse_running_config(cfg_out)
                     store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
                     saved += 1; buf = b''
-                buf = b''; sl('exit'); time.sleep(0.8); recv_until(['(config)#', '#'], timeout=5)
+                buf = b''; sl('exit'); recv_until(['(config)#', '#'], timeout=4)
 
             sock.close()
             return True, None

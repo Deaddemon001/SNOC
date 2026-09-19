@@ -3237,7 +3237,7 @@ def add_olt_job():
     selected_ports = (d.get('selected_ports') or '').strip()
     if not profile_id:
         return jsonify({'error': 'profile_id required'}), 400
-    if poll_type not in ('full', 'uplink', 'onu'):
+    if poll_type not in ('full', 'uplink', 'onu', 'config'):
         return jsonify({'error': 'invalid poll_type'}), 400
     if run_mode not in ('once', 'repeat'):
         return jsonify({'error': 'invalid run_mode'}), 400
@@ -3327,7 +3327,7 @@ def update_olt_job():
     interval_min = int(d.get('interval_min', job['interval_min']) or 60)
     selected_ports = (d.get('selected_ports') if 'selected_ports' in d else job['selected_ports'] or '').strip()
 
-    if poll_type not in ('full', 'uplink', 'onu'):
+    if poll_type not in ('full', 'uplink', 'onu', 'config'):
         return jsonify({'error': 'invalid poll_type'}), 400
     if run_mode not in ('once', 'repeat'):
         return jsonify({'error': 'invalid run_mode'}), 400
