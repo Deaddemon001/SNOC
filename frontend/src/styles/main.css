@@ -1,0 +1,26 @@
+@import './legacy.css';
+
+/* ── Vue app-specific styles ─────────────────────────────────────────── */
+#app { min-height: 100vh; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* Light mode overrides for legacy variables */
+body.light-mode {
+  --bg: #f1f5f9;
+  --panel: #ffffff;
+  --border: #cbd5e1;
+  --accent: #0284c7;
+  --accent2: #ea580c;
+  --accent3: #16a34a;
+  --text: #0f172a;
+  --muted: #64748b;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --header-bg: rgba(255, 255, 255, 0.96);
+  --tabs-bg: rgba(241, 245, 249, 0.92);
+}
+
+body.light-mode::before,
+body.light-mode::after { display: none; }

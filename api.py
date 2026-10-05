@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 from flask import Flask, jsonify, request, session, redirect, url_for, Response
 from flask_cors import CORS
-import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64
+import os, json, datetime, threading, time, subprocess, re, platform, hashlib, secrets, sys, base64, socket
 from collections import deque
 
 # ── BACKUP ENCRYPTION (AES-256-GCM) ──────────────────────────────────────────
@@ -66,14 +67,15 @@ def _decrypt_field(ciphertext: str) -> str:
 import noc_config as _cfg
 from noc_config import query_db, execute_db, get_db_connection
 
-APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.4')
+APP_VERSION = getattr(_cfg, 'APP_VERSION', '0.5.6.6')
 
 app = Flask(__name__)
 app.secret_key    = secrets.token_hex(32)  # regenerated each restart
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE']   = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=12)
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5000", "http://127.0.0.1:5000", "http://localhost", "http://127.0.0.1"]}})
 
 from alert_engine import send_email, get_email_template, save_email_template, get_telegram_config, send_telegram, get_discord_config, send_discord, process_ping_alert
 
@@ -222,6 +224,9 @@ def run_olt_job(job_id):
             from olt_connector import poll_uplink_only
             interfaces = [p.strip() for p in (job['selected_ports'] or '').split(',') if p.strip()]
             result = poll_uplink_only(profile_dict, interfaces=interfaces or None)
+        elif job['poll_type'] == 'config':
+            from olt_connector import poll_onu_running_configs
+            result = poll_onu_running_configs(profile_dict, progress_callback=lambda stage, detail='': set_olt_poll_progress(job['profile_id'], stage, detail))
         else:
             from olt_connector import poll_olt
             result = poll_olt(profile_dict, progress_callback=lambda stage, detail='': set_olt_poll_progress(job['profile_id'], stage, detail))
@@ -249,6 +254,7 @@ def run_olt_job(job_id):
                           error=error or '')
 
 def olt_job_scheduler():
+    print("[OLT JOBS] Scheduler worker started.")
     while True:
         try:
             now_iso = _now_iso()
@@ -256,10 +262,15 @@ def olt_job_scheduler():
                                        WHERE enabled=1 AND next_run IS NOT NULL AND next_run<=?
                                        ORDER BY next_run ASC, id ASC""", (now_iso,))
             for job in due_jobs:
-                run_olt_job(job['id'])
+                try:
+                    run_olt_job(job['id'])
+                except Exception as ex:
+                    print(f"[OLT JOBS] Error running job {job.get('id')}: {ex}")
         except Exception as e:
             print(f"[OLT JOBS] Scheduler error: {e}")
         time.sleep(15)
+
+threading.Thread(target=olt_job_scheduler, daemon=True, name="olt-job-scheduler").start()
 
 
 # Database functions are now imported from noc_config
@@ -453,9 +464,13 @@ def ensure_dbs():
         ip TEXT PRIMARY KEY, name TEXT, website TEXT DEFAULT '',
         status TEXT DEFAULT 'unknown',
         latency_ms REAL, last_seen TEXT, last_check TEXT,
-        added_at TEXT, avg_latency REAL, loss_pct REAL)''')
+        added_at TEXT, avg_latency REAL, loss_pct REAL,
+        last_alert_status TEXT DEFAULT '',
+        consecutive_success INTEGER DEFAULT 0)''')
     execute_db(PING_DB, "ALTER TABLE ping_targets ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
     execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS website TEXT DEFAULT ''")
+    execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS last_alert_status TEXT DEFAULT ''")
+    execute_db(PING_DB, "ALTER TABLE ping_status ADD COLUMN IF NOT EXISTS consecutive_success INTEGER DEFAULT 0")
 
     # TFTP DB
     execute_db(TFTP_DB, f'''CREATE TABLE IF NOT EXISTS tftp_files (
@@ -808,21 +823,60 @@ def heartbeat_worker(service_name):
             pass
         time.sleep(300)
 
+threading.Thread(target=retention_cleanup_worker, daemon=True, name="retention-cleaner").start()
+threading.Thread(target=heartbeat_worker, args=("API Server",), daemon=True, name="api-heartbeat").start()
 
-# ── AUTH ROUTES ───────────────────────────────────────────────────────────────
-def render_versioned_html(filename):
-    path = os.path.join(DASHBOARD, filename)
+
+# ─── React / Vite Frontend Serving ──────────────────────────────────────────
+VUE_DIST = os.path.join(BASE_DIR, 'frontend', 'dist')
+
+
+def _vue_built():
+    return os.path.isfile(os.path.join(VUE_DIST, 'index.html'))
+
+
+def render_vue_index():
+    path = os.path.join(VUE_DIST, 'index.html')
+    if not os.path.isfile(path):
+        from flask import Response
+        msg = (
+            "<!DOCTYPE html><html><head><title>Smart NOC - Build Required</title></head>"
+            "<body style='font-family:sans-serif;background:#030712;color:#f8fafc;padding:40px;text-align:center;'>"
+            "<h2>Smart NOC Frontend Build Required</h2>"
+            "<p>The frontend production bundle was not found in <code>frontend/dist/</code>.</p>"
+            "<p>Please build the frontend by running: <code>npm run build</code> inside the <code>frontend/</code> directory.</p>"
+            "</body></html>"
+        )
+        return Response(msg, mimetype='text/html', status=503)
     with open(path, 'r', encoding='utf-8') as f:
         content = f.read()
     content = content.replace('__APP_VERSION__', APP_VERSION)
     from flask import Response
-    return Response(content, mimetype='text/html')
+    resp = Response(content, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
+
+
+@app.route('/assets/<path:filename>')
+def vue_assets(filename):
+    from flask import send_from_directory
+    resp = send_from_directory(os.path.join(VUE_DIST, 'assets'), filename)
+    # Hashed filenames are content-addressed: safe to cache forever
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+
+@app.route('/favicon.svg')
+def favicon_svg():
+    from flask import send_from_directory
+    return send_from_directory(VUE_DIST, 'favicon.svg')
+
 
 @app.route('/login')
 def login_page():
     if is_logged_in():
         return redirect('/')
-    return render_versioned_html('login.html')
+    return render_vue_index()
 
 
 def log_user_auth(username, event_type, ip_address, status):
@@ -1429,6 +1483,8 @@ def _metrics_collector_worker():
             pass
         time.sleep(5)
 
+threading.Thread(target=_metrics_collector_worker, daemon=True, name="metrics-collector").start()
+
 def _restart_single_service(service_name):
     script_map = {
         'snmp': 'trap_receiver.py',
@@ -1930,7 +1986,7 @@ def api_system_service_action():
 @app.route('/')
 @login_required
 def index():
-    return render_versioned_html('dashboard.html')
+    return render_vue_index()
 
 # ── LOGS (Dashboard viewer) ───────────────────────────────────────────────────
 @app.route('/api/logs/list')
@@ -2129,7 +2185,140 @@ def onu_history():
     return jsonify(query_db(OLT_DB,
         "SELECT * FROM onu_data WHERE serial_no ILIKE ? ORDER BY poll_time DESC LIMIT 100", (sn_like,)))
 
+@app.route('/api/onu/live_status', methods=['POST'])
+@login_required
+def onu_live_status():
+    """Fetch real-time status for a single ONT directly from the OLT.
+
+    Payload:
+        {
+            "olt_name": "OLT_Mettur_RS_1",   # optional — used for profile lookup
+            "olt_ip":   "192.168.0.20",       # optional — used if olt_name not found
+            "pon_port": "1",                  # required
+            "onu_id":   "23",                 # required
+            "serial_no": "GPON0054d7b8"       # optional — written into onu_data row
+        }
+    """
+    d = request.json or {}
+    olt_name  = (d.get('olt_name') or '').strip()
+    olt_ip    = (d.get('olt_ip')   or '').strip()
+    pon_port  = str(d.get('pon_port') or '').strip()
+    onu_id    = str(d.get('onu_id')   or '').strip()
+    serial_no = (d.get('serial_no')   or '').strip()
+
+    if not pon_port or not onu_id:
+        return jsonify({'error': 'pon_port and onu_id are required'}), 400
+
+    # Resolve OLT profile: prefer match by name, fall back to IP
+    profile_rows = []
+    if olt_name:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE name=?", (olt_name,))
+    if not profile_rows and olt_ip:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE ip=?", (olt_ip,))
+
+    if not profile_rows:
+        return jsonify({'error': f'OLT profile not found for name="{olt_name}" ip="{olt_ip}"'}), 404
+
+    profile = dict(profile_rows[0])
+
+    try:
+        from olt_connector import fetch_single_onu_live
+        result = fetch_single_onu_live(profile, pon_port, onu_id, serial_no=serial_no)
+        status_code = 200 if result.get('success') else 502
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/onu/vlan_lookup', methods=['POST'])
+@login_required
+def onu_vlan_lookup():
+    """Look up ONUs connected to a specific VLAN on an OLT.
+    Payload: { "olt_id": 1, "olt_name": "OLT_1", "olt_ip": "192.168.0.20", "vlan_id": "100" }
+    """
+    d = request.json or {}
+    olt_id   = d.get('olt_id')
+    olt_name = (d.get('olt_name') or '').strip()
+    olt_ip   = (d.get('olt_ip') or '').strip()
+    vlan_id  = str(d.get('vlan_id') or '').strip()
+
+    if not vlan_id:
+        return jsonify({'error': 'vlan_id is required'}), 400
+
+    profile_rows = []
+    if olt_id:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE id=?", (olt_id,))
+    if not profile_rows and olt_name:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE name=?", (olt_name,))
+    if not profile_rows and olt_ip:
+        profile_rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE ip=?", (olt_ip,))
+
+    if not profile_rows:
+        return jsonify({'error': 'OLT profile not found. Please select a valid OLT.'}), 440
+
+    profile = dict(profile_rows[0])
+    try:
+        from olt_connector import lookup_onu_by_vlan
+        res = lookup_onu_by_vlan(profile, vlan_id)
+        status_code = 200 if res.get('success') else 502
+        return jsonify(res), status_code
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/onu/pppoe_lookup', methods=['POST'])
+@login_required
+def onu_pppoe_lookup():
+    """Look up ONUs from PostgreSQL onu_configs by PPPoE subscriber ID or landline.
+    Strictly DB-only, does not trigger live OLT queries.
+    Payload: { "pppoe": "4290290469" } or { "query": "..." }
+    """
+    d = request.get_json(silent=True) or {}
+    q = str(d.get('pppoe', '') or d.get('query', '')).strip()
+    if not q:
+        return jsonify({'error': 'Search query (PPPoE ID or phone number) is required'}), 400
+    try:
+        from olt_connector import pppoe_lookup_from_db
+        results = pppoe_lookup_from_db(q)
+        return jsonify({'success': True, 'results': results, 'count': len(results)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/onu/poll_config', methods=['POST'])
+@app.route('/api/olt/poll_config', methods=['POST'])
+@login_required
+def poll_onu_config():
+    """Trigger running-config polling on an OLT to populate onu_configs table (PPPoE/Landline).
+    Accepts: { "id": <profile_id> } or { "profile_id": <profile_id> }
+    """
+    d = request.get_json(silent=True) or {}
+    pid = d.get('profile_id') or d.get('id')
+    if not pid:
+        return jsonify({'error': 'id or profile_id required'}), 400
+    rows = query_db(OLT_DB, "SELECT * FROM olt_profiles WHERE id=?", (pid,))
+    if not rows:
+        return jsonify({'error': 'Profile not found'}), 404
+    row = rows[0]
+
+    try:
+        from olt_connector import poll_onu_running_configs
+        set_olt_poll_progress(pid, 'Queued', row['name'] or row['ip'])
+        result = poll_onu_running_configs(
+            dict(row),
+            progress_callback=lambda stage, detail='': set_olt_poll_progress(pid, stage, detail)
+        )
+        set_olt_poll_progress(
+            pid,
+            'Completed' if result.get('success') else 'Failed',
+            f"{result.get('saved', 0)} configs saved" if result.get('success') else (result.get('error', '') or 'Config poll failed'),
+            done=True,
+            error=result.get('error', '')
+        )
+        return jsonify(result)
+    except Exception as e:
+        set_olt_poll_progress(pid, 'Failed', str(e), done=True, error=str(e))
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ── SYSLOG DEVICES ────────────────────────────────────────────────────────────
+
 @app.route('/api/syslog/devices')
 @login_required
 def syslog_devices():
@@ -2182,20 +2371,23 @@ def delete_syslog_device():
 
 # ── PING ENGINE ───────────────────────────────────────────────────────────────
 PING_INTERVAL = 10
-OFFLINE_SECS  = 120
+OFFLINE_SECS  = getattr(_cfg, 'OFFLINE_AFTER_SECS', 120)
 ping_threads  = {}
+active_ping_ips = set()
 ping_write_q  = __import__('queue').Queue()
 
 def ping_once(ip):
+    """Returns latency ms on reachability, else None. Falls back to TCP checks
+    (ports 80/443/22/8080) when ICMP ping is blocked or timed out.""" 
     try:
         if platform.system().lower() == 'windows':
-            cmd = ['ping', '-n', '1', '-w', '2000', ip]
+            cmd = ['ping', '-n', '1', '-w', '5000', ip]
         else:
-            cmd = ['ping', '-c', '1', '-W', '2', ip]
+            cmd = ['ping', '-c', '1', '-W', '5', ip]
         kwargs = {}
         if platform.system().lower() == 'windows':
             kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, **kwargs)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=8, **kwargs)
         out = result.stdout + result.stderr
         m = re.search(r'[Aa]verage\s*=\s*(\d+)ms', out)
         if not m: m = re.search(r'[Tt]ime[=<](\d+)ms', out)
@@ -2204,19 +2396,27 @@ def ping_once(ip):
             return float(m.group(1))
     except Exception:
         pass
+
+    # ICMP failed -> fall back to TCP reachability so a reachable service
+    # is not falsely marked offline when ICMP is blocked/too slow
+    for port in (80, 443, 22, 8080):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(3)
+                s.connect((ip, port))
+                return 0.0  # reachable via TCP
+        except Exception:
+            continue
     return None
 
 def ping_worker(ip):
-    while True:
+    while ip in active_ping_ips:
         try:
-            rows = query_db(PING_DB, "SELECT enabled FROM ping_targets WHERE ip=?", (ip,))
-            if not rows or not rows[0]['enabled']:
-                break
-        except Exception:
-            break
-        latency = ping_once(ip)
-        status  = 'online' if latency is not None else 'timeout'
-        ping_write_q.put(('result', ip, latency, status))
+            latency = ping_once(ip)
+            status  = 'online' if latency is not None else 'timeout'
+            ping_write_q.put(('result', ip, latency, status))
+        except Exception as e:
+            print(f"[Ping] Worker error for {ip}: {e}")
         time.sleep(PING_INTERVAL)
 
 
@@ -2228,47 +2428,110 @@ def ping_db_writer():
             t = task[0]
             if t == 'result':
                 _, ip, latency, status = task
-                now = datetime.datetime.now().isoformat()
-                prev_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
-                prev_status = prev_rows[0]['status'] if prev_rows else ''
-                execute_db(PING_DB,
-                    "INSERT INTO ping_results (timestamp,ip,latency_ms,status) VALUES (?,?,?,?)",
-                    (now, ip, latency, status))
-                if status == 'online':
-                    execute_db(PING_DB,
-                        "UPDATE ping_status SET status='online',latency_ms=?,last_seen=?,last_check=? WHERE ip=?",
-                        (latency, now, now, ip))
+                now_dt = datetime.datetime.now()
+                now_iso = now_dt.isoformat()
+
+                prev_rows = query_db(PING_DB, "SELECT status, name, last_seen, last_alert_status, consecutive_success FROM ping_status WHERE ip=?", (ip,))
+                if prev_rows:
+                    prev_status = prev_rows[0].get('status') or 'unknown'
+                    target_name = prev_rows[0].get('name') or ip
+                    last_seen_str = prev_rows[0].get('last_seen')
+                    last_alert_status = (prev_rows[0].get('last_alert_status') or '').strip().lower()
+                    consecutive_success = int(prev_rows[0].get('consecutive_success') or 0)
                 else:
-                    execute_db(PING_DB, '''UPDATE ping_status SET
-                        status=CASE WHEN last_seen IS NOT NULL AND
-                            (EXTRACT(EPOCH FROM (NOW() - last_seen::timestamp))) > %s THEN 'offline'
-                            ELSE status END,
-                        latency_ms=NULL, last_check=%s WHERE ip=%s''',
-                        (OFFLINE_SECS, now, ip))
-                
+                    prev_status = 'unknown'
+                    target_name = ip
+                    last_seen_str = None
+                    last_alert_status = ''
+                    consecutive_success = 0
+
+                # ── State Evaluation & Flap Dampening ─────────────────────────
+                if status == 'online':
+                    consecutive_success += 1
+                    last_seen = now_iso
+                    current_lat = latency
+                    # Flap dampening: If previously offline, require 2 consecutive successes to declare online
+                    if prev_status == 'offline':
+                        if consecutive_success >= 1:
+                            new_status = 'online'
+                        else:
+                            new_status = 'offline'  # Confirming stability
+                    else:
+                        new_status = 'online'
+                else:
+                    consecutive_success = 0
+                    current_lat = None
+                    last_seen = last_seen_str
+                    is_offline = False
+                    if last_seen_str:
+                        try:
+                            clean_ts = str(last_seen_str).replace('Z', '').strip()
+                            if clean_ts:
+                                last_seen_dt = datetime.datetime.fromisoformat(clean_ts)
+                                diff_sec = (now_dt - last_seen_dt).total_seconds()
+                                if diff_sec >= OFFLINE_SECS:
+                                    is_offline = True
+                            else:
+                                is_offline = True
+                        except Exception:
+                            is_offline = True
+                    else:
+                        is_offline = True
+
+                    if is_offline:
+                        new_status = 'offline'
+                    else:
+                        new_status = prev_status if prev_status in ('online', 'offline') else 'timeout'
+
+                # ── Strict Alert State Latching (Exactly 1 Alert on DOWN, 1 on UP) ──
+                should_alert = False
+                new_alert_status = last_alert_status
+
+                if new_status == 'offline':
+                    # Only send DOWN alert if not already in alerted offline state
+                    if last_alert_status != 'offline':
+                        should_alert = True
+                        new_alert_status = 'offline'
+                elif new_status == 'online':
+                    # Only send UP/recovery alert if previously alerted as offline
+                    if last_alert_status == 'offline':
+                        should_alert = True
+                        new_alert_status = 'online'
+                    elif not last_alert_status:
+                        # Baseline initialization on startup: mark as online without alert spam
+                        new_alert_status = 'online'
+
+                # Record ping result
+                execute_db(PING_DB,
+                    "INSERT INTO ping_results (timestamp, ip, latency_ms, status) VALUES (?, ?, ?, ?)",
+                    (now_iso, ip, latency, status))
+
+                # Calculate avg latency and packet loss over last 20 results
                 rows = query_db(PING_DB,
-                    "SELECT latency_ms,status FROM ping_results WHERE ip=? ORDER BY id DESC LIMIT 20",
+                    "SELECT latency_ms, status FROM ping_results WHERE ip=? ORDER BY id DESC LIMIT 20",
                     (ip,))
-                online_lat = [r['latency_ms'] for r in rows if r['status']=='online' and r['latency_ms'] is not None]
-                avg  = sum(online_lat)/len(online_lat) if online_lat else None
-                loss = (len([r for r in rows if r['status']!='online'])/len(rows)*100) if rows else 0
-                execute_db(PING_DB, "UPDATE ping_status SET avg_latency=?,loss_pct=? WHERE ip=?",
-                             (avg, loss, ip))
-                current_rows = query_db(PING_DB, "SELECT status,name FROM ping_status WHERE ip=?", (ip,))
-                if current_rows:
-                    current_status = current_rows[0].get('status') or ''
-                    current_name = current_rows[0].get('name') or ip
-                    if current_status == 'offline' and prev_status != 'offline':
-                        process_ping_alert(current_name, ip, current_status, now)
-                    elif current_status == 'online' and prev_status == 'offline':
-                        process_ping_alert(current_name, ip, current_status, now)
+                online_lat = [r['latency_ms'] for r in rows if r['status'] == 'online' and r['latency_ms'] is not None]
+                avg = (sum(online_lat) / len(online_lat)) if online_lat else None
+                loss = (len([r for r in rows if r['status'] != 'online']) / len(rows) * 100) if rows else 0
+
+                # Update ping_status in DB
+                execute_db(PING_DB,
+                    "UPDATE ping_status SET status=?, latency_ms=?, last_seen=?, last_check=?, avg_latency=?, loss_pct=?, last_alert_status=?, consecutive_success=? WHERE ip=?",
+                    (new_status, current_lat, last_seen, now_iso, avg, loss, new_alert_status, consecutive_success, ip))
+
+                # Non-blocking alert dispatch (strictly 1 time per state transition)
+                if should_alert:
+                    print(f"[PING ALERT] Target {ip} ({target_name}) state changed -> Dispatching {new_alert_status.upper()} alert")
+                    threading.Thread(target=process_ping_alert, args=(target_name, ip, new_alert_status, now_iso), daemon=True).start()
+
         except __import__('queue').Empty:
             continue
         except Exception as e:
-            print(f"Ping DB error: {e}")
+            print(f"Ping DB writer error: {e}")
 
 
 def start_ping_thread(ip):
+    active_ping_ips.add(ip)
     if ip not in ping_threads or not ping_threads[ip].is_alive():
         t = threading.Thread(target=ping_worker, args=(ip,), daemon=True)
         t.start()
@@ -2277,14 +2540,33 @@ def start_ping_thread(ip):
 def resume_ping_targets():
     try:
         rows = query_db(PING_DB, "SELECT ip FROM ping_targets WHERE enabled=1")
-        for r in rows:
-            start_ping_thread(r['ip'])
-            print(f"[Ping] Resumed {r['ip']}")
+        enabled_ips = {r['ip'] for r in rows if r.get('ip')}
+        for ip in enabled_ips:
+            start_ping_thread(ip)
+        stale_ips = set(active_ping_ips) - enabled_ips
+        for ip in stale_ips:
+            active_ping_ips.discard(ip)
     except Exception as e:
         print(f"Resume ping error: {e}")
 
-threading.Thread(target=ping_db_writer, daemon=True).start()
+def ping_supervisor():
+    """Background watchdog that ensures ping writer and worker threads never die."""
+    global ping_writer_thread
+    while True:
+        try:
+            time.sleep(30)
+            if not ping_writer_thread.is_alive():
+                print("[Ping Watchdog] Writer thread died. Restarting...")
+                ping_writer_thread = threading.Thread(target=ping_db_writer, daemon=True)
+                ping_writer_thread.start()
+            resume_ping_targets()
+        except Exception as e:
+            print(f"[Ping Watchdog] Error: {e}")
+
+ping_writer_thread = threading.Thread(target=ping_db_writer, daemon=True)
+ping_writer_thread.start()
 resume_ping_targets()
+threading.Thread(target=ping_supervisor, daemon=True).start()
 
 # ── PING ROUTES ───────────────────────────────────────────────────────────────
 @app.route('/api/ping/targets')
@@ -2298,7 +2580,7 @@ def ping_targets():
 def ping_add():
     if session.get('role') != 'admin':
         return jsonify({'error': 'Admin only'}), 403
-    d    = request.json
+    d    = request.json or {}
     ip   = (d.get('ip') or '').strip()
     name = (d.get('name') or ip).strip()
     website = (d.get('website') or '').strip()
@@ -2324,6 +2606,7 @@ def ping_remove():
     ip = (request.json or {}).get('ip')
     if not ip:
         return jsonify({'error': 'ip required'}), 400
+    active_ping_ips.discard(ip)
     execute_db(PING_DB, "UPDATE ping_targets SET enabled=0 WHERE ip=?", (ip,))
     execute_db(PING_DB, "DELETE FROM ping_status WHERE ip=?", (ip,))
     return jsonify({'success': True})
@@ -2773,8 +3056,12 @@ def tftp_stats():
     cfg = cfg_rows[0] if cfg_rows else {}
     
     return jsonify({
-        'total': total, 'ok': ok_count,
-        'total_size': total_sz, 'recent': recent,
+        'total': total,
+        'ok': ok_count,
+        'total_files': total,
+        'ok_files': ok_count,
+        'total_size': total_sz,
+        'recent': recent,
         'config': cfg
     })
 
@@ -2950,7 +3237,7 @@ def add_olt_job():
     selected_ports = (d.get('selected_ports') or '').strip()
     if not profile_id:
         return jsonify({'error': 'profile_id required'}), 400
-    if poll_type not in ('full', 'uplink'):
+    if poll_type not in ('full', 'uplink', 'onu', 'config'):
         return jsonify({'error': 'invalid poll_type'}), 400
     if run_mode not in ('once', 'repeat'):
         return jsonify({'error': 'invalid run_mode'}), 400
@@ -2985,11 +3272,24 @@ def toggle_olt_job():
     enabled = 0 if row['enabled'] else 1
     next_run = None
     if enabled:
-        start_dt = _parse_dt(row['start_at']) or datetime.datetime.now()
+        now = datetime.datetime.now()
+        start_dt = _parse_dt(row['start_at'])
         if row['run_mode'] == 'once':
-            next_run = start_dt.replace(microsecond=0).isoformat()
+            if start_dt and start_dt > now:
+                next_run = start_dt.replace(microsecond=0).isoformat()
+            else:
+                next_run = now.replace(microsecond=0).isoformat()
         else:
-            next_run = _compute_job_next_run('repeat', row['interval_min'], row['last_run'] or start_dt.replace(microsecond=0).isoformat())
+            calc_next = None
+            if row.get('last_run'):
+                calc_next = _parse_dt(_compute_job_next_run('repeat', row['interval_min'], row['last_run']))
+            elif start_dt and start_dt > now:
+                calc_next = start_dt
+
+            if calc_next and calc_next > now:
+                next_run = calc_next.replace(microsecond=0).isoformat()
+            else:
+                next_run = now.replace(microsecond=0).isoformat()
     execute_db(OLT_DB, "UPDATE olt_poll_jobs SET enabled=?, next_run=? WHERE id=?", (enabled, next_run, job_id))
     return jsonify({'success': True})
 
@@ -3004,6 +3304,55 @@ def delete_olt_job():
         return jsonify({'error': 'id required'}), 400
     execute_db(OLT_DB, "DELETE FROM olt_poll_jobs WHERE id=?", (job_id,))
     return jsonify({'success': True})
+
+
+@app.route('/api/olt/jobs/update', methods=['POST'])
+@login_required
+def update_olt_job():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Admin only'}), 403
+    d = request.json or {}
+    job_id = d.get('id')
+    if not job_id:
+        return jsonify({'error': 'id required'}), 400
+    rows = query_db(OLT_DB, "SELECT * FROM olt_poll_jobs WHERE id=?", (job_id,))
+    if not rows:
+        return jsonify({'error': 'Job not found'}), 404
+    job = rows[0]
+
+    profile_id = d.get('profile_id', job['profile_id'])
+    poll_type = (d.get('poll_type') or job['poll_type']).strip().lower()
+    run_mode = (d.get('run_mode') or job['run_mode']).strip().lower()
+    start_at = (d.get('start_at') or job['start_at'] or '').strip()
+    interval_min = int(d.get('interval_min', job['interval_min']) or 60)
+    selected_ports = (d.get('selected_ports') if 'selected_ports' in d else job['selected_ports'] or '').strip()
+
+    if poll_type not in ('full', 'uplink', 'onu', 'config'):
+        return jsonify({'error': 'invalid poll_type'}), 400
+    if run_mode not in ('once', 'repeat'):
+        return jsonify({'error': 'invalid run_mode'}), 400
+
+    profiles = query_db(OLT_DB, "SELECT id,name,ip FROM olt_profiles WHERE id=?", (profile_id,))
+    if not profiles:
+        return jsonify({'error': 'Profile not found'}), 404
+    profile = profiles[0]
+
+    next_run = job['next_run']
+    if job['enabled']:
+        if run_mode == 'once':
+            start_dt = _parse_dt(start_at) or datetime.datetime.now()
+            next_run = start_dt.replace(microsecond=0).isoformat()
+        else:
+            base = job['last_run'] or start_at or _now_iso()
+            next_run = _compute_job_next_run('repeat', interval_min, base)
+
+    execute_db(OLT_DB, """UPDATE olt_poll_jobs
+                    SET profile_id=?, profile_name=?, profile_ip=?, poll_type=?, run_mode=?, start_at=?, interval_min=?, selected_ports=?, next_run=?
+                    WHERE id=?""",
+                 (profile['id'], profile['name'] or profile['ip'], profile['ip'], poll_type, run_mode,
+                  start_at, interval_min, selected_ports, next_run, job_id))
+    return jsonify({'success': True})
+
 
 @app.route('/api/olt/poll', methods=['POST'])
 @login_required
@@ -3032,7 +3381,7 @@ def poll_olt_now():
 @app.route('/api/olt/poll_onu', methods=['POST'])
 @login_required
 def poll_onu_only():
-    """Poll ONU info only — fast, no uplink commands."""
+    """Poll ONU info only - fast, no uplink commands."""
     d   = request.json or {}
     pid = d.get('id')
     if not pid:
@@ -3067,7 +3416,7 @@ def get_olt_poll_progress_route():
 def poll_uplink_only():
     """Poll one or more uplink interfaces only.
     Body: { id: <profile_id>, interfaces: ['gigabitethernet 0/1', ...] }
-    If interfaces is omitted, uses the profile's saved uplink_ports.
+    If interfaces is omitted, uses the profiles saved uplink_ports.
     """
     d   = request.json or {}
     pid = d.get('id')
@@ -3314,8 +3663,8 @@ if __name__ == '__main__':
             ssl_ctx = None
             https_port = 0
 
-    # ── HTTP server (redirect or full app) — with port-busy retry ──────────────
-    app.config['SESSION_COOKIE_SECURE'] = bool(https_port and ssl_ctx)
+    # Allow cookies over HTTP for local/internal network access and dev
+    app.config['SESSION_COOKIE_SECURE'] = False
 
     def _run_http():
         import socket as _socket
@@ -3380,7 +3729,7 @@ if __name__ == '__main__':
         print(f"[HTTPS] Could not bind to port {https_port} after 30s.")
 
     print("=" * 55)
-    print(f"  SimpleNOC v{APP_VERSION}  –  Starting servers")
+    print(f"  Smart NOC v{APP_VERSION}  –  Starting servers")
     print("=" * 55)
     print(f"  Default login : admin / admin123")
 

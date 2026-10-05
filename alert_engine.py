@@ -1,5 +1,5 @@
 """
-Smart NOC v0.5.6.4 - Alert Engine
+Smart NOC v0.5.6.6 - Alert Engine
 Monitors syslog messages and ping state changes, then sends email, Discord, and Telegram alerts based on rules.
 Rules: if Host = X AND message contains Y -> send alert via configured channels.
 """
@@ -56,7 +56,7 @@ def init_alert_db():
     rows = query_db(ALERT_DB, "SELECT COUNT(*) as count FROM email_template")
     if not rows or rows[0]['count'] == 0:
         default_subject = '[Smart NOC Alert] {rule_name} - {olt_host}'
-        default_body = 'Smart NOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
+        default_body = 'Smart NOC Alert\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.6'
         execute_db(ALERT_DB, "INSERT INTO email_template (id, subject, body) VALUES (1,%s,%s)", (default_subject, default_body))
 
     execute_db(ALERT_DB, f'''CREATE TABLE IF NOT EXISTS alert_log (
@@ -374,7 +374,7 @@ def get_email_template():
     rows = query_db(ALERT_DB, "SELECT subject, body FROM email_template WHERE id=1")
     if rows:
         return rows[0]['subject'], rows[0]['body']
-    return '{status_dot} [Smart NOC Alert] {rule_name} - {olt_host}', '{status_dot} Smart NOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.4'
+    return '{status_dot} [Smart NOC Alert] {rule_name} - {olt_host}', '{status_dot} Smart NOC Alert\nStatus: {status}\nRule: {rule_name}\nOLT: {olt_host}\nTime: {time}\nMessage: {message}\nSeverity: {severity}\n\nSent by Smart NOC v0.5.6.6'
 
 
 def save_email_template(subject, body):
@@ -408,7 +408,7 @@ def _host_excluded(rule, hostname):
     return False
 
 
-def match_rule(rule, hostname, message, source_type='syslog'):
+def match_rule(rule, hostname, message, source_type='syslog', source_ip=''):
     """Return True if the event matches this rule."""
     if (rule.get('source_type') or 'syslog') != source_type:
         return False
@@ -416,12 +416,14 @@ def match_rule(rule, hostname, message, source_type='syslog'):
     host_match = (rule.get('host_match') or '').strip()
     text_match = (rule.get('text_match') or '').strip()
     hostname = hostname or ''
+    source_ip = source_ip or ''
 
-    if _host_excluded(rule, hostname):
+    if _host_excluded(rule, hostname) or (source_ip and _host_excluded(rule, source_ip)):
         return False
 
     if host_match:
-        if host_match.lower() not in hostname.lower():
+        hm_lower = host_match.lower()
+        if hm_lower not in hostname.lower() and (not source_ip or hm_lower not in source_ip.lower()):
             return False
 
     if text_match and source_type == 'syslog':
@@ -470,7 +472,7 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
         "description": f"**Message:** {message}",
         "color": status_info['color_int'],
         "fields": [
-            {"name": "Host / Target", "value": f"`{hostname}`" + (f" (`{source_ip}`)" if source_ip and source_ip != hostname else ""), "inline": True},
+            {"name": "Target Name / IP", "value": f"`{hostname}`" + (f" (`{source_ip}`)" if source_ip and source_ip != hostname else ""), "inline": True},
             {"name": "Severity", "value": (severity or 'N/A').upper(), "inline": True},
             {"name": "Timestamp", "value": timestamp, "inline": True},
         ],
@@ -478,10 +480,11 @@ def build_alert_payloads(rule, hostname, source_ip, message, timestamp, severity
     }
 
     # Telegram Formatted Text
+    host_ip = f" (<code>{source_ip}</code>)" if source_ip and source_ip != hostname else ""
     tg_text = (
         f"<b>{dot} [{status_label}] Smart NOC Alert</b>\n\n"
         f"<b>Rule:</b> {rule['name']}\n"
-        f"<b>Host:</b> <code>{hostname}</code>\n"
+        f"<b>Host:</b> <code>{hostname}</code>{host_ip}\n"
         f"<b>Severity:</b> {severity or 'N/A'}\n"
         f"<b>Time:</b> {timestamp}\n"
         f"<b>Message:</b>\n<code>{message}</code>"
@@ -584,13 +587,26 @@ def process_alert(hostname, message, timestamp):
             print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")
 
 
+_ping_alert_lock = threading.Lock()
+_last_dispatched_ping_alerts = {}
+
 def process_ping_alert(hostname, source_ip, status, timestamp):
     """Called by api.py when a ping target changes state (e.g. offline/online)."""
     if status not in ('offline', 'online'):
         return
 
+    # Debounce / duplicate prevention (max 1 alert per target+status within 30s)
+    with _ping_alert_lock:
+        now_ts = time.time()
+        last_t = _last_dispatched_ping_alerts.get((source_ip, status), 0)
+        if now_ts - last_t < 30:
+            print(f"[PING ALERT] Debounce: Suppressed duplicate {status.upper()} alert for {source_ip}")
+            return
+        _last_dispatched_ping_alerts[(source_ip, status)] = now_ts
+
     rules = get_rules()
     if not rules:
+        print(f"[PING ALERT] No enabled alert rules found for {source_ip} ({status.upper()})")
         return
 
     ec = get_email_config()
@@ -600,20 +616,28 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
     tg_enabled      = bool(tc.get('enabled')) and bool(tc.get('bot_token')) and bool(tc.get('chat_id'))
     discord_enabled = bool(dc.get('enabled')) and bool(dc.get('webhook_url'))
     if not email_enabled and not tg_enabled and not discord_enabled:
+        print(f"[PING ALERT] All alert channels (Email/Telegram/Discord) are disabled in settings for {source_ip}")
         return
 
     display_host = hostname or source_ip
+    if hostname and hostname != source_ip:
+        display_label = f"{hostname} ({source_ip})"
+    else:
+        display_label = source_ip
+
     if status == 'offline':
-        message  = f"Ping monitor detected {display_host} ({source_ip}) as OFFLINE"
+        message  = f"Ping monitor detected {display_label} as OFFLINE"
         severity = 'critical'
     else:
-        message  = f"Ping monitor detected {display_host} ({source_ip}) is ONLINE / REACHABLE"
+        message  = f"Ping monitor detected {display_label} is ONLINE / REACHABLE"
         severity = 'info'
 
+    matched_any = False
     for rule in rules:
-        if not match_rule(rule, display_host, message, 'ping'):
+        if not match_rule(rule, display_host, message, 'ping', source_ip=source_ip):
             continue
 
+        matched_any = True
         subject, plain_body, html_body, discord_embed, tg_text = build_alert_payloads(
             rule, display_host, source_ip, message, timestamp, severity=severity, status=status
         )
@@ -666,6 +690,9 @@ def process_ping_alert(hostname, source_ip, status, timestamp):
             (now, rule['id']))
 
         if sent:
-            print(f"[ALERT] Sent: {rule['name']} -> {recipients_logged}")
+            print(f"[ALERT] Sent {status.upper()}: {rule['name']} -> {recipients_logged}")
         else:
-            print(f"[ALERT] Failed: {rule['name']} -> {error_msg}")
+            print(f"[ALERT] Failed {status.upper()}: {rule['name']} -> {error_msg}")
+
+    if not matched_any:
+        print(f"[PING ALERT] No rules matched for {display_host} ({source_ip})")

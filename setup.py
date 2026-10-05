@@ -6,7 +6,7 @@ import subprocess, sys, os, time, shutil, ctypes, re, tempfile
 import noc_config as cfg
 
 APP_NAME    = "SmartNOC"
-APP_VERSION = getattr(cfg, "APP_VERSION", "0.5.6.4")
+APP_VERSION = getattr(cfg, "APP_VERSION", "0.6.0")
 INSTALL_DIR = r"C:\SmartNOC"
 DASHBOARD_URL = "https://localhost:5443"
 SERVICES = [
@@ -60,6 +60,7 @@ REQUIRED_PACKAGES = [
     "paramiko",
     "psycopg2-binary",
     "psutil",
+    "cryptography",
 ]
 
 BANNER = rf"""
@@ -123,8 +124,6 @@ def copy_files():
         "syslog_server.py",
         "vsol_mib.py",
         "noc_config.py",
-        "dashboard.html",
-        "login.html",
         "launcher.pyw",
         "gen_cert.py",
         "alert_engine.py",
@@ -151,6 +150,18 @@ def copy_files():
                 ok(f"Copied {f}")
         else:
             warn(f"Missing: {f} — copy it to {src} then re-run")
+
+    # Copy frontend/dist directory for modern React SPA
+    src_dist = os.path.join(src, "frontend", "dist")
+    dst_dist = os.path.join(INSTALL_DIR, "frontend", "dist")
+    if os.path.exists(src_dist):
+        if os.path.abspath(src_dist) != os.path.abspath(dst_dist):
+            os.makedirs(os.path.join(INSTALL_DIR, "frontend"), exist_ok=True)
+            shutil.copytree(src_dist, dst_dist, dirs_exist_ok=True)
+            ok("Copied frontend/dist (React 19 SPA)")
+        else:
+            ok("Already in place: frontend/dist")
+
 
 def write_service_wrapper(name, script):
     """Write a .bat wrapper for each service"""

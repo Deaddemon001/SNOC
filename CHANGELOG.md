@@ -2,6 +2,169 @@
 
 ---
 
+## [Unreleased] - Bug Fixes & ONT Lookup via VLAN Feature
+
+### Added
+- **Database-First PPPoE / Landline ONT Lookup (`POST /api/onu/pppoe_lookup`)**:
+  - Search ONTs by PPPoE subscriber username (e.g. `pe4290290469_sid@ftth.bsnl.in`) or numeric subscriber phone number (e.g. `4290290469`).
+  - Queries strictly against the PostgreSQL `onu_configs` table with `LATERAL JOIN` to latest `onu_data` optical readings — zero live OLT CLI queries during search.
+  - Added "By PPPoE / Phone" search mode in `OntLookupView.tsx` with detailed results table (Subscriber/PPPoE, Description, WAN VLAN, Optical Rx, Distance, OLT, PON/ONU, Serial, Profiles) and instant KPI cards.
+- **Manual "Poll Config" Button in Registered OLTs**:
+  - Added a dedicated "Poll Config" button next to "View ONUs" in `OltConnectView.tsx` and quick trigger in `OntLookupView.tsx`.
+  - Connects to OLT via SSH/Telnet, iterates all configured PON ports, issues `show running-config onu <N>`, parses PPPoE credentials, WAN VLAN, profiles, description, and stores them into `onu_configs`.
+  - Added backend route `POST /api/onu/poll_config` (and `POST /api/olt/poll_config`).
+- **Automated Poll Scheduler "config" Poll Type**:
+  - Added `config` (Running Config) option in the Automated Poll Scheduler dropdown in `OltConnectView.tsx`.
+  - Defaults to daily (1440 min) background polling of running configurations.
+  - Extended `run_olt_job()` in `api.py` to trigger `poll_onu_running_configs()` for scheduled config jobs.
+- **`onu_configs` Database Table**:
+  - Schema defined in `init_postgres.sql` and auto-created idempotently on startup via `init_onu_configs_table()` in `olt_connector.py`.
+  - Stores `olt_id`, `onu_id`, `pon_port`, `serial_number`, `description`, `pppoe_id`, `landline`, `wan_vlan`, `line_profile`, `srv_profile`, `raw_config`, and `polled_at` with composite indexes.
+- **ONT Lookup via OLT VLAN**:
+  - Added OLT VLAN search mode in **ONT Lookup** tab (`OntLookupView.tsx`).
+  - Implemented `lookup_onu_by_vlan` in `olt_connector.py` to query OLT MAC address table by VLAN ID (`show mac address-table vlan <vlan>`), parse connected GPON ports, and correlate learned MAC addresses with ONU inventory and optical levels.
+  - Added `POST /api/onu/vlan_lookup` backend endpoint in `api.py`.
+- **OLT Historical Poll Snapshot Picker in View ONUs Modal**:
+  - Added Poll Date and Poll Time dropdown selectors in `OnuModal.tsx`.
+  - Enables viewing any past historical poll snapshot for an OLT via `/api/olt/poll_dates` and `/api/olt/poll_times`.
+
+### Changed
+- **Deprecated and Retired Legacy UI Fallback**: The application now exclusively delivers the modern React 19 Single-Page Application (`frontend/dist/`). Cleaned up routing in `api.py` so `/` and `/login` serve the React SPA directly without dual-mode fallback logic, rendering a friendly administrator guidance page if assets are ever missing.
+- **Top Bar & Settings Simplification**: Removed the `⏮ Legacy UI` switcher button from `AppLayout.tsx` and the legacy dashboard switcher block from `SettingsModal.tsx`.
+- **Packaging Simplification**: Removed `dashboard.html` and `login.html` from `setup.py` copy list, relying purely on `frontend/dist/`.
+
+### Removed
+- **Legacy UI Static Files**: Permanently removed `dashboard.html` (~338 KB), `legacy_dashboard_js.js` (~222 KB), and `login.html` (~12 KB).
+- **Legacy Route Flags**: Retired `/?legacy=1` URL query parameter handling and obsolete `render_versioned_html` helper in `api.py`.
+
+### Fixed
+- **PPPoE WAN VLAN Overwrite Fix**: In `olt_connector.py` `_parse_running_config()`, WAN parameters are now grouped by index (`wan_adv index <N>`), mapping the WAN VLAN to the specific index configuring PPPoE/Internet (e.g. VLAN 148), avoiding overwrite by later VoIP/DHCP services (e.g. VLAN 1831). Rejoined wrapped PPPoE usernames with whitespace collapsed and extracted phone numbers across standard prefixes.
+- **Poll Config Timeout & Abort Fix**: In `olt_connector.py`, overhauled `poll_onu_running_configs` CLI execution to read prompt responses immediately in 50ms intervals instead of waiting static 2.0s sleeps per command, cutting polling time from ~4 minutes to ~15-25 seconds. Extended frontend request timeout to 300s in `api.ts` and improved abort error messaging.
+- **Scheduler "config" Validation Fix**: Updated job creation and update routes in `api.py` (`save_olt_job`, `update_olt_job`) to accept `'config'` alongside `'full'`, `'uplink'`, and `'onu'`. Added `24 hrs (Daily)` (`1440` min) option to scheduler interval dropdown in `OltConnectView.tsx`.
+- **Poll Config UI State & Real-Time Progress**: Separated `configPollingId` in `OltConnectView.tsx` so the spinner renders specifically on the Poll Config button, and added live stage progress polling (`/api/olt/poll_progress`) in both `OltConnectView.tsx` and `OntLookupView.tsx`.
+- **Syslog Event Endless Scroll (Bug 1)**: Set default event limit to 10 events per page in `SyslogView.tsx` with page size selector dropdown (10, 25, 50) and page navigation controls.
+- **TFTP Backups Stats Cards (Bug 2)**: Added `total_files` and `ok_files` keys to `/api/tftp/stats` response in `api.py` and updated `TftpBackupsView.tsx` fallback accessors so "Files Received", "Successful", and "Total Size" render correctly.
+- **Full GPON Serial Number Display (Bug 4)**: Added dedicated GPON Serial Number summary metric card and table column in `OntLookupView.tsx` so the full serial number is always rendered.
+- **VLAN ONU Lookup — VSOL 4-Char MAC Format Not Matched (Bug 5)**:
+  - Root cause: VSOL/BSNL OLTs output MAC addresses in 4-char group format (`14a7:2b41:38fb`) but the parser regex only matched standard 2-char groups (`34:e6:ad:12:34:56`), causing zero results for valid GPON VLANs.
+  - Root cause 2: When the OLT port column is bare `GPON` (no `0/slot:onu_id` locator), the existing regex produced no ONU match even if the MAC parsed correctly.
+  - Root cause 3: Stale `key` loop variable in DB lookup caused `mac_mappings` to be checked with the wrong key.
+  - **Fix**: Rewrote `lookup_onu_by_vlan` in `olt_connector.py` with three layered parse strategies:
+    1. Standard 2-char MAC + full `slot/port:onu_id` locator — exact DB lookup (unchanged for other OLTs).
+    2. VSOL 4-char MAC + bare `GPON` port — MAC→serial hex-overlap correlation via new `_match_serial_by_mac` helper.
+    3. Standard 2-char MAC + bare `GPON` port — same correlation.
+  - Added `_match_serial_by_mac(olt_ip, raw_mac, min_overlap=5)` helper: finds the `onu_data` serial whose hex representation shares a ≥5-char contiguous run with the learned MAC (VSOL GPON serial numbers embed the device MAC-derived identifier).
+  - Added uplink GE/Ethernet interface filtering so VLAN search skips non-ONU entries.
+  - Changed CLI command priority to try `show mac address-table vlan <N>` (spaced, VSOL native) before the hyphenated variant.
+  - Fixed stale `key` variable: replaced `if key in mac_mappings` with `mac_mappings.get((pon_port, onu_id), '')`.
+  - Added `/api/onu/vlan_lookup` to `isLongRunning` URL list in `api.ts` so OLT SSH + DB scan operations use the 180s timeout.
+  - Added **Learned MAC** column to the VLAN results table in `OntLookupView.tsx` (violet, monospace), surfacing the OLT-learned MAC that was used to correlate to the GPON serial.
+
+---
+
+## v0.6.1 - Real-Time Live ONT Status, Ping Reliability & Alert Label Enhancements
+**Release date:** 2026-09-07
+
+### Added
+- **Real-Time Live ONT Status & Hardware Diagnostic Inspector**:
+  - Direct on-demand OLT query for individual ONUs right from the **ONT Lookup** tab (`POST /api/onu/live_status`).
+  - Implemented `fetch_single_onu_live` in `olt_connector.py` to selectively interrogate OLT hardware (Telnet/SSH) for a targeted ONU rather than running a full, slow OLT-wide poll.
+  - Queries real-time operational status (Online, Offline, Dying Gasp), optical power (Rx/Tx dBm), distance (meters/km), uptime/online duration, and firmware/software version.
+  - Interactive **"Get Live Status"** button and rich live diagnostic summary panel in `OntLookupView.tsx` with animated polling states, live status pill badges, and real-time injection of current readings into historical result rows.
+  - Extended frontend `isLongRunning` timeout to 180 seconds for `/api/onu/live_status` in `api.ts`, preventing premature `signal is aborted without reason` DOMException errors on high-latency or slow OLT CLI prompts.
+- **Label + IP in offline/unreachable ping alerts**: Unreachable/offline alerts now include the target's label alongside its IP across Email, Telegram, and Discord. Payloads show `<label> (<ip>)` when a label exists, or fall back to the bare `ip` when the label is empty/missing (`process_ping_alert` / `build_alert_payloads` in `alert_engine.py`).
+- **Consistent "Target Name / IP" labels in Discord embeds**: Ping alert Discord embeds now display a dedicated `Target Name / IP` field, and Telegram's `Host` line includes the IP alongside the label.
+
+### Fixed
+- **Ping Monitor false `offline` on reachable hosts**: Raised the ICMP ping timeout from 2s to 5s (`-w 2000` → `-w 5000`, subprocess timeout 5 → 8) so slow remote sites over the internet are not incorrectly marked offline while their services remain up.
+- **TCP reachability fallback for ICMP-blocked targets**: When ICMP ping times out or is blocked, the monitor now probes common TCP ports (80, 443, 22, 8080) and treats a successful connection as reachable, preventing false `offline` states for hosts that respond to TCP but drop/deprioritize ICMP.
+- **Flap-dampening recovery lockout**: Reduced the consecutive-success requirement for transitioning back to `online` from 2 to 1, so a flaky link that only occasionally replies is no longer permanently latched `offline`.
+- **Client timeout on live OLT lookups**: Added `/api/onu/live_status` to `isLongRunning` list in `api.ts` to ensure 180s timeout window for SSH/Telnet hardware handshakes.
+- **OLT Profile SSH & Telnet port editing in modern UI**: Restored the missing SSH Port and Telnet Port input fields in the OLT Connection Profiles form (`OltConnectView.tsx`). Users can now view and update custom SSH and Telnet ports when adding or editing profiles, and see configured ports at a glance in the Registered OLTs table.
+
+---
+
+## v0.6.0 - React 19 Frontend Suite, Studio Theme Engine, Pure PostgreSQL Telemetry & Production Stabilization
+**Release date:** 2026-08-31 (Updated: 2026-09-01)
+
+### Added
+- **Modern React 19 + TypeScript + Watermelon UI Frontend (`frontend/`)**:
+  - Full rewrite into a high-performance modern React 19 Single Page Application with TypeScript 5, Tailwind CSS 3.4, Lucide React icons, and Chart.js 4 (`react-chartjs-2`).
+  - **Watermelon UI Design System ([ui.watermelon.sh](https://ui.watermelon.sh))**:
+    - Cyber-dark studio palette (`#030712` / `slate-950`), translucent glassmorphism cards (`slate-900/80`), subtle slate borders (`#1e293b`), and glowing status accents (cyan `#00e5ff`, emerald `#10b981`, amber `#f59e0b`, rose `#f43f5e`).
+    - Dynamic studio sidebar with route status pills, animated brand logo, user role badges (`ADMIN` / `READ-ONLY`), and direct session management.
+    - Top studio navigation bar with live breadcrumbs, dark/light mode toggle, headless power controls, and a quick `⏮ Legacy UI` switcher (`/?legacy=1`).
+- **Comprehensive Light & Dark Theme Engine**:
+  - Class-based theme toggle applied at the root HTML element with persistent `localStorage` preference.
+  - Complete `.light` CSS selector overrides across all navigation elements, modals, KPI metric cards, data tables, filter inputs, status badges, and chart legends for high-contrast visibility.
+- **Enhanced ONU Modal & Live Telemetry Inspector (View ONUs)**:
+  - **Summary Statistics Cards**: Dynamic KPI header calculating Total ONUs, Online count & online percentage, Offline count, Dying Gasp power outage count, Average & Minimum Rx Power (dBm), and Max Fiber Span distance.
+  - **Dynamic PON Port Selector**: Automatic port discovery and count aggregation (e.g. `GPON 0/1 (14 ONUs)`, `GPON 0/2 (8 ONUs)`).
+  - **Multi-Level Filtering**: Search filter by serial number, model, name, or ONU ID alongside Status dropdown filtering (`Online Only`, `Offline Only`, `Dying Gasp`).
+  - **Direct CSV Export**: 1-click export of current filtered ONU snapshot data to formatted CSV.
+- **Uplink Traffic Interface Telemetry & Bandwidth Curve Visualizer**:
+  - **Multi-Interface Graphing**: Real-time and historical bandwidth curves with solid IN (Mbps) and dashed OUT (Mbps) series for all configured interfaces when "All Saved Ports" is selected.
+  - **Live Peak & Low Metrics**: Real-time calculation of Peak IN, Peak OUT, Low IN, and Low OUT bandwidth metrics across aggregated timeframes (Last 5, Last 20, 24h, 7 Days, 30 Days).
+  - **On-Demand Live Uplink Poll Trigger**: Dedicated "Poll Uplink Now" action to execute immediate hardware queries from the Uplink view.
+- **Syslog Device Authorization & Real-Time Status Engine**:
+  - Real-time device status calculation aligned with backend-authoritative status (`Receiving` for active streams, `Standby`, `Offline`).
+  - Enforced syslog ingestion filtering and admin authorization controls (**Accept**, **Deny**, **Delete**, and inline **Rename**).
+- **Precision MB & Kbps Telemetry on Health Dashboard**:
+  - 5-way breakdown doughnut chart displaying exact Megabyte (MB) values for PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space.
+  - 3-way breakdown doughnut chart in exact Megabytes (MB) for Smart NOC App RSS, Other Processes, and Free System Memory.
+  - Network throughput explicitly measured and visualized in Kilobits per second (Kbps).
+- **OLT Automatic Poll Scheduler Inline Editing**:
+  - Added `@app.route('/api/olt/jobs/update')` endpoint supporting inline modification of poll type, schedule mode, start time, and interval.
+
+### Changed & Fixed
+- **OLT Long-Running Polling Timeout & Abort Controller Fix**:
+  - Increased API client timeout from 12s to 180s (3 minutes) for all long-running SSH/Telnet polling operations (`/api/olt/poll_onu`, `/api/olt/poll_uplink`, `/api/olt/poll`, `/api/olt/test_connection`, `/api/olt/discover`, `/api/olt/raw_output`), backup archives, and service restarts.
+  - Implemented proper `AbortSignal` chaining to prevent premature `"Request failed: signal is aborted without reason"` errors.
+- **Syslog Receiving Status Parity**:
+  - Resolved status mismatch where timezone offsets on raw timestamps caused active receiving devices to display as "Offline". Status is now derived directly from backend registration (`status === 'receiving' || status === 'online'`).
+- **Uplink Traffic Chart Data Binding & Canvas Lifecycle**:
+  - Fixed Chart.js dataset mapping to properly bind `in_mbps` / `out_mbps` / `in_bps` / `out_bps` API response fields.
+  - Implemented reactive `useMemo` hooks and unique chart instance keys (`chartKey`) to ensure flawless canvas re-rendering across OLT, Port, and Range selector changes without context collisions.
+- **Session Cookie & CORS Cross-Compatibility**:
+  - Configured `SESSION_COOKIE_SECURE = False` and `SESSION_COOKIE_SAMESITE = 'Lax'` with explicit CORS origin headers so session authentication works seamlessly across both HTTP (port 5000 / Vite port 3000) and HTTPS (port 5443).
+- **Pure PostgreSQL Storage Engine**:
+  - Standardized all modules (SNMP Traps, Syslog, TFTP, Ping Monitor, OLT/ONU Telemetry, Auth, and Alerts) on PostgreSQL backend.
+- **Legacy & Modern UI Dual Support**:
+  - Classic single-file dashboard (`dashboard.html`) remains 100% functional and directly accessible via `/?legacy=1`.
+- **Codebase Clean-Up**:
+  - Removed all obsolete Vue components, Vue router/stores, and temporary test fixtures while maintaining clean zero-warning builds.
+
+---
+
+## v0.5.6.6 - React 19 + TypeScript + Watermelon UI Frontend Redesign, Syslog Access Control & Precision Health Telemetry
+
+### Added
+- **Modern React 19 + TypeScript + Tailwind CSS Single-Page Application (`frontend/`)**:
+  - Re-architected frontend into a high-performance modern React 19 SPA with TypeScript, Tailwind CSS 3.4, Lucide icons, and Chart.js 4 (`react-chartjs-2`).
+  - **Watermelon UI Design System ([ui.watermelon.sh](https://ui.watermelon.sh))**:
+    - Cyber-dark studio palette (`#030712` / `slate-950`), translucent cards with subtle borders (`#1e293b` / `slate-800`), glassmorphism backdrop blur, and glowing neon accents (cyan `#00e5ff`, emerald `#10b981`, amber `#f59e0b`, rose `#f43f5e`).
+    - Collapsible studio sidebar with route status pills, animated brand logo, user role badges (`ADMIN` / `READ-ONLY`), and direct session management.
+    - Top studio navigation bar with live breadcrumbs, dark/light mode toggle, headless power controls, and a quick `⏮ Legacy UI` switcher (`/?legacy=1`).
+- **Syslog Device Authorization & Real-Time Status Engine**:
+  - **Device Status Calculation**: Real-time status based on last received timestamp (<60s Receiving, 1–5m Standby, >5m Offline).
+  - **Access Control & Ingestion Enforcing**: New syslog devices default to pending authorization. Admin actions to **Accept**, **Deny**, **Delete**, and inline **Rename** devices.
+  - Filter dropdowns dynamically filter only authorized devices to prevent unauthorized log flooding.
+- **Precision MB & Kbps Telemetry on Health Dashboard**:
+  - **Storage & Database Distribution**: 5-way breakdown doughnut chart displaying exact Megabyte (MB) values for PostgreSQL Database, TFTP Backups, Data directory, Logs, and Free Disk Space.
+  - **System Memory Allocation**: 3-way breakdown doughnut chart in exact Megabytes (MB) for Smart NOC App RSS, Other Processes, and Free System Memory.
+  - **Network Throughput**: Explicitly measured and visualized in Kilobits per second (Kbps) across all charts and stat cards.
+- **OLT Automatic Poll Scheduler Inline Editing**:
+  - Added `@app.route('/api/olt/jobs/update')` endpoint supporting inline modification of poll type, schedule mode, start time, and interval without recreating jobs.
+- **Self-Healing SSL/TLS Validation**:
+  - Enhanced `gen_cert.py` to validate certificate and private key consistency on startup, self-healing broken certificate chains automatically.
+
+### Changed
+- **Zero Backend Breaking Changes**: Preserved 100% of existing REST APIs, session cookies, database schemas, and background daemons.
+- **Instant Legacy UI Switcher**: Classic single-file dashboard (`dashboard.html`) remains accessible anytime via `/?legacy=1` or top bar `⏮ Legacy UI` button.
+
+
+---
+
 ## v0.5.6.4 - System Health Dashboard, 24x7 Power Controls, Discord Alerts & App Rebranding
 **Release date:** 2026-06-22
 

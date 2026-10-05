@@ -1,6 +1,6 @@
 """
-Smart NOC v0.5.6.4 - OLT Connector
-SSH (primary) or Telnet (raw socket, Python 3.13 compatible) fallback.
+Smart NOC v0.6.0 - OLT Connector
+SSH and Telnet client for V1600G1/G1B OLTs.
 Collects ONU state and uplink traffic from Vsol GPON OLT.
 """
 import concurrent.futures
@@ -1177,6 +1177,136 @@ def poll_uplink_only(profile, interfaces=None):
             'poll_time': poll_time, 'duration': duration,
             'uplink_stats': uplink_results}
 
+def fetch_single_onu_live(profile, pon_port, onu_id, serial_no=''):
+    """
+    Targeted live query for a single ONU: connects to the OLT once, runs
+    'show onu state', 'interface gpon 0/<port>', rx-power and distance
+    commands for the specific pon_port/onu_id, then returns live telemetry.
+
+    Returns:
+        dict with keys: success, online, phase_state, admin_state, omcc_state,
+                        rx_power, distance_m, poll_time, method, error
+    """
+    ip          = profile['ip']
+    name        = profile.get('name', ip)
+    olt_model   = get_olt_model(profile)
+    port        = str(pon_port)
+    onu         = str(onu_id)
+    now         = time.strftime('%Y-%m-%dT%H:%M:%S')
+
+    # --- Commands to run ---
+    metric_cmds = get_pon_metric_commands(profile, port)
+
+    # We need: show onu state, then enter PON interface for rx-power + distance
+    state_cmd     = 'show onu state'
+    iface_cmd     = metric_cmds['interface']
+    rx_cmds       = metric_cmds.get('rx_commands', ['show pon onu all rx-power'])
+    dist_cmd      = metric_cmds.get('dist', 'show onu 1-128 distance')
+
+    commands = [state_cmd, iface_cmd] + rx_cmds
+    if dist_cmd:
+        commands.append(dist_cmd)
+
+    start = time.time()
+    outputs, method, error = connect_and_run(profile, commands)
+    duration = round(time.time() - start, 1)
+
+    if error or not outputs:
+        return {
+            'success': False,
+            'error': error or 'No output from OLT',
+            'method': method,
+            'poll_time': now,
+        }
+
+    # --- Parse ONU state for this specific ONU ---
+    raw_state = outputs.get(state_cmd, '')
+    onus_state = parse_onu_state(raw_state, {})
+
+    # Look up by (port, onu_id) key
+    target_key   = (port, onu)
+    onu_data     = onus_state.get(target_key, {})
+
+    # Also try alternate GPON index format (e.g. the index could be slot/port:id)
+    if not onu_data:
+        for k, v in onus_state.items():
+            if str(k[0]) == port and str(k[1]) == onu:
+                onu_data = v
+                break
+
+    phase_state  = onu_data.get('phase_state', 'unknown')
+    admin_state  = onu_data.get('admin_state', 'unknown')
+    omcc_state   = onu_data.get('omcc_state', 'unknown')
+    online       = 1 if phase_state.lower() == 'working' else 0
+
+    # --- Parse rx_power ---
+    raw_rx = ''
+    best_rx_matches = -1
+    for rx_cmd in rx_cmds:
+        candidate_rx = outputs.get(rx_cmd, '')
+        candidate_matches = count_rx_entries(candidate_rx)
+        if candidate_matches > best_rx_matches:
+            raw_rx = candidate_rx
+            best_rx_matches = candidate_matches
+        if candidate_matches > 0:
+            break
+
+    # Build a minimal onus dict for parsing (just this one ONU)
+    temp_onus = {target_key: {
+        'onu_index': f'GPON0/{port}:{onu}',
+        'pon_port': port,
+        'onu_id': onu,
+        'serial_no': serial_no,
+    }}
+    temp_onus = parse_onu_optical(raw_rx, temp_onus, port)
+
+    rx_power = temp_onus.get(target_key, {}).get('rx_power')
+
+    # --- Parse distance ---
+    distance_m = None
+    if dist_cmd:
+        raw_dist = outputs.get(dist_cmd, '')
+        temp_onus = parse_onu_distance(raw_dist, temp_onus, port)
+        distance_m = temp_onus.get(target_key, {}).get('distance_m')
+
+    # --- Save live reading into onu_data for history continuity ---
+    try:
+        execute_db(OLT_DB,
+            '''INSERT INTO onu_data
+               (poll_time, olt_ip, olt_name, pon_slot, pon_port, onu_id, onu_index,
+                model, profile, serial_no, phase_state, admin_state, omcc_state,
+                online, rx_power, tx_power, distance_m)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (now, ip, name, '0', port, onu,
+             f'GPON0/{port}:{onu}',
+             onu_data.get('model', ''), onu_data.get('profile', ''),
+             serial_no or onu_data.get('serial_no', ''),
+             phase_state, admin_state, omcc_state,
+             online, rx_power, None, distance_m))
+    except Exception as e:
+        print(f'[ONT LIVE] DB save error: {e}')
+
+    print(f'[ONT LIVE] {name} GPON0/{port}:{onu} -> {phase_state}, '
+          f'rx={rx_power} dBm, dist={distance_m}m via {method} in {duration}s')
+
+    return {
+        'success': True,
+        'online': online,
+        'phase_state': phase_state,
+        'admin_state': admin_state,
+        'omcc_state': omcc_state,
+        'rx_power': rx_power,
+        'distance_m': distance_m,
+        'poll_time': now,
+        'method': method,
+        'duration': duration,
+        'olt_name': name,
+        'olt_ip': ip,
+        'pon_port': port,
+        'onu_id': onu,
+    }
+
+
 def _save_session(ip, name, duration, total, online, method, status, error):
     try:
         execute_db(OLT_DB,
@@ -1184,3 +1314,689 @@ def _save_session(ip, name, duration, total, online, method, status, error):
             (ip, name, time.strftime('%Y-%m-%dT%H:%M:%S'), duration, total, online, method, status, error))
     except Exception as e:
         print(f"[OLT SESSION] Failed to save poll session for {ip}: {e}")
+
+
+def _match_serial_by_mac(olt_ip: str, raw_mac: str, min_overlap: int = 5):
+    """
+    Finds the most recent ONU record in onu_data whose serial number shares a
+    contiguous >=min_overlap-char hex substring with the learned MAC address.
+
+    Background: VSOL GPON ONUs embed their MAC-derived identifier inside the
+    GPON serial number (e.g. MAC 14a7:2b41:38fb <-> serial GPON004138F6 share
+    the 5-char hex run '4138f').
+
+    Args:
+        olt_ip:      IP of the OLT to scope the search.
+        raw_mac:     Raw learned MAC string from the OLT (any separator/format).
+        min_overlap: Minimum hex character run that must appear in both strings.
+                     Default 5 avoids false matches while covering VSOL serials.
+
+    Returns:
+        dict of the matching onu_data row (latest poll), or None if not found.
+    """
+    # Strip all non-hex chars from MAC
+    clean_mac = ''.join(c for c in raw_mac.lower() if c in '0123456789abcdef')
+    if len(clean_mac) < min_overlap:
+        return None
+
+    # Fetch distinct serials for this OLT from the database
+    serial_rows = query_db(
+        OLT_DB,
+        "SELECT DISTINCT serial_no FROM onu_data WHERE olt_ip=?",
+        (olt_ip,)
+    )
+
+    best_serial = None
+    for row in serial_rows:
+        sn = row.get('serial_no') or ''
+        clean_sn = ''.join(c for c in sn.lower() if c in '0123456789abcdef')
+        if len(clean_sn) < min_overlap:
+            continue
+        # Check for a contiguous hex run of length >= min_overlap in clean_sn
+        # that also appears in clean_mac
+        for i in range(len(clean_sn) - min_overlap + 1):
+            substr = clean_sn[i:i + min_overlap]
+            if substr in clean_mac:
+                best_serial = sn
+                break
+        if best_serial:
+            break  # Take first match (serials are unique per OLT)
+
+    if not best_serial:
+        return None
+
+    db_rows = query_db(
+        OLT_DB,
+        "SELECT * FROM onu_data WHERE olt_ip=? AND serial_no=? ORDER BY poll_time DESC LIMIT 1",
+        (olt_ip, best_serial)
+    )
+    return dict(db_rows[0]) if db_rows else None
+
+
+def lookup_onu_by_vlan(profile, vlan_id):
+    """
+    Queries OLT MAC address table for a specific VLAN ID, extracts connected GPON ports / ONUs,
+    and matches them against database inventory & live optical telemetry.
+
+    Supports two OLT MAC table formats:
+      1. Standard 2-char groups:  34:e6:ad:12:34:56  with port  GPON0/1:2
+      2. VSOL 4-char groups:      14a7:2b41:38fb     with port  GPON  (no ONU locator)
+
+    For format (2), uses _match_serial_by_mac to correlate the learned MAC against
+    stored serial numbers by finding a >=5-char hex substring overlap.
+    """
+    vlan_str = str(vlan_id).strip()
+    if not vlan_str:
+        return {'success': False, 'error': 'vlan_id is required'}
+
+    ip          = profile['ip']
+    port_ssh    = profile.get('ssh_port', 22)
+    port_telnet = profile.get('telnet_port', 23)
+    username    = profile['username']
+    password    = profile['password']
+    enable_pass = profile.get('enable_pass') or password
+    conn_type   = profile.get('conn_type', 'auto').lower()
+    name        = profile.get('name') or ip
+
+    # Try spaced form first (VSOL/BSNL), then hyphenated (other vendors), then generic
+    cmds = [
+        f'show mac address-table vlan {vlan_str}',
+        f'show mac-address-table vlan {vlan_str}',
+        f'show mac vlan {vlan_str}',
+    ]
+
+    t0 = time.time()
+    outputs = None; method = None; error = None
+
+    if conn_type in ('ssh', 'auto'):
+        outputs, error = _try_ssh(ip, port_ssh, username, password, enable_pass, cmds)
+        if outputs: method = 'SSH'
+
+    if not outputs and conn_type in ('telnet', 'auto'):
+        outputs, error = _try_telnet(ip, port_telnet, username, password, enable_pass, cmds)
+        if outputs: method = 'Telnet'
+
+    if not outputs:
+        return {'success': False, 'error': f'Failed to connect to OLT {name}: {error or "Unknown error"}'}
+
+    # Aggregate all command outputs
+    combined_raw = '\n'.join(filter(None, [outputs.get(c, '') for c in cmds]))
+    cleaned = clean_output(combined_raw)
+
+    # ── MAC patterns ──────────────────────────────────────────────────────────
+    # Standard 2-char groups with slot/port:onu_id locator
+    # e.g.  100   34:e6:ad:12:34:56  Dynamic  GPON0/1:2
+    mac_with_locator = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2}[:\-]'
+        r'[0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2})\s+'
+        r'\S+\s+'
+        r'(?:gpon\s*)?(\d+)/(\d+):(\d+)',
+        re.IGNORECASE
+    )
+    # VSOL 4-char groups, bare GPON port (no ONU locator)
+    # e.g.  199   14a7:2b41:38fb   Dynamic   GPON   Aging
+    mac_4char_gpon = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{4}[:\-][0-9a-f]{4}[:\-][0-9a-f]{4})\s+'
+        r'\S+\s+'
+        r'(gpon)\b',
+        re.IGNORECASE
+    )
+    # Standard 2-char format with bare GPON port (some vendor variants)
+    mac_std_gpon = re.compile(
+        r'(\d+)\s+'
+        r'([0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2}[:\-]'
+        r'[0-9a-f]{2}[:\-][0-9a-f]{2}[:\-][0-9a-f]{2})\s+'
+        r'\S+\s+'
+        r'(gpon)\b',
+        re.IGNORECASE
+    )
+    # Skip uplink GE / Ethernet interfaces
+    uplink_re = re.compile(r'\bge\b|\bethernet\b|\bge\s*0/\d', re.IGNORECASE)
+
+    matched_targets = set()   # (pon_port, onu_id) for locator-style rows
+    mac_mappings    = {}      # (pon_port, onu_id) -> raw MAC string
+    gpon_macs       = []      # learned MACs for bare-GPON rows (no locator)
+
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped or vlan_str not in stripped:
+            continue
+        if uplink_re.search(stripped):
+            continue
+
+        # Try full locator match first (slot/port:onu_id)
+        m = mac_with_locator.search(stripped)
+        if m and m.group(1) == vlan_str:
+            pon_port = m.group(4)
+            onu_id   = m.group(5)
+            key      = (str(pon_port), str(onu_id))
+            matched_targets.add(key)
+            mac_mappings[key] = m.group(2)
+            continue
+
+        # Try VSOL 4-char bare GPON
+        m = mac_4char_gpon.search(stripped)
+        if m and m.group(1) == vlan_str:
+            gpon_macs.append(m.group(2))
+            continue
+
+        # Try standard 2-char bare GPON
+        m = mac_std_gpon.search(stripped)
+        if m and m.group(1) == vlan_str:
+            gpon_macs.append(m.group(2))
+
+    # ── Phase 1: Exact DB lookup for locator-style matches ────────────────────
+    results = []
+    for (pon_port, onu_id) in matched_targets:
+        db_rows = query_db(
+            OLT_DB,
+            "SELECT * FROM onu_data WHERE olt_ip=? AND pon_port=? AND onu_id=? ORDER BY poll_time DESC LIMIT 1",
+            (ip, pon_port, onu_id)
+        )
+        if db_rows:
+            r = dict(db_rows[0])
+            r['learned_mac'] = mac_mappings.get((pon_port, onu_id), '')
+            r['vlan_id']     = vlan_str
+            results.append(r)
+        else:
+            # Entry discovered on CLI but not in DB yet
+            results.append({
+                'olt_ip':      ip,
+                'olt_name':    name,
+                'pon_port':    pon_port,
+                'onu_id':      onu_id,
+                'vlan_id':     vlan_str,
+                'serial_no':   'Discovered on OLT',
+                'online':      1,
+                'phase_state': 'working',
+                'learned_mac': mac_mappings.get((pon_port, onu_id), ''),
+                'rx_power':    None,
+                'distance_m':  None,
+            })
+
+    # ── Phase 2: MAC→Serial correlation for bare-GPON rows ───────────────────
+    seen_serials = {r.get('serial_no') for r in results}
+    for raw_mac in gpon_macs:
+        db_row = _match_serial_by_mac(ip, raw_mac, min_overlap=5)
+        if db_row and db_row.get('serial_no') not in seen_serials:
+            db_row['learned_mac'] = raw_mac
+            db_row['vlan_id']     = vlan_str
+            results.append(db_row)
+            seen_serials.add(db_row.get('serial_no'))
+        elif not db_row:
+            # No DB record yet — report discovery stub
+            stub_key = f'gpon_mac_{raw_mac}'
+            if stub_key not in seen_serials:
+                results.append({
+                    'olt_ip':      ip,
+                    'olt_name':    name,
+                    'pon_port':    None,
+                    'onu_id':      None,
+                    'vlan_id':     vlan_str,
+                    'serial_no':   f'Discovered (MAC {raw_mac})',
+                    'online':      1,
+                    'phase_state': 'working',
+                    'learned_mac': raw_mac,
+                    'rx_power':    None,
+                    'distance_m':  None,
+                })
+                seen_serials.add(stub_key)
+
+    duration = round(time.time() - t0, 2)
+    return {
+        'success':    True,
+        'vlan_id':    vlan_str,
+        'olt_name':   name,
+        'olt_ip':     ip,
+        'count':      len(results),
+        'onus':       results,
+        'method':     method,
+        'duration':   duration,
+        'raw_output': cleaned[:2000],
+    }
+
+
+# ── ONU CONFIGS (PPPoE / Landline) ────────────────────────────────────────────
+
+def init_onu_configs_table():
+    """Create onu_configs table if it does not exist (idempotent)."""
+    execute_db(OLT_DB, """CREATE TABLE IF NOT EXISTS onu_configs (
+        id            SERIAL PRIMARY KEY,
+        olt_id        TEXT NOT NULL,
+        onu_id        TEXT NOT NULL,
+        pon_port      TEXT DEFAULT '',
+        serial_number TEXT DEFAULT '',
+        description   TEXT DEFAULT '',
+        pppoe_id      TEXT DEFAULT '',
+        landline      TEXT DEFAULT '',
+        wan_vlan      TEXT DEFAULT '',
+        line_profile  TEXT DEFAULT '',
+        srv_profile   TEXT DEFAULT '',
+        raw_config    TEXT DEFAULT '',
+        polled_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (olt_id, onu_id)
+    )""")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_pppoe    ON onu_configs (pppoe_id)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_landline ON onu_configs (landline)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_serial   ON onu_configs (serial_number)")
+    execute_db(OLT_DB, "CREATE INDEX IF NOT EXISTS idx_onu_configs_olt      ON onu_configs (olt_id)")
+
+
+try:
+    init_onu_configs_table()
+except Exception as _onu_cfg_err:
+    print(f"[OLT] onu_configs table init warning: {_onu_cfg_err}")
+
+
+def store_onu_config(olt_id, onu_id, pon_port, record: dict):
+    """Upsert a single ONU config row into onu_configs."""
+    execute_db(OLT_DB, """
+        INSERT INTO onu_configs
+            (olt_id, onu_id, pon_port, serial_number, description,
+             pppoe_id, landline, wan_vlan, line_profile, srv_profile,
+             raw_config, polled_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+        ON CONFLICT (olt_id, onu_id)
+        DO UPDATE SET
+            pon_port      = EXCLUDED.pon_port,
+            serial_number = EXCLUDED.serial_number,
+            description   = EXCLUDED.description,
+            pppoe_id      = EXCLUDED.pppoe_id,
+            landline      = EXCLUDED.landline,
+            wan_vlan      = EXCLUDED.wan_vlan,
+            line_profile  = EXCLUDED.line_profile,
+            srv_profile   = EXCLUDED.srv_profile,
+            raw_config    = EXCLUDED.raw_config,
+            polled_at     = CURRENT_TIMESTAMP
+    """, (
+        str(olt_id), str(onu_id), str(pon_port),
+        record.get('serial_number', ''),
+        record.get('description', ''),
+        record.get('pppoe_id', ''),
+        record.get('landline', ''),
+        record.get('wan_vlan', ''),
+        record.get('line_profile', ''),
+        record.get('srv_profile', ''),
+        record.get('raw_config', ''),
+    ))
+
+
+def _parse_running_config(raw: str) -> dict:
+    """
+    Parse 'show running-config onu N' output.
+    Returns dict with pppoe_id, landline, wan_vlan, line_profile,
+    srv_profile, description, serial_number extracted from the text.
+    Correctly associates the WAN VLAN with the PPPoE connection index.
+    """
+    cleaned = clean_output(raw)
+    result = {
+        'pppoe_id': '', 'landline': '', 'wan_vlan': '',
+        'line_profile': '', 'srv_profile': '', 'description': '',
+        'serial_number': '', 'raw_config': cleaned,
+    }
+    wan_indexes = {}
+    general_vlans = []
+
+    for line in cleaned.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+
+        # Description: "onu 2 desc Ollapatti_Room/1:2"
+        m = re.search(r'\bonu\s+\d+\s+desc\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['description'] = m.group(1)
+
+        # Line profile: "onu 2 profile line BSNL_194_204_1831"
+        m = re.search(r'\bprofile\s+line\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['line_profile'] = m.group(1)
+
+        # Service profile: "onu 2 profile srv FOR_WIFI"
+        m = re.search(r'\bprofile\s+srv\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['srv_profile'] = m.group(1)
+
+        # Equipment ID / serial: "onu 2 pri equid MONUH113"
+        m = re.search(r'\bequid\s+(\S+)', s, re.IGNORECASE)
+        if m:
+            result['serial_number'] = m.group(1)
+
+        # Track WAN settings by index: "onu 20 pri wan_adv index 1 ..."
+        m_idx = re.search(r'\bwan_adv\s+index\s+(\d+)\b', s, re.IGNORECASE)
+        if m_idx:
+            idx = m_idx.group(1)
+            if idx not in wan_indexes:
+                wan_indexes[idx] = {'user': '', 'wan_vlan': '', 'is_pppoe': False, 'mode': ''}
+
+            # PPPoE user on this index: "... user sv4290292735_sid@ ftth.bsnl.in pwd ..."
+            m_user = re.search(r'\buser\s+(.*?)\s+pwd\b', s, re.IGNORECASE)
+            if m_user:
+                cleaned_user = re.sub(r'\s+', '', m_user.group(1))
+                wan_indexes[idx]['user'] = cleaned_user
+                wan_indexes[idx]['is_pppoe'] = True
+
+            if re.search(r'\broute\s+ipv4\s+pppoe\b', s, re.IGNORECASE):
+                wan_indexes[idx]['is_pppoe'] = True
+
+            m_vlan = re.search(r'\bwan_vlan\s+(\d+)\b', s, re.IGNORECASE)
+            if m_vlan:
+                wan_indexes[idx]['wan_vlan'] = m_vlan.group(1)
+
+            m_mode = re.search(r'\bmode\s+(\S+)\b', s, re.IGNORECASE)
+            if m_mode:
+                wan_indexes[idx]['mode'] = m_mode.group(1)
+        else:
+            # Fallback for configs not using "wan_adv index N"
+            m_user = re.search(r'\buser\s+(.*?)\s+pwd\b', s, re.IGNORECASE)
+            if m_user and not result['pppoe_id']:
+                result['pppoe_id'] = re.sub(r'\s+', '', m_user.group(1))
+            m_vlan = re.search(r'\bwan_vlan\s+(\d+)\b', s, re.IGNORECASE)
+            if m_vlan:
+                general_vlans.append(m_vlan.group(1))
+
+    # Match the PPPoE WAN index
+    pppoe_vlan = ''
+    pppoe_user = ''
+    if wan_indexes:
+        # Priority 1: Index with both user and pppoe flag
+        for idx, data in wan_indexes.items():
+            if data['user'] and data['is_pppoe']:
+                pppoe_user = data['user']
+                pppoe_vlan = data['wan_vlan']
+                break
+        # Priority 2: Index with user
+        if not pppoe_user:
+            for idx, data in wan_indexes.items():
+                if data['user']:
+                    pppoe_user = data['user']
+                    pppoe_vlan = data['wan_vlan']
+                    break
+        # Priority 3: Index with internet/pppoe mode
+        if not pppoe_vlan:
+            for idx, data in wan_indexes.items():
+                if 'internet' in data['mode'].lower() or data['is_pppoe']:
+                    pppoe_vlan = data['wan_vlan']
+                    break
+        # Priority 4: First WAN index with any vlan
+        if not pppoe_vlan:
+            for idx, data in wan_indexes.items():
+                if data['wan_vlan']:
+                    pppoe_vlan = data['wan_vlan']
+                    break
+
+    if pppoe_user:
+        result['pppoe_id'] = pppoe_user
+    if pppoe_vlan:
+        result['wan_vlan'] = pppoe_vlan
+    elif general_vlans:
+        result['wan_vlan'] = general_vlans[0]
+
+    # Extract landline (7 to 12 digits) from PPPoE ID
+    if result['pppoe_id']:
+        num_m = re.search(r'(\d{7,12})', result['pppoe_id'])
+        if num_m:
+            result['landline'] = num_m.group(1)
+
+    return result
+
+
+def poll_onu_running_configs(profile: dict, ports=None, progress_callback=None):
+    """
+    Connect to OLT, iterate 'show running-config onu N' for every ONU on
+    every PON port, parse PPPoE/landline/VLAN info and upsert into onu_configs.
+    Returns dict with success, saved count, error.
+    """
+    if ports is None:
+        ports = list(range(1, 9))
+
+    ip          = profile['ip']
+    ssh_port    = int(profile.get('ssh_port', 22) or 22)
+    telnet_port = int(profile.get('telnet_port', 23) or 23)
+    username    = profile['username']
+    password    = profile['password']
+    enable_pass = profile.get('enable_pass', '') or password
+    conn_type   = (profile.get('conn_type', 'auto') or 'auto').lower()
+    olt_id      = str(profile.get('id', ip))
+    name        = profile.get('name', ip) or ip
+    model       = get_olt_model(profile)
+
+    _progress(progress_callback, 'Connecting', f'SSH/Telnet to {name} ({ip})')
+
+    saved = 0
+
+    # ── SSH path ──────────────────────────────────────────────────────────────
+    def _run_ssh():
+        nonlocal saved
+        try:
+            import paramiko
+        except (ImportError, ModuleNotFoundError):
+            return False, 'paramiko not available'
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(ip, port=ssh_port, username=username, password=password,
+                           timeout=15, look_for_keys=False, allow_agent=False)
+            shell = client.invoke_shell(width=512, height=2000)
+            time.sleep(1.5)
+            if shell.recv_ready():
+                shell.recv(65535)
+
+            PAGER_R = re.compile(
+                r'(-{0,3}\s*more\s*-{0,3}|press\s+(space|enter|any\s+key)|--\s*more\s*--|'
+                r'<\s*space\s*>|continue\?\s*\[y/n\])', re.IGNORECASE)
+            PROMPT_R = re.compile(r'[#>]\s*$', re.MULTILINE)
+
+            def sc(cmd, timeout=12):
+                shell.send(cmd + '\n')
+                out = ''
+                deadline = time.time() + timeout
+                last_recv = time.time()
+                while time.time() < deadline:
+                    if shell.recv_ready():
+                        chunk = shell.recv(65535).decode('utf-8', errors='replace')
+                        out += chunk
+                        last_recv = time.time()
+                        if PAGER_R.search(chunk):
+                            shell.send(' ')
+                            time.sleep(0.05)
+                            continue
+                        lines = [l.strip() for l in out.splitlines() if l.strip()]
+                        if len(lines) > 1 and PROMPT_R.search(lines[-1]):
+                            break
+                    else:
+                        if out and (time.time() - last_recv > 0.15):
+                            lines = [l.strip() for l in out.splitlines() if l.strip()]
+                            if lines and PROMPT_R.search(lines[-1]):
+                                break
+                        time.sleep(0.02)
+                return out
+
+            sc('en'); sc(enable_pass)
+            sc('configure terminal')
+            sc('terminal length 0')
+            sc('screen-length 0 temporary')
+
+            for port_n in ports:
+                iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
+                sc(iface_cmd)
+                _progress(progress_callback, f'Polling PON {port_n}', f'Checking ONUs on PON {port_n}...')
+                info_out = sc('show onu info', timeout=15)
+                onus_on_port = sorted(set(
+                    m.group(1)
+                    for line in clean_output(info_out).splitlines()
+                    for m in [re.search(r'(?:GPON)?\d+/\d+:(\d+)', line)]
+                    if m
+                ))
+                for onu_n in onus_on_port:
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n} ({saved + 1} saved)')
+                    cfg_out = sc(f'show running-config onu {onu_n}', timeout=15)
+                    parsed = _parse_running_config(cfg_out)
+                    store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
+                    saved += 1
+                sc('exit')
+
+            client.close()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    # ── Telnet path ───────────────────────────────────────────────────────────
+    def _run_telnet():
+        nonlocal saved
+        IAC = bytes([255]); DONT = bytes([254]); DO = bytes([253])
+        WONT = bytes([252]); WILL = bytes([251])
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(15); sock.connect((ip, telnet_port)); sock.settimeout(0.5)
+            buf = b''
+            PAGER_T = re.compile(
+                r'(-{0,3}\s*more\s*-{0,3}|press\s+(space|enter|any\s+key)|--\s*more\s*--|'
+                r'<\s*space\s*>|continue\?\s*\[y/n\])', re.IGNORECASE)
+
+            def recv_until(prompts, timeout=10):
+                nonlocal buf
+                if isinstance(prompts, str): prompts = [prompts]
+                deadline = time.time() + timeout
+                last_recv = time.time()
+                while time.time() < deadline:
+                    try:
+                        chunk = sock.recv(4096)
+                        if chunk:
+                            clean_b = b''; i = 0
+                            while i < len(chunk):
+                                if chunk[i:i+1] == IAC and i + 2 < len(chunk):
+                                    cb = chunk[i+1:i+2]; opt = chunk[i+2:i+3]
+                                    if cb == DO: sock.send(IAC + WONT + opt)
+                                    elif cb == WILL: sock.send(IAC + DONT + opt)
+                                    i += 3
+                                else:
+                                    clean_b += chunk[i:i+1]; i += 1
+                            buf += clean_b
+                            last_recv = time.time()
+                    except socket.timeout:
+                        pass
+                    decoded = buf.decode('utf-8', errors='replace')
+                    if PAGER_T.search(decoded):
+                        sock.send(b' '); time.sleep(0.05); continue
+                    for p in prompts:
+                        if p.lower() in decoded.lower():
+                            return decoded
+                    if buf and (time.time() - last_recv > 0.15):
+                        for p in prompts:
+                            if p.lower() in decoded.lower():
+                                return decoded
+                    time.sleep(0.02)
+                return buf.decode('utf-8', errors='replace')
+
+            def sl(text):
+                sock.send((text + '\r\n').encode('utf-8'))
+
+            recv_until(['Login:', 'login:', 'Username:']); buf = b''; sl(username)
+            recv_until(['Password:', 'password:']); buf = b''; sl(password)
+            time.sleep(1.0); recv_until(['>', '#']); buf = b''
+            sl('en'); out = recv_until(['Password:', 'password:', '#'], timeout=5)
+            if 'assword' in out:
+                buf = b''; sl(enable_pass); time.sleep(0.5); recv_until(['#']); buf = b''
+            sl('configure terminal'); time.sleep(0.8); recv_until(['(config)#', '#'])
+            for nc in ['terminal length 0', 'screen-length 0 temporary']:
+                buf = b''; sl(nc); time.sleep(0.4); recv_until(['(config)#', '#'], timeout=4)
+            buf = b''
+
+            for port_n in ports:
+                iface_cmd = f'int gpon 0/{port_n}' if model == 'V1600G1B' else f'interface gpon 0/{port_n}'
+                buf = b''; sl(iface_cmd)
+                recv_until(['(config-pon', '#'], timeout=6)
+                _progress(progress_callback, f'Polling PON {port_n}', f'Checking ONUs on PON {port_n}...')
+                buf = b''; sl('show onu info')
+                info_out = recv_until(['(config-pon', '#'], timeout=15)
+                onus_on_port = sorted(set(
+                    m.group(1)
+                    for line in clean_output(info_out).splitlines()
+                    for m in [re.search(r'(?:GPON)?\d+/\d+:(\d+)', line)]
+                    if m
+                ))
+                for onu_n in onus_on_port:
+                    _progress(progress_callback, f'PON {port_n}', f'Config ONU {onu_n} ({saved + 1} saved)')
+                    buf = b''; sl(f'show running-config onu {onu_n}')
+                    cfg_out = recv_until(['(config-pon', '#'], timeout=15)
+                    parsed = _parse_running_config(cfg_out)
+                    store_onu_config(olt_id, f'{port_n}:{onu_n}', str(port_n), parsed)
+                    saved += 1; buf = b''
+                buf = b''; sl('exit'); recv_until(['(config)#', '#'], timeout=4)
+
+            sock.close()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    ok = False; err_msg = ''
+    if conn_type in ('ssh', 'auto'):
+        ok, err_msg = _run_ssh()
+    if not ok and conn_type in ('telnet', 'auto'):
+        _progress(progress_callback, 'Trying Telnet', f'{ip}:{telnet_port}')
+        ok, err_msg = _run_telnet()
+
+    _progress(progress_callback, 'Done' if ok else 'Failed',
+              f'{saved} ONU configs saved' if ok else err_msg)
+    return {'success': ok, 'saved': saved, 'error': err_msg if not ok else ''}
+
+
+def pppoe_lookup_from_db(query: str) -> list:
+    """
+    Search onu_configs by PPPoE ID or numeric subscriber ID (landline).
+    Accepts full strings like 'pe4290290469_sid@ftth.bsnl.in' or numeric '4290290469'.
+    Returns list of matching rows joined with latest onu_data optical readings.
+    """
+    q = str(query).strip()
+    if not q:
+        return []
+    num_m = re.search(r'(\d{7,12})', q)
+    numeric = num_m.group(1) if num_m else None
+
+    rows = query_db(OLT_DB, """
+        SELECT c.*,
+               COALESCE(NULLIF(c.serial_number, ''), d.serial_no) AS serial_no,
+               d.rx_power, d.distance_m, d.online, d.phase_state,
+               d.admin_state, d.omcc_state, d.poll_time,
+               p.name AS olt_name, p.ip AS olt_ip
+        FROM onu_configs c
+        LEFT JOIN LATERAL (
+            SELECT serial_no, rx_power, distance_m, online, phase_state,
+                   admin_state, omcc_state, poll_time
+            FROM onu_data
+            WHERE olt_ip = (SELECT ip FROM olt_profiles WHERE CAST(id AS TEXT)=c.olt_id LIMIT 1)
+              AND onu_id = SPLIT_PART(c.onu_id, ':', 2)
+              AND CAST(pon_port AS TEXT) = c.pon_port
+            ORDER BY poll_time DESC LIMIT 1
+        ) d ON TRUE
+        LEFT JOIN olt_profiles p ON CAST(p.id AS TEXT) = c.olt_id
+        WHERE c.pppoe_id ILIKE ? OR c.pppoe_id ILIKE ?
+        LIMIT 50
+    """, (f'%{q}%', f'%{numeric}%' if numeric else f'%{q}%'))
+
+    if not rows and numeric:
+        rows = query_db(OLT_DB, """
+            SELECT c.*,
+                   COALESCE(NULLIF(c.serial_number, ''), d.serial_no) AS serial_no,
+                   d.rx_power, d.distance_m, d.online, d.phase_state,
+                   d.admin_state, d.omcc_state, d.poll_time,
+                   p.name AS olt_name, p.ip AS olt_ip
+            FROM onu_configs c
+            LEFT JOIN LATERAL (
+                SELECT serial_no, rx_power, distance_m, online, phase_state,
+                       admin_state, omcc_state, poll_time
+                FROM onu_data
+                WHERE olt_ip = (SELECT ip FROM olt_profiles WHERE CAST(id AS TEXT)=c.olt_id LIMIT 1)
+                  AND onu_id = SPLIT_PART(c.onu_id, ':', 2)
+                  AND CAST(pon_port AS TEXT) = c.pon_port
+                ORDER BY poll_time DESC LIMIT 1
+            ) d ON TRUE
+            LEFT JOIN olt_profiles p ON CAST(p.id AS TEXT) = c.olt_id
+            WHERE c.landline ILIKE ?
+            LIMIT 50
+        """, (f'%{numeric}%',))
+
+    return [dict(r) for r in rows] if rows else []
